@@ -1,0 +1,11 @@
+{
+  "name": "campusversa-backend",
+  "version": "1.0.0",
+  "description": "backend folder for campusversa",
+  "main": "server.js",
+  "scripts": {
+    "test": "node server.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
