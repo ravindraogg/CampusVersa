@@ -1,7 +1,5 @@
 import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
-// The 'dom-to-image' library is loaded dynamically from a CDN, making it available globally on the `window` object.
 
-// Initial Data for the resume, now cleared of mock content.
 const initialData = {
     fullName: "Your Name",
     title: "Your Title",
