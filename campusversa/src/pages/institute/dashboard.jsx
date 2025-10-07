@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Home, User, GraduationCap, Calendar, Bell, Search, Settings, Grid, TrendingUp, BookOpen, Package, Send, Zap, Activity, Mail, Phone, MapPin, Edit3, Save, X, ClipboardCheck, Camera, Link, Code, Clock, Plus, Users, UploadCloud, BarChart3, ListChecks
+  Home, User, GraduationCap, Calendar, Bell, Search, Settings, Grid, School,TrendingUp, BookOpen, Package, Send, Zap, Activity, Mail, Phone, MapPin, Edit3, Save, X, ClipboardCheck, Camera, Link, Code, Clock, Plus, Users, UploadCloud, BarChart3, ListChecks
 } from 'lucide-react';
 // Assuming Recharts is available in the environment for professional charting
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -36,7 +36,6 @@ const facultyProfileData = {
     address: 'Faculty Quarters, Pune, MH',
     avatarUrl: 'https://placehold.co/120x120/66BB6A/ffffff?text=RG',
     bannerColor: primaryColor, // Use faculty primary color
-    currentSem: 'Fall 2025',
     department: 'Computer Science',
     researchAreas: ['AI Ethics', 'Reinforcement Learning']
 };
@@ -192,13 +191,15 @@ const Sidebar = ({ activeItem, setActiveItem }) => (
     <div>
       {/* Logo Area */}
       <div className="flex items-center space-x-3 mb-10 p-2">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: primaryColor }}
-        >
-          <GraduationCap className="w-6 h-6 text-white" />
-        </div>
-        <h1 className="text-xl font-extrabold text-white">Edu-Center</h1>
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white">
+  <img
+    src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRyUYcIKz03Y7_p6D1phD5BqSo1C5NjcM13fuI9_TpUGPl7CZ4LJvZ-7cqVwL1fr4px_ww&usqp=CAU"
+    alt="BIT Logo"
+    className="w-full h-full object-contain"
+  />
+</div>
+
+        <h1 className="text-xl font-extrabold text-white">BIT</h1>
       </div>
 
       {/* Main Menu */}
@@ -640,7 +641,6 @@ const FacultyProfile = ({ primaryColor }) => {
 // --- MONITOR STUDENTS PAGE ---
 const MonitorStudentsPage = ({ roster, primaryColor }) => (
     <div className="p-6 pt-0 space-y-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">Advised Student Roster</h1>
         
         <div className="bg-white p-6 rounded-2xl shadow-xl overflow-x-auto">
             <div className="min-w-full">
@@ -724,7 +724,6 @@ const AssignmentsPage = ({ assignments, primaryColor }) => {
         <div className="p-6 pt-0 space-y-6">
             {isModalOpen && <NewAssignmentModal />}
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">Assignments Management</h1>
                 <button 
                     onClick={() => setIsModalOpen(true)}
                     className="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-xl text-white shadow-lg" 
@@ -821,7 +820,6 @@ const AttendancePage = ({ records, roster, primaryColor }) => {
 
     return (
         <div className="p-6 pt-0 space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">Attendance Management</h1>
             
             <div className="bg-white p-6 rounded-2xl shadow-xl">
                 <h2 className="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Record Today's Attendance</h2>
@@ -907,7 +905,6 @@ const MaterialsPage = ({ primaryColor }) => {
 
     return (
         <div className="p-6 pt-0 space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">Course Materials & Resources</h1>
             
             <div className="bg-white p-6 rounded-2xl shadow-xl">
                 <h2 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-2">Upload New Resource</h2>
@@ -1063,7 +1060,6 @@ const EventsPage = ({ primaryColor }) => {
 
     return (
         <div className="p-6 pt-0 space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">Events & Meetings</h1>
             <p className="text-lg text-gray-600">Manage your college and departmental events, deadlines, and meetings.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

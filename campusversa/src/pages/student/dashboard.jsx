@@ -558,13 +558,15 @@ const Sidebar = ({ activeItem, setActiveItem }) => (
     <div>
       {/* Logo Area */}
       <div className="flex items-center space-x-3 mb-10 p-2">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: primaryColor }}
-        >
-          <GraduationCap className="w-6 h-6 text-white" />
-        </div>
-        <h1 className="text-xl font-extrabold text-white">CampusVersa</h1>
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-white">
+  <img
+    src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRyUYcIKz03Y7_p6D1phD5BqSo1C5NjcM13fuI9_TpUGPl7CZ4LJvZ-7cqVwL1fr4px_ww&usqp=CAU"
+    alt="BIT Logo"
+    className="w-full h-full object-contain"
+  />
+</div>
+
+        <h1 className="text-xl font-extrabold text-white">BIT</h1>
       </div>
 
       {/* Main Menu */}
