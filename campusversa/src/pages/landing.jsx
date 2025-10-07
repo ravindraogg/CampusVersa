@@ -100,18 +100,21 @@ const InteractiveBackground = ({ mousePosition }) => {
     );
 };
 
-
+import bookImage from '../assets/book1.jpg';
 // A simple component for the new logo
 const Logo = () => (
-  <div className="flex items-center gap-3">
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-cyan-400">
-        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-    <span className="text-2xl font-bold text-white tracking-wider">CampusVersa</span>
+  <div className="flex items-center gap-4"> {/* increased gap */}
+    {/* Bigger circular logo */}
+    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-cyan-400"> 
+      <img src={bookImage} alt="Logo" className="w-full h-full object-cover" />
+    </div>
+    {/* Bigger text */}
+    <span className="text-3xl md:text-4xl font-bold text-white tracking-wider">
+      CampusVersa
+    </span>
   </div>
 );
+
 
 // A simple component for animated circular progress graphs
 const CircularProgress = ({ percentage, size, strokeWidth, color }) => {
