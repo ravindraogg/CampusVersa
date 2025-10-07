@@ -1,28 +1,45 @@
 import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
 
+// The 'jsPDF' and 'html2canvas' libraries will be loaded dynamically from a CDN.
+
+// Initial Data for the resume.
 const initialData = {
     fullName: "Your Name",
     title: "Your Title",
-    location: "",
-    phone: "",
-    email: "",
-    website: "",
-    profiles: [],
-    summary: "",
-    experience: [],
-    education: [],
-    projects: [],
-    skills: [],
-    certifications: [],
-    languages: [],
+    location: "City, State",
+    phone: "555-555-5555",
+    email: "your.email@example.com",
+    website: "yourportfolio.com",
+    profiles: [
+        { id: 1, network: 'LinkedIn', username: 'your-profile', url: 'https://linkedin.com/in/your-profile' }
+    ],
+    summary: "A brief professional summary about your skills, experience, and career goals. Tailor this to the job you are applying for.",
+    experience: [
+        { id: 1, company: 'Tech Solutions Inc.', jobTitle: 'Frontend Developer', startDate: 'Jan 2020', endDate: 'Present', location: 'San Francisco, CA', companyWebsite: 'techsolutions.com', description: 'Developed and maintained responsive web applications using React.\nCollaborated with UI/UX designers to implement modern user interfaces.' }
+    ],
+    education: [
+        { id: 1, institution: 'University of Technology', degree: 'B.S. in Computer Science', startDate: 'Sep 2016', endDate: 'May 2020', location: 'Techville, USA' }
+    ],
+    projects: [
+        { id: 1, name: 'Personal Portfolio Website', role: 'Developer', description: 'Designed and built a personal portfolio to showcase my projects and skills.' }
+    ],
+    skills: [
+        { id: 1, category: 'Programming Languages', level: 'Expert', list: 'JavaScript, HTML, CSS' }
+    ],
+    certifications: [
+        { id: 1, name: 'React - The Complete Guide', org: 'Udemy', year: '2020' }
+    ],
+    languages: [
+        { id: 1, name: 'English', proficiency: 'Native' }
+    ],
     references: "Available upon request"
 };
 
 // Generic Section Component for the resume preview
 const Section = ({ title, children }) => (
-    <section>
-        <h2 className="text-sm font-bold uppercase text-gray-700 border-b-2 border-gray-300 pb-1 mb-2">{title}</h2>
-        <div className="text-gray-700">{children}</div>
+    <section className="mb-4">
+        <h2 className="text-sm font-bold uppercase pb-1 mb-2" style={{ color: '#262626', borderBottom: '2px solid #d4d4d4' }}>{title}</h2>
+        <div style={{ color: '#404040' }}>{children}</div>
     </section>
 );
 
@@ -30,30 +47,43 @@ const Section = ({ title, children }) => (
 function App() {
     const [data, setData] = useState(initialData);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generatedImageUrl, setGeneratedImageUrl] = useState('');
-    const [domToImageLoaded, setDomToImageLoaded] = useState(false);
+    const [pdfLibrariesLoaded, setPdfLibrariesLoaded] = useState(false);
     const [scale, setScale] = useState(1);
     
     const resumeRef = useRef();
     const resumeContainerRef = useRef();
 
-    // Load dom-to-image dynamically if not already available
+    // Load jsPDF and html2canvas dynamically
     useEffect(() => {
-        if (window.domtoimage) {
-            setDomToImageLoaded(true);
+        if (window.jspdf && window.html2canvas) {
+            setPdfLibrariesLoaded(true);
             return;
         }
 
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/dom-to-image@2.6.0/dist/dom-to-image.min.js';
-        script.async = true;
-        script.onload = () => {
-            setDomToImageLoaded(true);
+        const jspdfScript = document.createElement('script');
+        jspdfScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        jspdfScript.async = true;
+
+        const html2canvasScript = document.createElement('script');
+        html2canvasScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        html2canvasScript.async = true;
+
+        const loadScripts = async () => {
+            const jspdfPromise = new Promise(resolve => {
+                jspdfScript.onload = resolve;
+            });
+            const html2canvasPromise = new Promise(resolve => {
+                html2canvasScript.onload = resolve;
+            });
+
+            document.head.appendChild(jspdfScript);
+            document.head.appendChild(html2canvasScript);
+
+            await Promise.all([jspdfPromise, html2canvasPromise]);
+            setPdfLibrariesLoaded(true);
         };
-        script.onerror = () => {
-            console.error('Failed to load dom-to-image');
-        };
-        document.head.appendChild(script);
+
+        loadScripts();
     }, []);
 
     // Hook to dynamically scale the resume preview to fit its container
@@ -85,7 +115,7 @@ function App() {
     const handleNestedChange = (section, index, e) => {
         const { name, value } = e.target;
         const updatedSection = [...data[section]];
-        updatedSection[index][name] = value;
+        updatedSection[index] = { ...updatedSection[index], [name]: value };
         setData(prev => ({ ...prev, [section]: updatedSection }));
     };
 
@@ -108,81 +138,69 @@ function App() {
         setData(prev => ({ ...prev, [section]: updatedSection }));
     };
 
-    const handleImageGeneration = async () => {
-        if (!window.domtoimage) {
-            alert('dom-to-image is still loading. Please wait a moment and try again.');
+    const handlePdfGeneration = async () => {
+        if (!pdfLibrariesLoaded) {
+            alert('PDF generation libraries are still loading. Please wait a moment and try again.');
             return;
         }
 
         setIsGenerating(true);
         const resumeElement = resumeRef.current;
-
         const originalTransform = resumeElement.style.transform;
+        
+        // Ensure full-resolution capture by temporarily scaling to 1
         resumeElement.style.transform = 'scale(1)';
 
         try {
-            const dataUrl = await window.domtoimage.toPng(resumeElement, {
-                quality: 1,
-                bgcolor: '#ffffff',
-                width: resumeElement.scrollWidth,
-                height: resumeElement.scrollHeight,
+            const canvas = await window.html2canvas(resumeElement, {
+                scale: 2, // Higher scale for better quality
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
             });
-            setGeneratedImageUrl(dataUrl);
+            
+            const imgData = canvas.toDataURL('image/png');
+            // A4 page size in mm: 210 x 297
+            const pdf = new window.jspdf.jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+
+            const filename = data.fullName ? `${data.fullName.replace(/\s+/g, '_')}_resume.pdf` : 'resume.pdf';
+            pdf.save(filename);
+
         } catch (err) {
             console.error("Oops, something went wrong!", err);
+            alert("An error occurred while generating the PDF. Please check the console for details.");
         } finally {
+            // Restore original transform and set loading state to false
             resumeElement.style.transform = originalTransform;
             setIsGenerating(false);
         }
     };
     
-    // Modal Component to display the generated image with a direct download link
-    const DownloadModal = () => {
-        const filename = data.fullName ? `${data.fullName.replace(/\s+/g, '_')}_resume.png` : 'resume.png';
-        
-        return (
-            <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-                <div className="bg-white p-6 rounded-lg shadow-xl max-w-4xl text-center">
-                    <h3 className="text-2xl font-semibold mb-4 text-gray-800">Your Resume PNG is Ready!</h3>
-                    <p className="mb-4 text-gray-600">Click the button below to download or preview the image.</p>
-                    <div className="max-h-[60vh] overflow-auto border-2 border-gray-300 rounded mb-4">
-                        <img src={generatedImageUrl} alt="Generated Resume" className="w-full h-auto" />
-                    </div>
-                    <a
-                        href={generatedImageUrl}
-                        download={filename}
-                        className="bg-green-500 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-600 transition-colors"
-                    >
-                        Download PNG
-                    </a>
-                    <button
-                        onClick={() => setGeneratedImageUrl('')}
-                        className="ml-4 bg-red-500 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-600 transition-colors"
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
 
     return (
-        <div className="min-h-screen bg-gray-100 p-4 sm:p-8 font-sans">
-            {generatedImageUrl && <DownloadModal />}
+        <div className="min-h-screen p-4 sm:p-8 font-sans" style={{ backgroundColor: '#f5f5f5' }}>
             <div className="max-w-7xl mx-auto">
                 <header className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-800">React Resume Generator</h1>
-                    <p className="text-lg text-gray-600 mt-2">Fill in the details below and see your resume update live!</p>
+                    <h1 className="text-4xl font-bold" style={{ color: '#262626' }}>React Resume Generator</h1>
+                    <p className="text-lg mt-2" style={{ color: '#525252' }}>Fill in your details and download your resume as a PDF!</p>
                 </header>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
                     {/* Form Section */}
                     <div className="bg-white p-6 rounded-lg shadow-lg max-h-[80vh] overflow-y-auto">
-                        <h2 className="text-2xl font-semibold mb-6 text-gray-700 border-b pb-2">Your Information</h2>
+                        <h2 className="text-2xl font-semibold mb-6 border-b pb-2" style={{ color: '#404040' }}>Your Information</h2>
                         <div className="space-y-4">
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Personal Details</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Personal Details</h3>
                             <input type="text" name="fullName" value={data.fullName} onChange={handleChange} placeholder="Full Name" className="w-full p-2 border rounded-md"/>
                             <input type="text" name="title" value={data.title} onChange={handleChange} placeholder="Title (e.g., Web Developer)" className="w-full p-2 border rounded-md"/>
                             <input type="text" name="location" value={data.location} onChange={handleChange} placeholder="City, State, Zip" className="w-full p-2 border rounded-md"/>
@@ -190,7 +208,7 @@ function App() {
                             <input type="email" name="email" value={data.email} onChange={handleChange} placeholder="Email" className="w-full p-2 border rounded-md"/>
                             <input type="text" name="website" value={data.website} onChange={handleChange} placeholder="Website/Portfolio URL" className="w-full p-2 border rounded-md"/>
                             
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Profiles</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Profiles</h3>
                             {data.profiles.map((profile, index) => (
                                 <div key={profile.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="network" value={profile.network} onChange={(e) => handleNestedChange('profiles', index, e)} placeholder="Network (e.g., LinkedIn)" className="w-full p-2 border rounded-md"/>
@@ -201,10 +219,10 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('profiles')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Profile</button>
 
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Summary</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Summary</h3>
                             <textarea name="summary" value={data.summary} onChange={handleChange} placeholder="Professional Summary" className="w-full p-2 border rounded-md" rows="5"></textarea>
 
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Experience</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Experience</h3>
                             {data.experience.map((exp, index) => (
                                 <div key={exp.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="company" value={exp.company} onChange={(e) => handleNestedChange('experience', index, e)} placeholder="Company" className="w-full p-2 border rounded-md"/>
@@ -219,7 +237,7 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('experience')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Experience</button>
 
-                             <h3 className="text-xl font-medium text-gray-600 mt-4">Education</h3>
+                             <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Education</h3>
                             {data.education.map((edu, index) => (
                                 <div key={edu.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="institution" value={edu.institution} onChange={(e) => handleNestedChange('education', index, e)} placeholder="Institution" className="w-full p-2 border rounded-md"/>
@@ -232,7 +250,7 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('education')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Education</button>
 
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Projects</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Projects</h3>
                             {data.projects.map((proj, index) => (
                                 <div key={proj.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="name" value={proj.name} onChange={(e) => handleNestedChange('projects', index, e)} placeholder="Project Name" className="w-full p-2 border rounded-md"/>
@@ -243,7 +261,7 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('projects')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Project</button>
                              
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Skills</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Skills</h3>
                             {data.skills.map((skill, index) => (
                                 <div key={skill.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="category" value={skill.category} onChange={(e) => handleNestedChange('skills', index, e)} placeholder="Category (e.g., Web Technologies)" className="w-full p-2 border rounded-md"/>
@@ -254,7 +272,7 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('skills')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Skill Category</button>
 
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Certifications</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Certifications</h3>
                             {data.certifications.map((cert, index) => (
                                 <div key={cert.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="name" value={cert.name} onChange={(e) => handleNestedChange('certifications', index, e)} placeholder="Certification Name" className="w-full p-2 border rounded-md"/>
@@ -265,7 +283,7 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('certifications')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Certification</button>
 
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">Languages</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>Languages</h3>
                             {data.languages.map((lang, index) => (
                                 <div key={lang.id} className="p-3 border rounded-md space-y-2 relative">
                                     <input type="text" name="name" value={lang.name} onChange={(e) => handleNestedChange('languages', index, e)} placeholder="Language" className="w-full p-2 border rounded-md"/>
@@ -275,7 +293,7 @@ function App() {
                             ))}
                             <button onClick={() => addSectionItem('languages')} className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600">Add Language</button>
                             
-                            <h3 className="text-xl font-medium text-gray-600 mt-4">References</h3>
+                            <h3 className="text-xl font-medium mt-4" style={{ color: '#525252' }}>References</h3>
                             <input type="text" name="references" value={data.references} onChange={handleChange} placeholder="References" className="w-full p-2 border rounded-md"/>
                         </div>
                     </div>
@@ -296,16 +314,16 @@ function App() {
                                     className="bg-white p-8 w-[21cm] min-h-[29.7cm] text-sm"
                                 >
                                     <header className="text-center mb-6">
-                                        <h1 className="text-4xl font-bold text-gray-800">{data.fullName}</h1>
-                                        <p className="text-lg text-gray-600 mt-1">{data.title}</p>
-                                        <div className="flex justify-center items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-3 flex-wrap">
+                                        <h1 className="text-4xl font-bold" style={{ color: '#262626' }}>{data.fullName}</h1>
+                                        <p className="text-lg mt-1" style={{ color: '#525252' }}>{data.title}</p>
+                                        <div className="flex justify-center items-center gap-x-4 gap-y-1 text-xs mt-3 flex-wrap" style={{ color: '#737373' }}>
                                             {data.location && <span>{data.location}</span>}
-                                            {data.location && data.phone && <span className="text-gray-300">|</span>}
+                                            {data.location && data.phone && <span style={{ color: '#d4d4d4' }}>|</span>}
                                             {data.phone && <span>{data.phone}</span>}
-                                            {data.phone && data.email && <span className="text-gray-300">|</span>}
-                                            {data.email && <a href={`mailto:${data.email}`} className="text-blue-600 hover:underline">{data.email}</a>}
-                                            {data.email && data.website && <span className="text-gray-300">|</span>}
-                                            {data.website && <a href={data.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{data.website}</a>}
+                                            {data.phone && data.email && <span style={{ color: '#d4d4d4' }}>|</span>}
+                                            {data.email && <a href={`mailto:${data.email}`} style={{ color: '#2563eb' }} className="hover:underline">{data.email}</a>}
+                                            {data.email && data.website && <span style={{ color: '#d4d4d4' }}>|</span>}
+                                            {data.website && <a href={`https://${data.website}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }} className="hover:underline">{data.website}</a>}
                                         </div>
                                     </header>
 
@@ -314,8 +332,8 @@ function App() {
                                             <div className="grid grid-cols-3 gap-4 text-xs">
                                                 {data.profiles.map(p => (
                                                     <div key={p.id}>
-                                                        <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 hover:underline">{p.network}</a>
-                                                        <p className="text-gray-500">{p.username}</p>
+                                                        <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }} className="font-semibold hover:underline">{p.network}</a>
+                                                        <p style={{ color: '#737373' }}>{p.username}</p>
                                                     </div>
                                                 ))}
                                             </div>
@@ -328,16 +346,16 @@ function App() {
                                         {data.experience.length > 0 && <Section title="Experience">
                                             <div className="space-y-4">
                                                 {data.experience.map(exp => (
-                                                    <div key={exp.id}>
+                                                    <div key={exp.id} className="mb-3">
                                                         <div className="flex justify-between items-baseline">
                                                             <h3 className="font-semibold">{exp.company}</h3>
-                                                            <div className="text-xs text-gray-500 font-medium">{exp.startDate} to {exp.endDate}</div>
+                                                            <div className="text-xs font-medium" style={{ color: '#737373' }}>{exp.startDate} to {exp.endDate}</div>
                                                         </div>
                                                         <div className="flex justify-between items-baseline">
                                                             <p className="text-sm font-medium">{exp.jobTitle}</p>
-                                                            <p className="text-xs text-gray-500">{exp.location}</p>
+                                                            <p className="text-xs" style={{ color: '#737373' }}>{exp.location}</p>
                                                         </div>
-                                                        <a href={exp.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">{exp.companyWebsite}</a>
+                                                        <a href={`https://${exp.companyWebsite}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }} className="text-xs hover:underline">{exp.companyWebsite}</a>
                                                         <ul className="list-disc list-inside text-xs mt-1 space-y-1">
                                                             {exp.description.split('\n').map((line, i) => line && <li key={i}>{line}</li>)}
                                                         </ul>
@@ -347,12 +365,12 @@ function App() {
                                         </Section>}
                                         {data.education.length > 0 && <Section title="Education">
                                             {data.education.map(edu => (
-                                                <div key={edu.id} className="flex justify-between items-start">
+                                                <div key={edu.id} className="flex justify-between items-start mb-2">
                                                     <div>
                                                         <h3 className="font-semibold">{edu.institution}</h3>
                                                         <p className="text-xs">{edu.degree}</p>
                                                     </div>
-                                                    <div className="text-right text-xs text-gray-500">
+                                                    <div className="text-right text-xs" style={{ color: '#737373' }}>
                                                         <p>{edu.startDate} to {edu.endDate}</p>
                                                         <p>{edu.location}</p>
                                                     </div>
@@ -374,7 +392,7 @@ function App() {
                                             <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
                                                 {data.skills.map(s => (
                                                     <div key={s.id}>
-                                                        <h3 className="font-semibold">{s.category} <span className="font-normal text-gray-500">- {s.level}</span></h3>
+                                                        <h3 className="font-semibold">{s.category} <span className="font-normal" style={{ color: '#737373' }}>- {s.level}</span></h3>
                                                         <p>{s.list}</p>
                                                     </div>
                                                 ))}
@@ -397,7 +415,7 @@ function App() {
                                             <div className="grid grid-cols-2 gap-x-8">
                                                 {data.languages.map(l => (
                                                     <div key={l.id}>
-                                                        <h3 className="font-semibold">{l.name} <span className="font-normal text-xs text-gray-500">- {l.proficiency}</span></h3>
+                                                        <h3 className="font-semibold">{l.name} <span className="font-normal text-xs" style={{ color: '#737373' }}>- {l.proficiency}</span></h3>
                                                     </div>
                                                 ))}
                                             </div>
@@ -411,11 +429,12 @@ function App() {
                             </div>
                          <div className="mt-6 flex justify-center gap-4">
                             <button 
-                                onClick={handleImageGeneration} 
-                                disabled={!domToImageLoaded || isGenerating}
-                                className="bg-green-500 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-600 transition-colors disabled:bg-gray-400"
+                                onClick={handlePdfGeneration} 
+                                disabled={!pdfLibrariesLoaded || isGenerating}
+                                className="text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-600 transition-colors"
+                                style={{ backgroundColor: (!pdfLibrariesLoaded || isGenerating) ? '#a3a3a3' : '#22c55e' }}
                             >
-                                {!domToImageLoaded ? 'Loading...' : isGenerating ? 'Generating...' : 'Generate PNG'}
+                                {!pdfLibrariesLoaded ? 'Loading Libs...' : isGenerating ? 'Generating...' : 'Download PDF'}
                             </button>
                         </div>
                        </div>
