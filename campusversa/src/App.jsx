@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import AuthPage from './pages/auth'; // make sure path is correct
 import Dashboard from './pages/student/dashboard';
 import Landing from './pages/landing';
-import Dashboard2 from './pages/institute/dashboard';
+import Dashboard2 from './pages/institute/instdashboard';
 import Resume from './pages/student/resume'; // Changed 'resume' to 'Resume'
 import ProjectColab from './pages/student/projectcolab'; // Changed 'projectcolab' to 'ProjectColab'
 import MockInterview from './pages/student/mockinterview'; // Changed 'mockinterview' to 'MockInterview'

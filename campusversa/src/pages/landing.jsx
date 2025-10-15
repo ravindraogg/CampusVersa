@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Map, Code, BookOpen, Mic, Users, Trophy, ArrowRight, Check, X, ChevronsRight } from 'lucide-react';
-
+import { Link } from 'react-router-dom';
 // Particle class for canvas animation
 class Particle {
     constructor(x, y) {
@@ -218,9 +218,11 @@ const CampusVersaLanding = () => {
 
       <header className="fixed top-0 left-0 w-full z-50 p-6 flex justify-between items-center bg-black/30 backdrop-blur-lg border-b border-blue-500/10">
         <Logo />
+        <Link to="/auth">
         <button className="group px-6 py-2 bg-white/5 hover:bg-white/10 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 text-white">
             Get Started <ChevronsRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
+        </Link>
       </header>
 
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -237,9 +239,11 @@ const CampusVersaLanding = () => {
           <p className="text-xl md:text-2xl text-gray-400 mb-12 max-w-3xl mx-auto">
             Climb the ladder of success, one skill at a time. Transform your career journey with AI-powered tools and personalized guidance.
           </p>
+          <Link to="/auth">
           <button className="group px-10 py-5 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto">
             Start Your Journey <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
+          </Link>
         </div>
       </section>
 
@@ -303,9 +307,11 @@ const CampusVersaLanding = () => {
         <Trophy className="w-24 h-24 text-yellow-400 mx-auto mb-8 animate-float" />
         <h2 className="text-5xl md:text-6xl font-black mb-6">Ready to <span className="gradient-text">Reach Your Goal</span>?</h2>
         <p className="text-xl text-gray-300 mb-12 max-w-3xl mx-auto">You've seen the path. You've seen the tools. Now it's time to take the first step. Build the skills, experience, and confidence to land your dream job.</p>
+        <Link to="/auth">
         <button className="group px-12 py-5 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto">
           Start Your Journey Now 🚀 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </button>
+        </Link>
       </section>
 
       <footer className="relative py-12 px-4 border-t border-blue-500/10">

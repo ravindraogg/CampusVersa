@@ -304,6 +304,11 @@ export default function App() {
     const [characterLineup, setCharacterLineup] = useState([]);
     const [guidanceMessage, setGuidanceMessage] = useState('');
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    
+    // NEW STATES FOR MODAL (Simulating Redirection)
+    const [showModal, setShowModal] = useState(false);
+    const [modalMessage, setModalMessage] = useState('');
+
 
     useEffect(() => {
         const shuffled = [...characters].sort(() => 0.5 - Math.random());
@@ -367,6 +372,36 @@ export default function App() {
     const handleFocus = (id) => setFocusedField(id);
     const handleBlur = () => setFocusedField(null);
 
+    const closeModal = () => {
+        setShowModal(false);
+        setModalMessage('');
+    };
+    
+    // --- REDIRECTION LOGIC IMPLEMENTATION ---
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        
+        let targetPath = '';
+        const action = authMode === 'login' ? 'Login' : 'Account Creation';
+
+        // Logic: Redirect based on the currently selected userType state
+        if (userType === 'institute') {
+            targetPath = '/institute/dashboard';
+        } else { // 'student' is the default and also the target for general student login/signup
+            targetPath = '/dashboard';
+        }
+
+        // Simulate success and display target redirect path (as actual redirect is restricted)
+        const successMessage = `${action} successful! Based on your user type ('${userType}'), in a live environment, you would be redirected to: ${targetPath}`;
+        
+        setModalMessage(successMessage);
+        setShowModal(true);
+        
+        // In a real application, the actual redirect would be here:
+        // window.location.href = targetPath;
+    };
+    // ----------------------------------------
+
     const icons = {
         user: <User size={20} />, mail: <Mail size={20} />, lock: <Lock size={20} />,
         idCard: <Award size={20} />, phone: <Phone size={20} />, building: <Building size={20} />,
@@ -427,7 +462,7 @@ export default function App() {
                             <button onClick={() => setUserType('institute')} className={`flex-1 pb-2 text-center font-medium transition-colors ${userType === 'institute' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}>I'm an Institute</button>
                         </div></div>
                     )}
-                    <form onSubmit={(e) => e.preventDefault()}>
+                    <form onSubmit={handleSubmit}>
                         {authMode === 'login' ? ( <>
                             <h2 className="text-3xl font-bold mb-6 text-center">Login to Your Account</h2>
                             <InputField id="email" type="email" placeholder="Email Address" icon={icons.mail} value={formData.email} {...commonProps} />
@@ -461,7 +496,21 @@ export default function App() {
                     </div>
                 </div>
             </div>
+            {/* Modal for simulated redirection */}
+            {showModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                    <div className="bg-slate-800 p-8 rounded-xl shadow-2xl max-w-sm w-full border border-green-400/50">
+                        <h3 className="text-xl font-bold text-green-400 mb-4">Success!</h3>
+                        <p className="text-gray-200 mb-6 font-mono text-sm">{modalMessage}</p>
+                        <button 
+                            onClick={closeModal}
+                            className="w-full bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 transition"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
-

@@ -16,7 +16,8 @@ mongoose
   .then(() => console.log("MongoDB Connected"))
   .catch((err) => console.error(err));
 
-// Schemas
+// ============= SCHEMAS ============= //
+
 const studentSchema = new mongoose.Schema({
   name: { type: String, required: true },
   usn: { type: String, required: true, unique: true },
@@ -26,7 +27,12 @@ const studentSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, default: "student" },
   verified: { type: Boolean, default: false },
-  registeredAt: { type: Date, default: Date.now }
+  registeredAt: { type: Date, default: Date.now },
+  profile: {
+    gpa: { type: Number, default: 0 },
+    attendance: { type: Number, default: 0 },
+    pendingTasks: { type: Number, default: 0 }
+  }
 });
 
 const instituteSchema = new mongoose.Schema({
@@ -40,15 +46,78 @@ const instituteSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+const facultySchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  department: { type: String },
+  designation: { type: String },
+  role: { type: String, default: "faculty" },
+  courseIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }]
+});
+
+const courseSchema = new mongoose.Schema({
+  code: { type: String, required: true, unique: true },
+  title: { type: String, required: true },
+  facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty' },
+  students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }]
+});
+
+const assignmentSchema = new mongoose.Schema({
+  courseCode: { type: String, required: true },
+  title: { type: String, required: true },
+  deadline: { type: Date, required: true },
+  submittedStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }],
+  gradedStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }]
+});
+
+const eventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  date: { type: Date, required: true },
+  location: { type: String },
+  tag: { type: String },
+  details: { type: String }
+});
+
+const notificationSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+  userRole: { type: String, required: true },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  read: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Student = mongoose.model("Student", studentSchema);
 const Institute = mongoose.model("Institute", instituteSchema);
+const Faculty = mongoose.model("Faculty", facultySchema);
+const Course = mongoose.model("Course", courseSchema);
+const Assignment = mongoose.model("Assignment", assignmentSchema);
+const Event = mongoose.model("Event", eventSchema);
+const Notification = mongoose.model("Notification", notificationSchema);
 
-// Root
+// Middleware to protect routes
+const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ message: "No token provided" });
+  
+  const token = authHeader.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token provided" });
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+// ============= AUTH ROUTES (EXISTING) ============= //
+
 app.get("/", (req, res) => {
   res.send("Unified Education Interface API is running...");
 });
-
-// ============= AUTH ROUTES ============= //
 
 // Signup (Student / Institute)
 app.post("/auth/signup", async (req, res) => {
@@ -83,7 +152,7 @@ app.post("/auth/signup", async (req, res) => {
 // Signin (Student / Institute)
 app.post("/auth/signin", async (req, res) => {
   try {
-    const { userType, identifier, password } = req.body; // identifier can be email/usn/aisheCode
+    const { userType, identifier, password } = req.body;
     let user;
 
     if (userType === "student") {
@@ -118,22 +187,111 @@ app.post("/auth/signin", async (req, res) => {
   }
 });
 
-// Protected Route Example
-app.get("/auth/profile", async (req, res) => {
+// Protected Route Example (using new middleware)
+app.get("/auth/profile", authMiddleware, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ message: "No token provided" });
-
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     let user;
-    if (decoded.role === "student") user = await Student.findById(decoded.id);
-    else if (decoded.role === "institute_admin") user = await Institute.findById(decoded.id);
+    if (req.user.role === "student") user = await Student.findById(req.user.id);
+    else if (req.user.role === "institute_admin") user = await Institute.findById(req.user.id);
+    else if (req.user.role === "faculty") user = await Faculty.findById(req.user.id);
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.status(200).json({ message: "Profile fetched successfully", user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============= NEW API ROUTES ============= //
+// All routes below should be protected with authMiddleware
+// They are prefixed with /api to separate them from auth routes.
+
+// Student Dashboard API
+app.get("/api/student/dashboard-data", authMiddleware, async (req, res) => {
+  try {
+    const student = await Student.findById(req.user.id).select("-password");
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    // Fetch related data
+    const courses = await Course.find({ students: student._id }).populate('facultyId', 'name');
+    const upcomingEvents = await Event.find({ date: { $gte: new Date() } }).sort({ date: 1 }).limit(3);
+    const notifications = await Notification.find({ userId: student._id }).sort({ createdAt: -1 }).limit(5);
+
+    res.status(200).json({
+      student,
+      courses,
+      upcomingEvents,
+      notifications
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Institute Dashboard API
+app.get("/api/institute/dashboard-data", authMiddleware, async (req, res) => {
+  if (req.user.role !== "institute_admin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  try {
+    const totalStudents = await Student.countDocuments();
+    const totalFaculty = await Faculty.countDocuments();
+    const recentGrading = await Assignment.find().populate('submittedStudents gradedStudents', 'name').limit(5);
+    
+    // In a real app, this would be more complex, perhaps aggregated stats
+    const avgGpa = await Student.aggregate([
+      { $group: { _id: null, avgGpa: { $avg: "$profile.gpa" } } }
+    ]);
+
+    res.status(200).json({
+      totalStudents,
+      totalFaculty,
+      recentGrading,
+      avgGpa: avgGpa.length > 0 ? avgGpa[0].avgGpa.toFixed(2) : 0
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Events API
+app.get("/api/events", async (req, res) => {
+  try {
+    const events = await Event.find().sort({ date: 1 });
+    res.status(200).json(events);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Assignments API
+app.get("/api/assignments", authMiddleware, async (req, res) => {
+  try {
+    let assignments;
+    if (req.user.role === "faculty") {
+      // Fetch assignments for the faculty's courses
+      const facultyCourses = await Course.find({ facultyId: req.user.id });
+      const courseCodes = facultyCourses.map(c => c.code);
+      assignments = await Assignment.find({ courseCode: { $in: courseCodes } });
+    } else {
+      // Fetch all assignments for a student's courses
+      const studentCourses = await Course.find({ students: req.user.id });
+      const courseCodes = studentCourses.map(c => c.code);
+      assignments = await Assignment.find({ courseCode: { $in: courseCodes } });
+    }
+    res.status(200).json(assignments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Faculty API
+app.get("/api/faculty", authMiddleware, async (req, res) => {
+  try {
+    const faculty = await Faculty.find().select("-password");
+    res.status(200).json(faculty);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
