@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, Lock, Award, Phone, Building, ChevronsRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Mail, Lock, Award, Phone, Building, ChevronsRight } from 'lucide-react'; 
+// We will import useNavigate (the modern equivalent of programmatic Link) here.
+import { useNavigate } from 'react-router-dom';
 
 // A custom hook for a natural blinking effect
 const useBlink = (isTyping) => {
@@ -305,10 +307,8 @@ export default function App() {
     const [guidanceMessage, setGuidanceMessage] = useState('');
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     
-    // NEW STATES FOR MODAL (Simulating Redirection)
-    const [showModal, setShowModal] = useState(false);
-    const [modalMessage, setModalMessage] = useState('');
-
+    // Initialize useNavigate hook
+    const navigate = useNavigate();
 
     useEffect(() => {
         const shuffled = [...characters].sort(() => 0.5 - Math.random());
@@ -371,34 +371,27 @@ export default function App() {
     const handleInputChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const handleFocus = (id) => setFocusedField(id);
     const handleBlur = () => setFocusedField(null);
-
-    const closeModal = () => {
-        setShowModal(false);
-        setModalMessage('');
-    };
     
-    // --- REDIRECTION LOGIC IMPLEMENTATION ---
+
+    // --- REDIRECTION LOGIC IMPLEMENTATION (Direct useNavigate call) ---
     const handleSubmit = (e) => {
         e.preventDefault();
         
         let targetPath = '';
-        const action = authMode === 'login' ? 'Login' : 'Account Creation';
 
-        // Logic: Redirect based on the currently selected userType state
+        // Logic to determine the correct dashboard path
+        // Students go to /dashboard (as requested)
         if (userType === 'institute') {
             targetPath = '/institute/dashboard';
-        } else { // 'student' is the default and also the target for general student login/signup
+        } else { // 'student' is the default
             targetPath = '/dashboard';
         }
 
-        // Simulate success and display target redirect path (as actual redirect is restricted)
-        const successMessage = `${action} successful! Based on your user type ('${userType}'), in a live environment, you would be redirected to: ${targetPath}`;
+        // 1. Simulate Auth success logic here (e.g., API call succeeds)
+        console.log(`Auth successful. Attempting to navigate to: ${targetPath}`);
         
-        setModalMessage(successMessage);
-        setShowModal(true);
-        
-        // In a real application, the actual redirect would be here:
-        // window.location.href = targetPath;
+        // 2. Perform the actual programmatic navigation using useNavigate
+        navigate(targetPath);
     };
     // ----------------------------------------
 
@@ -409,6 +402,7 @@ export default function App() {
 
     const commonProps = { onChange: handleInputChange, onFocus: handleFocus, onBlur: handleBlur };
     
+    // RENDER AUTH FORM
     return (
         <div className="min-h-screen bg-gradient-to-br from-[#000000] via-[#0c0c1a] to-[#1a1a2e] flex items-center justify-center p-4 font-sans text-white">
             <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 bg-slate-900/20 backdrop-blur-lg border border-cyan-400/40 rounded-2xl overflow-hidden">
@@ -496,21 +490,6 @@ export default function App() {
                     </div>
                 </div>
             </div>
-            {/* Modal for simulated redirection */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                    <div className="bg-slate-800 p-8 rounded-xl shadow-2xl max-w-sm w-full border border-green-400/50">
-                        <h3 className="text-xl font-bold text-green-400 mb-4">Success!</h3>
-                        <p className="text-gray-200 mb-6 font-mono text-sm">{modalMessage}</p>
-                        <button 
-                            onClick={closeModal}
-                            className="w-full bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 transition"
-                        >
-                            Close
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
