@@ -193,7 +193,7 @@ const CampusVersaLanding = () => {
   });
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#000000] via-[#0c0c1a] to-[#1a1a2e] text-white overflow-x-hidden">
+    <div className="relative min-h-screen bg-linear-to-br from-[#000000] via-[#0c0c1a] to-[#1a1a2e] text-white overflow-x-hidden">
       <style>{`
         .section-fade-in { opacity: 0; transform: translateY(40px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
         .section-fade-in.is-visible { opacity: 1; transform: translateY(0); }
@@ -240,7 +240,7 @@ const CampusVersaLanding = () => {
             Climb the ladder of success, one skill at a time. Transform your career journey with AI-powered tools and personalized guidance.
           </p>
           <Link to="/auth">
-          <button className="group px-10 py-5 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto">
+          <button className="group px-10 py-5 bg-linear-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto">
             Start Your Journey <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
           </Link>
@@ -258,7 +258,7 @@ const CampusVersaLanding = () => {
               const Icon = feature.icon;
               return (
                 <div key={index} className="flex flex-col items-center gap-4 group">
-                  <div className="w-24 h-24 glass-card rounded-3xl flex items-center justify-center group-hover:!scale-110 transition-all duration-300">
+                  <div className="w-24 h-24 glass-card rounded-3xl flex items-center justify-center group-hover:scale-110! transition-all duration-300">
                     <Icon className="w-10 h-10 text-cyan-400" />
                   </div>
                   <p className="font-semibold text-gray-300">{feature.title}</p>
@@ -308,7 +308,7 @@ const CampusVersaLanding = () => {
         <h2 className="text-5xl md:text-6xl font-black mb-6">Ready to <span className="gradient-text">Reach Your Goal</span>?</h2>
         <p className="text-xl text-gray-300 mb-12 max-w-3xl mx-auto">You've seen the path. You've seen the tools. Now it's time to take the first step. Build the skills, experience, and confidence to land your dream job.</p>
         <Link to="/auth">
-        <button className="group px-12 py-5 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto">
+        <button className="group px-12 py-5 bg-linear-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto">
           Start Your Journey Now 🚀 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </button>
         </Link>
