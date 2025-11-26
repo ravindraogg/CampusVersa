@@ -4,170 +4,887 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
 
-// models
+// Optional AI SDKs (only if keys present)
+let GoogleGenerativeAI;
+let OpenAI;
+try {
+  GoogleGenerativeAI = require('@google/generative-ai').GoogleGenerativeAI;
+} catch (e) { /* not installed / not required if using OpenAI */ }
+
+try {
+  OpenAI = require('openai').OpenAIApi;
+} catch (e) { /* optional */ }
+
+const { Configuration } = require('openai'); // for init if present
+
+// Models (adjust paths to your project structure)
 const AdminUser = require('./models/admin/AdminUser');
 const Institute = require('./models/admin/Institute');
+const RequestsInstitute = require('./models/admin/RequestsInstitute');
 const Log = require('./models/admin/Log');
-
-// middleware
-const { verifyToken } = require('./middleware/authMiddleware');
+const Faculty = require('./models/institute/Faculty');
+const Student = require('./models/institute/Student');
+const Notice = require('./models/institute/Notice');
+const DepartmentMetric = require('./models/institute/DepartmentMetric');
+const NAACTracker = require('./models/institute/NAACTracker');
+const Timetable = require('./models/institute/Timetable');
+const AllGrievance = require('./models/admin/AllGrievance');
+const Department = require('./models/institute/Department');
+// Middleware
+const { verifyToken } = require('./middleware/authMiddleware'); // assumes this sets req.user
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(cors());
 
-// Connect to MongoDB
+// -------------------
+// Database Connect
+// -------------------
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected Successfully"))
+  .then(() => console.log('✅ MongoDB connected'))
   .catch(err => {
-    console.error("❌ MongoDB Connection Error:", err);
+    console.error('❌ MongoDB connection failed:', err);
     process.exit(1);
   });
 
-// 1. Admin Login (NO BCRYPT)
+
+// -------------------
+// Hybrid AI Provider Setup
+// -------------------
+let aiProvider = null; // 'google' | 'openai' | null
+let googleClient = null;
+let openaiClient = null;
+
+if (process.env.GOOGLE_API_KEY && GoogleGenerativeAI) {
+  try {
+    googleClient = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+    aiProvider = 'google';
+    console.log('🔮 Using Google Gemini (Generative AI) as primary provider');
+  } catch (e) {
+    console.warn('⚠️ Failed to initialize GoogleGenerativeAI:', e.message);
+  }
+}
+
+if (!aiProvider && process.env.OPENAI_API_KEY) {
+  try {
+    const config = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
+    const OpenAIClient = require('openai').OpenAIApi;
+    openaiClient = new OpenAIClient(config);
+    aiProvider = 'openai';
+    console.log('🤖 Using OpenAI as fallback provider');
+  } catch (e) {
+    console.warn('⚠️ Failed to initialize OpenAI client:', e.message);
+  }
+}
+
+if (!aiProvider) {
+  console.log('⚪ No AI provider configured. Falling back to deterministic local algorithms for key tasks.');
+}
+
+async function generateWeeklyTimetable({ department, semester, subjects = [], facultyList = [] }) {
+  try {
+    // If AI available, delegate to provider
+    if (aiProvider === 'google' && googleClient) {
+      try {
+        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        const prompt = `Create a weekly class timetable (Monday to Friday, 5 slots per day) for Department: ${department}, Semester: ${semester}.
+Subjects available: ${subjects.join(', ')}.
+Available Faculty: ${facultyList.join(', ') || 'N/A'}.
+Return ONLY a JSON object with keys Monday..Friday and values arrays of 5 strings formatted "Subject - Faculty". No markdown, no extra text.`;
+        const result = await model.generateContent(prompt);
+        const text = (await result.response).text().trim().replace(/```json|```/g, '');
+        const parsed = JSON.parse(text);
+        return parsed;
+      } catch (err) {
+        console.warn('Gemini timetable generation failed:', err.message);
+      }
+    }
+
+    if (aiProvider === 'openai' && openaiClient) {
+      try {
+        const systemPrompt = 'You are a timetable generator. Return ONLY JSON with days Monday..Friday mapping to arrays of 5 strings each.';
+        const userPrompt = `Department: ${department}, Semester: ${semester}. Subjects: ${subjects.join(', ')}. Faculty: ${facultyList.join(', ')}.`;
+        const resp = await openaiClient.createChatCompletion({
+          model: 'gpt-4o-mini', // choose available model or fallback to gpt-4o if not present in your account
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_tokens: 800
+        });
+        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '');
+        return JSON.parse(text);
+      } catch (err) {
+        console.warn('OpenAI timetable generation failed:', err.message);
+      }
+    }
+
+    // Local fallback deterministic round-robin
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const slotsPerDay = 5;
+    const result = {};
+    for (let d = 0; d < days.length; d++) {
+      result[days[d]] = [];
+      for (let s = 0; s < slotsPerDay; s++) {
+        const subject = subjects[(d * slotsPerDay + s) % (subjects.length || 1)] || `Subject-${(s + 1)}`;
+        const faculty = facultyList[(d * slotsPerDay + s) % (facultyList.length || 1)] || 'TBD';
+        result[days[d]].push(`${subject} - ${faculty}`);
+      }
+    }
+    return result;
+  } catch (err) {
+    console.error('generateWeeklyTimetable error:', err);
+    throw err;
+  }
+}
+
+/**
+ * Optional: AI-generated NAAC suggestion for a criterion
+ * Returns short suggestion text.
+ */
+async function generateNaacSuggestion({ instituteName, criterion }) {
+  try {
+    if (aiProvider === 'google' && googleClient) {
+      try {
+        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        const prompt = `Provide a concise actionable suggestion (1-2 sentences) to improve NAAC criterion: ${criterion} for ${instituteName}. Return plain text only.`;
+        const result = await model.generateContent(prompt);
+        return (await result.response).text().trim();
+      } catch (err) {
+        console.warn('Gemini NAAC suggestion failed:', err.message);
+      }
+    }
+
+    if (aiProvider === 'openai' && openaiClient) {
+      try {
+        const resp = await openaiClient.createChatCompletion({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'user', content: `Give a 1-2 sentence actionable suggestion to improve NAAC criterion "${criterion}" for institute ${instituteName}.` }
+          ],
+          max_tokens: 80
+        });
+        return resp.data.choices[0].message.content.trim();
+      } catch (err) {
+        console.warn('OpenAI NAAC suggestion failed:', err.message);
+      }
+    }
+
+    // Local fallback generic suggestion
+    return `Conduct a focused review, collect supporting evidence and align documentation for ${criterion}.`;
+  } catch (err) {
+    console.error('generateNaacSuggestion error:', err);
+    return 'No suggestion available';
+  }
+}
+
+// -------------------
+// Routes
+// -------------------
+
+// --- Root ---
+app.get('/', (req, res) => res.json({ ok: true, service: 'Institute Admin API', version: '1.0' }));
+
+// -------------------
+// 1. ADMIN AUTH / MANAGEMENT
+// -------------------
 app.post('/admin/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    const user = await AdminUser.findOne({ username });
+    if (!user || user.password !== password) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    await Log.create({ action: 'ADMIN_LOGIN', adminId: user._id, details: 'Admin logged in' }).catch(()=>{});
+    res.json({ token, role: user.role });
+  } catch (err) {
+    console.error('admin/login error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
-    // Simple lookup
-    const user = await AdminUser.findOne({ username: username.trim() });
+// Admin endpoints (example): get institutes
+app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
+  try {
+    // 1. Fetch created institutes
+    const realInstitutes = await Institute.find().lean();
+    
+    // 2. Fetch requests (User submitted)
+    const pendingRequests = await RequestsInstitute.find().lean();
 
-    if (!user) {
-      return res.status(401).json({ message: "Invalid Credentials" });
+    // 3. Mark them so frontend knows which is which
+    const formattedInstitutes = realInstitutes.map(i => ({ ...i, type: 'REGISTERED' }));
+    const formattedRequests = pendingRequests.map(r => ({
+      ...r,
+      _id: r._id,
+      name: r.name,
+      code: r.requestedCode, // Map requestedCode to code for display
+      email: r.email,
+      aisheCode: r.aisheCode,
+      status: `Request-${r.status}`, // e.g., "Request-Pending"
+      type: 'REQUEST',
+      createdAt: r.createdAt
+    }));
+
+    // 4. Combine and Sort by date
+    const combined = [...formattedInstitutes, ...formattedRequests].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    res.json(combined);
+  } catch (err) {
+    console.error('/admin/getAllInstitutes error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+// Create institute (admin)
+// --- Admin: Create Institute (assign collegeNumber) ---
+app.post('/admin/createInstitute', verifyToken, async (req, res) => {
+  try {
+    const { name, code, email, aisheCode, password, requestId } = req.body;
+    if (!password) return res.status(400).json({ message: 'Initial password required' });
+    // avoid duplicates
+    const exists = await Institute.findOne({ $or: [{ code }, { email }] });
+    if (exists) return res.status(400).json({ message: 'Institute already exists' });
+
+    // Determine collegeNumber: count existing institutes with same short code
+    // NOTE: We assign newNumber = (countExistingWithSameCode) + 1
+    const sameCodeCount = await Institute.countDocuments({ code });
+    const collegeNumber = sameCodeCount + 1;
+
+    // Generate IID
+    const generatedIID = `IID-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    const inst = new Institute({
+      IID: generatedIID,
+      name,
+      code,
+      collegeNumber,          // save it
+      email,
+      aisheCode,
+      password,
+      status: 'Active',
+      createdAt: Date.now()
+    });
+
+    await inst.save();
+
+    if (requestId) {
+      await RequestsInstitute.findByIdAndUpdate(requestId, { status: 'Approved' }).catch(()=>{});
     }
 
-    // Plain-text password check
-    if (user.password !== password) {
-      return res.status(401).json({ message: "Invalid Credentials" });
-    }
+    res.status(201).json({ message: 'Created', data: inst });
+  } catch (err) {
+    console.error('/admin/createInstitute error:', err);
+    res.status(500).json({ error: 'Create failed' });
+  }
+});
 
-    // Generate JWT
+
+
+app.get('/admin/grievances', verifyToken, async (req, res) => {
+  try {
+    const list = await AllGrievance.find().sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) { res.status(500).json({ error: 'Fetch failed' }); }
+});
+
+app.put('/admin/grievance/:id', verifyToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const updated = await AllGrievance.findByIdAndUpdate(
+      req.params.id, 
+      { status, updatedAt: Date.now() }, 
+      { new: true }
+    );
+    await Log.create({ action: 'UPDATE_GRIEVANCE', adminId: req.user.id, target: updated.ticketId, details: `Status: ${status}` });
+    res.json(updated);
+  } catch (err) { res.status(500).json({ error: 'Update failed' }); }
+});
+
+// -------------------
+// 2. INSTITUTE AUTH (Login + Register Request)
+// -------------------
+app.post('/institute/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body;  
+    // identifier can be IID OR email OR code
+
+    const inst = await Institute.findOne({
+      $or: [
+        { IID: identifier },
+        { email: identifier },
+        { code: identifier }
+      ]
+    });
+
+    if (!inst) return res.status(401).json({ message: 'Institute not found' });
+    if (inst.status !== 'Active') return res.status(403).json({ message: `Account is ${inst.status}` });
+    if (inst.password !== password) return res.status(401).json({ message: 'Invalid password' });
+
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: inst._id, role: 'institute', IID: inst.IID },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: '1d' }
     );
 
     res.json({
       token,
-      role: user.role,
-      message: "Login Successful"
+      role: 'institute',
+      name: inst.name,
+      IID: inst.IID,
+      code: inst.code,
+      email: inst.email,
+      message: 'Login successful'
     });
 
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error('/institute/login error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 
-// ---------------------------
-// ADMIN API (protected)
-// ---------------------------
+app.post('/institute/register', async (req, res) => {
+  try {
+    const { name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes } = req.body;
+    // prevent duplicates across requests and active institutes
+    const conflict = await RequestsInstitute.findOne({ $or: [{ requestedCode }, { email }] });
+    const exists = await Institute.findOne({ $or: [{ code: requestedCode }, { email }] });
+    if (conflict || exists) return res.status(400).json({ message: 'Institute code or email already registered/requested' });
+    const r = new RequestsInstitute({ name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes, status: 'Pending' });
+    await r.save();
+    await Log.create({ action: 'REQUEST_INSTITUTE', details: `Request for ${requestedCode} created` }).catch(()=>{});
+    res.status(201).json({ message: 'Request submitted' });
+  } catch (err) {
+    console.error('/institute/register error:', err);
+    res.status(500).json({ error: 'Failed to submit request' });
+  }
+});
 
-// GET /admin/analytics
-// Returns live counts from DB (no mocks)
+
+// Get current institute profile
+app.get('/institute/me', verifyToken, async (req, res) => {
+  try {
+    const inst = await Institute.findById(req.user.id).select('-password');
+    if (!inst) return res.status(404).json({ message: 'Institute not found' });
+    res.json(inst);
+  } catch (err) {
+    console.error('/institute/me error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update profile: accepts { logoBase64, name }
+// ✔ FIXED: SINGLE clean update-profile route
+// ✔ FIXED update-profile route (uses googleClient instead of genAI)
+app.post('/institute/update-profile', verifyToken, async (req, res) => {
+  try {
+    const { logoBase64, name } = req.body;
+
+    const updateData = {};
+    if (name) updateData.name = name;
+
+    // Save base64 logo
+    if (logoBase64 && logoBase64.startsWith("data:image")) {
+      updateData.logo = logoBase64;
+
+      // Extract raw base64
+      const base64Data = logoBase64.split(",")[1];
+      const mimeType = logoBase64.split(";")[0].split(":")[1];
+
+      // AI color extraction (Google Gemini only)
+     // AI pastel + contrast color extraction
+if (googleClient && aiProvider === "google") {
+  try {
+    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+    const prompt = `
+  Analyze this logo and extract two HEX colors:
+
+  1. "primary": choose a darker, rich color taken from the logo. 
+     It must be dark enough to work as a strong sidebar/nav background.
+  
+  2. "secondary": choose a lighter, fully readable contrast color
+     that sits clearly on top of the primary for text/icons.
+
+  Return strictly this JSON:
+  {
+    "primary": "#xxxxxx",
+    "secondary": "#xxxxxx"
+  }
+`;
+
+
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: base64Data, mimeType } }
+    ]);
+
+    let text = result.response.text().trim();
+
+    // Clean code fences if any
+    text = text.replace(/```json/g, "").replace(/```/g, "");
+
+    // Parse JSON safely
+    const colors = JSON.parse(text);
+
+    if (colors.primary && colors.secondary) {
+      updateData.themeColorPrimary = colors.primary;
+      updateData.themeColorSecondary = colors.secondary;
+    }
+
+  } catch (err) {
+    console.error("AI dual-color extraction failed:", err.message);
+  }
+}
+
+    }
+
+    // Save to MongoDB
+    const updated = await Institute.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateData },
+      { new: true }
+    ).select("-password");
+
+    res.json({ success: true, data: updated });
+
+  } catch (err) {
+    console.error("update-profile error:", err);
+    res.status(500).json({ success: false, message: "Update failed" });
+  }
+});
+
+
+
+// Dashboard stats - aggregated
+app.get('/institute/dashboard-stats', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const [facultyCount, studentCount, notices, recentFaculty, naacData] = await Promise.all([
+      Faculty.countDocuments({ instituteId: instId }),
+      Student.countDocuments({ instituteId: instId }),
+      Notice.find({ instituteId: instId }).sort({ createdAt: -1 }).limit(5),
+      Faculty.find({ instituteId: instId }).sort({ joinedAt: -1 }).limit(5),
+      NAACTracker.findOne({ instituteId: instId })
+    ]);
+    res.json({
+      facultyCount,
+      studentCount,
+      notices,
+      recentFaculty,
+      naacScore: naacData ? (naacData.overallScore || 'N/A') : 'Pending'
+    });
+  } catch (err) {
+    console.error('/institute/dashboard-stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// -------------------
+// Faculty CRUD
+// -------------------
+app.post('/institute/faculty/add', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const payload = { ...req.body, instituteId: instId };
+
+    // Require department and name
+    if (!payload.department || !payload.name) return res.status(400).json({ message: 'Department and name required' });
+
+    // find institute for code and number
+    const inst = await Institute.findById(instId).select('code collegeNumber');
+    if (!inst) return res.status(404).json({ message: 'Institute not found' });
+
+    const deptCode = String(payload.department).toUpperCase();
+
+    // Fetch all existing faculty names in the same department
+    const existing = await Faculty.find({ instituteId: instId, department: deptCode }).select('name FID').lean();
+
+    // Build combined list with the new name, then sort alphabetically by name
+    const combined = existing.map(e => ({ name: e.name })).concat([{ name: payload.name }]);
+    combined.sort((a, b) => {
+      const A = String(a.name || '').toLowerCase();
+      const B = String(b.name || '').toLowerCase();
+      return A.localeCompare(B);
+    });
+
+    // Find position (first occurrence matching payload.name) -> sequence index (1-based)
+    const idx = combined.findIndex(x => x.name === payload.name);
+    const seq = idx >= 0 ? idx + 1 : combined.length;
+    const seqStr = String(seq).padStart(3, '0');
+
+    // FID = <CLG_NO><CLG_SHORT><DEPT_CODE><SEQ3>
+    const FID = `${inst.collegeNumber}${inst.code}${deptCode}${seqStr}`;
+    payload.FID = FID;
+
+    // Create faculty
+    const f = new Faculty(payload);
+    await f.save();
+
+    // Optionally update department facultyCount
+    await Department.findOneAndUpdate({ instituteId: instId, code: deptCode }, { $inc: { facultyCount: 1 } }).catch(()=>{});
+
+    res.status(201).json(f);
+  } catch (err) {
+    console.error('/institute/faculty/add error:', err);
+    res.status(500).json({ error: 'Failed to add faculty' });
+  }
+});
+
+app.get('/institute/faculty', verifyToken, async (req, res) => {
+  try {
+    const list = await Faculty.find({ instituteId: req.user.id }).sort({ joinedAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/faculty GET error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.delete('/institute/faculty/:id', verifyToken, async (req, res) => {
+  try {
+    await Faculty.findOneAndDelete({ _id: req.params.id, instituteId: req.user.id });
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error('/institute/faculty DELETE error:', err);
+    res.status(500).json({ error: 'Delete failed' });
+  }
+});
+
+// -------------------
+// Students
+// -------------------
+app.get('/institute/students', verifyToken, async (req, res) => {
+  try {
+    const list = await Student.find({ instituteId: req.user.id }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/students error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.post('/institute/students/add', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const payload = { ...req.body, instituteId: instId };
+
+    if (!payload.department || !payload.name || !payload.year) {
+      return res.status(400).json({ message: 'Department, name and year required' });
+    }
+
+    const inst = await Institute.findById(instId).select('code collegeNumber');
+    if (!inst) return res.status(404).json({ message: 'Institute not found' });
+
+    const deptCode = String(payload.department).toUpperCase();
+    // Year last two digits
+    const yearStr = String(payload.year).slice(-2);
+
+    // Fetch existing students in the same department
+    const existing = await Student.find({ instituteId: instId, department: deptCode }).select('name SID').lean();
+
+    // Build combined with new, sort alphabetically
+    const combined = existing.map(e => ({ name: e.name })).concat([{ name: payload.name }]);
+    combined.sort((a, b) => {
+      const A = String(a.name || '').toLowerCase();
+      const B = String(b.name || '').toLowerCase();
+      return A.localeCompare(B);
+    });
+
+    const idx = combined.findIndex(x => x.name === payload.name);
+    const roll = idx >= 0 ? idx + 1 : combined.length;
+    const rollStr = String(roll).padStart(3, '0');
+
+    // SID = <CLG_NO><CLG_SHORT><YY><DEPT_CODE><ROLL3>
+    const SID = `${inst.collegeNumber}${inst.code}${yearStr}${deptCode}${rollStr}`;
+    payload.SID = SID;
+
+    const doc = new Student(payload);
+    await doc.save();
+
+    res.status(201).json(doc);
+  } catch (err) {
+    console.error('/institute/students/add error:', err);
+    res.status(500).json({ error: 'Add failed' });
+  }
+});
+
+// -------------------
+// Notices
+// -------------------
+app.get('/institute/notices', verifyToken, async (req, res) => {
+  try {
+    const list = await Notice.find({ instituteId: req.user.id }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/notices error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.post('/institute/notices/add', verifyToken, async (req, res) => {
+  try {
+    const doc = new Notice({ ...req.body, instituteId: req.user.id });
+    await doc.save();
+    res.status(201).json(doc);
+  } catch (err) {
+    console.error('/institute/notices/add error:', err);
+    res.status(500).json({ error: 'Post failed' });
+  }
+});
+
+// -------------------
+// Requests (internal) - lightweight
+// -------------------
+app.get('/institute/requests', verifyToken, async (req, res) => {
+  try {
+    // returns requests created by this institute's registered email (approx)
+    const inst = await Institute.findById(req.user.id).select('email');
+    if (!inst) return res.json([]);
+    const list = await RequestsInstitute.find({ email: inst.email }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/requests error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.post('/institute/requests/add', verifyToken, async (req, res) => {
+  try {
+    // Simple internal ticket - reuse RequestsInstitute shape for speed, or create a new model
+    const inst = await Institute.findById(req.user.id).select('email name code');
+    const doc = new RequestsInstitute({
+      ...req.body,
+      name: inst?.name || req.body.name,
+      email: inst?.email || req.body.email,
+      requestedCode: req.body.requestedCode || `${inst?.code || 'IN'}-REQ-${Date.now()}`,
+      status: 'Pending'
+    });
+    await doc.save();
+    res.status(201).json({ message: 'Request created', data: doc });
+  } catch (err) {
+    console.error('/institute/requests/add error:', err);
+    res.status(500).json({ error: 'Create failed' });
+  }
+});
+
+// -------------------
+// Department Metrics
+// -------------------
+app.get('/institute/metrics', verifyToken, async (req, res) => {
+  try {
+    const metrics = await DepartmentMetric.find({ instituteId: req.user.id });
+    res.json(metrics);
+  } catch (err) {
+    console.error('/institute/metrics GET error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.post('/institute/metrics/update', verifyToken, async (req, res) => {
+  try {
+    const { department, year, publications, placements, researchGrants, efficiency } = req.body;
+    const metric = await DepartmentMetric.findOneAndUpdate(
+      { instituteId: req.user.id, department, year },
+      { publications, placements, researchGrants, efficiency, updatedAt: Date.now() },
+      { new: true, upsert: true }
+    );
+    res.json(metric);
+  } catch (err) {
+    console.error('/institute/metrics/update error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+// -------------------
+// NAAC Monitoring
+// -------------------
+app.get('/institute/naac', verifyToken, async (req, res) => {
+  try {
+    let tracker = await NAACTracker.findOne({ instituteId: req.user.id });
+    if (!tracker) {
+      const defaultCriteria = [
+        { id: 1, name: 'Curricular Aspects', status: 'Pending' },
+        { id: 2, name: 'Teaching-Learning & Evaluation', status: 'Pending' },
+        { id: 3, name: 'Research, Innovation & Extension', status: 'Pending' },
+        { id: 4, name: 'Infrastructure & Learning Resources', status: 'Pending' },
+        { id: 5, name: 'Student Support & Progression', status: 'Pending' },
+        { id: 6, name: 'Governance, Leadership & Management', status: 'Pending' },
+        { id: 7, name: 'Institutional Values & Best Practices', status: 'Pending' }
+      ];
+      tracker = new NAACTracker({ instituteId: req.user.id, criteria: defaultCriteria, createdAt: Date.now() });
+      await tracker.save();
+    }
+    // Optionally include AI suggestions for each criterion
+    const includeAI = req.query.ai === '1' && (aiProvider !== null);
+    if (includeAI) {
+      const inst = await Institute.findById(req.user.id).select('name');
+      for (let crit of tracker.criteria) {
+        crit.suggestion = await generateNaacSuggestion({ instituteName: inst.name || 'This Institute', criterion: crit.name });
+      }
+    }
+    res.json(tracker);
+  } catch (err) {
+    console.error('/institute/naac error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+// Create department
+app.post('/institute/departments/add', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const { name, code, section = 'A', facultyCount = 0, genre } = req.body;
+
+    if (!name || !code) return res.status(400).json({ message: 'Department name and code required' });
+
+    // Normalize code
+    const deptCode = String(code).toUpperCase();
+
+    // Generate DID: <CLG_SHORT><DEPT_CODE><RANDOM3>
+    const inst = await Institute.findById(instId).select('code collegeNumber');
+    if (!inst) return res.status(404).json({ message: 'Institute not found' });
+
+    const random3 = Math.floor(100 + Math.random() * 900);
+    const DID = `${inst.code}${deptCode}${random3}`;
+
+    // Create department
+    const dept = new Department({
+      instituteId: instId,
+      DID,
+      name,
+      code: deptCode,
+      section,
+      facultyCount,
+      genre
+    });
+
+    await dept.save();
+    res.status(201).json({ message: 'Department created', data: dept });
+  } catch (err) {
+    console.error('/institute/departments/add error:', err);
+    res.status(500).json({ error: 'Create failed' });
+  }
+});
+
+// List departments for institute
+app.get('/institute/departments', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const list = await Department.find({ instituteId: instId }).sort({ name: 1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/departments GET error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.post('/institute/naac/update', verifyToken, async (req, res) => {
+  try {
+    const { criteriaId, status, score, notes } = req.body;
+    const tracker = await NAACTracker.findOne({ instituteId: req.user.id });
+    if (!tracker) return res.status(404).json({ message: 'NAAC tracker not found' });
+    const item = tracker.criteria.find(c => c.id === criteriaId || c.id === Number(criteriaId));
+    if (!item) return res.status(404).json({ message: 'Criterion not found' });
+    if (status) item.status = status;
+    if (score !== undefined) item.score = score;
+    if (notes) item.notes = notes;
+    tracker.lastUpdated = Date.now();
+    await tracker.save();
+    res.json(tracker);
+  } catch (err) {
+    console.error('/institute/naac/update error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+// -------------------
+// AI Timetable Generation (Hybrid)
+// -------------------
+app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
+  try {
+    const { department, semester, subjects = [] } = req.body;
+    // Fetch faculty names for context
+    const facultyRows = await Faculty.find({ instituteId: req.user.id, department }).limit(100);
+    const facultyNames = facultyRows.map(f => f.name);
+    const schedule = await generateWeeklyTimetable({ department, semester, subjects, facultyList: facultyNames });
+    // Save
+    const tt = new Timetable({ instituteId: req.user.id, department, semester, scheduleData: schedule, createdAt: Date.now() });
+    await tt.save();
+    res.json({ message: 'Timetable generated', data: tt });
+  } catch (err) {
+    console.error('/institute/timetable/generate error:', err);
+    res.status(500).json({ error: 'AI generation failed' });
+  }
+});
+
+// -------------------
+// Misc: get timetables
+// -------------------
+app.get('/institute/timetables', verifyToken, async (req, res) => {
+  try {
+    const list = await Timetable.find({ instituteId: req.user.id }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/timetables error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+// -------------------
+// Global Analytics (admin)
+// -------------------
 app.get('/admin/analytics', verifyToken, async (req, res) => {
   try {
-    const totalInstitutes = await Institute.countDocuments();
-    const activeInstitutes = await Institute.countDocuments({ status: 'Active' });
-    const pendingApprovals = await Institute.countDocuments({ status: 'Pending' });
-
-    // If you later add Student/Faculty models, replace these with real counts.
-    res.json({
-      totalInstitutes,
-      activeInstitutes,
-      pendingApprovals
+    const total = await Institute.countDocuments();
+    const active = await Institute.countDocuments({ status: 'Active' });
+    const pendingReqs = await RequestsInstitute.countDocuments({ status: 'Pending' });
+    const grievances = await AllGrievance.countDocuments({ status: { $ne: 'Solved' } }); // Open grievances
+    const recentActivity = await Log.find().sort({ createdAt: -1 }).limit(5);
+    
+    res.json({ 
+      totalInstitutes: total, 
+      activeInstitutes: active, 
+      pendingApprovals: pendingReqs, 
+      openGrievances: grievances,
+      recentActivity 
     });
-  } catch (err) {
-    console.error('Analytics error:', err);
-    res.status(500).json({ error: 'Failed to fetch analytics' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Analytics failed' }); }
 });
-
-// POST /admin/createInstitute
-app.post('/admin/createInstitute', verifyToken, async (req, res) => {
+// GET /institute/hybrid
+exports.getHybridInstitute = async (req, res) => {
   try {
-    const { name, code, email, address } = req.body;
-    if (!name || !code || !email) return res.status(400).json({ message: 'name, code and email required' });
+    const inst = await Institute.findOne({ IID: req.user.IID });
+    const reqInst = await RequestedInstitute.findOne({ requestedCode: inst.code });
 
-    const existing = await Institute.findOne({ code: code.trim() });
-    if (existing) return res.status(400).json({ message: 'Institute Code already exists' });
+    const hybrid = {
+      ...inst.toObject(),
+      ...reqInst?.toObject(),
+      logo: inst.logo || reqInst?.logo,
+      themeColorPrimary: inst.themeColorPrimary,
+      themeColorSecondary: inst.themeColorSecondary
+    };
 
-    const newInst = new Institute({
-      name: name.trim(),
-      code: code.trim(),
-      email: email.trim(),
-      address: address ? address.trim() : ''
-    });
-    await newInst.save();
-
-    await Log.create({ action: 'CREATE_INSTITUTE', adminId: req.user.id, target: newInst.code });
-    res.status(201).json({ message: 'Institute created successfully', data: newInst });
+    return res.json(hybrid);
   } catch (err) {
-    console.error('Create institute error:', err);
-    res.status(500).json({ error: 'Failed to create institute' });
+    console.error(err);
+    res.status(500).json({ message: "Hybrid data fetch failed" });
   }
+};
+
+// -------------------
+// Generic Error Handler (fallback)
+// -------------------
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// GET /admin/getAllInstitutes
-app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
-  try {
-    const institutes = await Institute.find().sort({ createdAt: -1 });
-    res.json(institutes);
-  } catch (err) {
-    console.error('Get institutes error:', err);
-    res.status(500).json({ error: 'Failed to fetch institutes' });
-  }
-});
-
-// PUT /admin/updateInstitute/:id  { status }
-app.put('/admin/updateInstitute/:id', verifyToken, async (req, res) => {
-  try {
-    const { status } = req.body;
-    if (!['Active', 'Pending', 'Suspended'].includes(status)) return res.status(400).json({ message: 'Invalid status' });
-
-    const institute = await Institute.findByIdAndUpdate(req.params.id, { status }, { new: true });
-    if (!institute) return res.status(404).json({ message: 'Institute not found' });
-
-    await Log.create({ action: `UPDATE_STATUS_${status.toUpperCase()}`, adminId: req.user.id, target: institute.code });
-    res.json({ message: 'Institute status updated', data: institute });
-  } catch (err) {
-    console.error('Update institute error:', err);
-    res.status(500).json({ error: 'Failed to update institute' });
-  }
-});
-
-// GET /admin/logs
-app.get('/admin/logs', verifyToken, async (req, res) => {
-  try {
-    const logs = await Log.find().sort({ timestamp: -1 }).limit(100);
-    res.json(logs);
-  } catch (err) {
-    console.error('Get logs error:', err);
-    res.status(500).json({ error: 'Failed to fetch logs' });
-  }
-});
-
-// Example: POST /admin/broadcast  { title, message, target }
-// We'll store minimal announcements in logs for now
-app.post('/admin/broadcast', verifyToken, async (req, res) => {
-  try {
-    const { title, message, target = 'all' } = req.body;
-    if (!title || !message) return res.status(400).json({ message: 'title and message required' });
-
-    await Log.create({ action: `BROADCAST:${title}`, adminId: req.user.id, target });
-    res.json({ message: 'Broadcast recorded' });
-  } catch (err) {
-    console.error('Broadcast error:', err);
-    res.status(500).json({ error: 'Failed to broadcast' });
-  }
-});
-
-// Fallback
-app.use((req, res) => res.status(404).json({ message: 'Not Found' }));
-
-// Start server
+// -------------------
+// Start Server
+// -------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Admin Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (AI provider: ${aiProvider || 'none'})`));

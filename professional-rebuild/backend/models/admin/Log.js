@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
 
 const LogSchema = new mongoose.Schema({
-  action: String,
-  adminId: mongoose.Schema.Types.ObjectId,
-  target: String,
+  action: { type: String, required: true },
+  adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'AdminUser' },
+  target: String, // Code or ID of the affected entity
+  details: String, // Detailed message (e.g., "Changed status to Active")
   timestamp: { type: Date, default: Date.now }
 });
 

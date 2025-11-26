@@ -315,7 +315,7 @@ const CampusVersaLanding = () => {
       </section>
 
       <footer className="relative py-12 px-4 border-t border-blue-500/10">
-        <p className="text-center text-gray-600">© 2024 CampusVersa. All rights reserved.</p>
+        <p className="text-center text-gray-600">© 2024 CampusVersa.</p>
       </footer>
     </div>
   );

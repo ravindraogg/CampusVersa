@@ -3,33 +3,64 @@ import axios from 'axios';
 import {
   LayoutDashboard, Building, Users, FileCheck, ShieldAlert,
   Database, Settings, LogOut, Plus, Search, X, Check, Trash2, Edit,
-  UploadCloud, FileText, Activity, Server, Loader2, Lock
+  UploadCloud, FileText, Activity, Server, Loader2, Lock,
+  Megaphone, History, Eye, UserCheck, UserX, AlertTriangle, Key,
+  MessageSquare, ChevronDown
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-// Upgraded hybrid UI: Minimal + Dark Pro accents
-// Keep existing API and logic, only visual layer is enhanced
-
 const API_BASE_URL = 'http://localhost:5000/admin';
 
+// --- Components ---
+const Modal = ({ isOpen, title, children, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-slate-900 rounded-2xl border border-white/10 p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+          <h3 className="text-xl font-bold text-white">{title}</h3>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+            <X className="w-5 h-5 text-slate-400"/>
+          </button>
+        </div>
+        <div>{children}</div>
+      </div>
+    </div>
+  );
+};
+
 const AdminPanel = () => {
-  // ---------- state ----------
+  // ---------- State ----------
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
   const [loginCreds, setLoginCreds] = useState({ username: '', password: '' });
 
-  const [authLoading, setAuthLoading] = useState(false);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [toast, setToast] = useState(null);
-
+  // Data State
   const [analytics, setAnalytics] = useState(null);
   const [institutes, setInstitutes] = useState([]);
-  const [chartData, setChartData] = useState([]);
+  const [grievances, setGrievances] = useState([]); // NEW STATE
+  const [logs, setLogs] = useState([]);
+  
+  // Search State
+  const [searchQuery, setSearchQuery] = useState(''); // NEW STATE
 
-  const [modals, setModals] = useState({ addInstitute: false, naacUpload: false });
-  const [newInst, setNewInst] = useState({ name: '', code: '', email: '', address: '' });
+  const [selectedInstitute, setSelectedInstitute] = useState(null);
 
-  // axios instance
+  // UI State
+  const [isLoading, setIsLoading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [modals, setModals] = useState({ 
+    addInstitute: false, 
+    naacUpload: false, 
+    instituteDetail: false 
+  });
+  
+  const [newInst, setNewInst] = useState({ 
+    name: '', code: '', email: '', address: '', aisheCode: '', password: '', requestId: null
+  });
+  const [broadcast, setBroadcast] = useState({ title: '', message: '', type: 'Info' });
+
+  // Axios Instance
   const api = axios.create({ baseURL: API_BASE_URL });
   api.interceptors.request.use((config) => {
     const token = localStorage.getItem('adminToken');
@@ -37,7 +68,7 @@ const AdminPanel = () => {
     return config;
   });
 
-  // ---------- effects ----------
+  // ---------- Effects ----------
   useEffect(() => {
     const token = localStorage.getItem('adminToken');
     if (token) {
@@ -50,173 +81,176 @@ const AdminPanel = () => {
     if (!isAuthenticated) return;
     if (activeView === 'dashboard') fetchDashboardData();
     if (activeView === 'institutes') fetchInstitutes();
+    if (activeView === 'grievance') fetchGrievances(); // NEW FETCH
+    if (activeView === 'logs') fetchLogs();
   }, [activeView, isAuthenticated]);
 
-  // ---------- actions ----------
+  // ---------- Actions ----------
+
   const handleLogin = async (e) => {
     e.preventDefault();
-    setAuthLoading(true);
+    setIsLoading(true);
     try {
       const res = await axios.post(`${API_BASE_URL}/login`, loginCreds);
       localStorage.setItem('adminToken', res.data.token);
       setIsAuthenticated(true);
-      showToast('Welcome back — logged in', 'success');
+      showToast('Login successful', 'success');
       fetchDashboardData();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Login failed', 'error');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('adminToken');
-    setIsAuthenticated(false);
-    setLoginCreds({ username: '', password: '' });
-    setAnalytics(null);
-    setInstitutes([]);
-    showToast('Signed out', 'info');
+      showToast('Invalid credentials', 'error');
+    } finally { setIsLoading(false); }
   };
 
   const fetchDashboardData = async () => {
-    setDataLoading(true);
-    try {
-      const res = await api.get('/analytics');
-      setAnalytics(res.data);
-      if (res.data.history && Array.isArray(res.data.history) && res.data.history.length) {
-        setChartData(res.data.history);
-      } else {
-        // derive tiny chart from counts so UI is not empty
-        setChartData([
-          { name: 'Active', value: res.data.activeInstitutes || 0 },
-          { name: 'Pending', value: res.data.pendingApprovals || 0 }
-        ]);
-      }
-    } catch (err) {
-      if (err.response?.status !== 401) showToast('Could not load dashboard', 'error');
-      setAnalytics(null);
-    } finally {
-      setDataLoading(false);
-    }
+    try { const res = await api.get('/analytics'); setAnalytics(res.data); } catch (err) { console.error(err); }
   };
 
   const fetchInstitutes = async () => {
-    setDataLoading(true);
+    setIsLoading(true);
     try {
       const res = await api.get('/getAllInstitutes');
-      setInstitutes(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      showToast('Failed to load institutes', 'error');
-      setInstitutes([]);
-    } finally {
-      setDataLoading(false);
-    }
+      setInstitutes(res.data);
+    } catch (err) { showToast('Failed to load institutes', 'error'); } 
+    finally { setIsLoading(false); }
+  };
+
+  const fetchGrievances = async () => { // NEW ACTION
+    try {
+      const res = await api.get('/grievances');
+      setGrievances(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchLogs = async () => {
+    try { const res = await api.get('/logs'); setLogs(res.data); } catch (err) { console.error(err); }
   };
 
   const handleCreateInstitute = async () => {
     try {
       await api.post('/createInstitute', newInst);
-      showToast('Institute created', 'success');
+      showToast('Institute registered & credentials created', 'success');
       setModals({ ...modals, addInstitute: false });
-      setNewInst({ name: '', code: '', email: '', address: '' });
+      setNewInst({ name: '', code: '', email: '', address: '', aisheCode: '', password: '', requestId: null });
       fetchInstitutes();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Create failed', 'error');
+      showToast(err.response?.data?.message || 'Error creating institute', 'error');
     }
   };
 
-  const handleNaacValidation = async () => {
+  const handleGrievanceStatus = async (id, status) => { // NEW ACTION
     try {
-      showToast('Validating...', 'info');
+      await api.put(`/grievance/${id}`, { status });
+      showToast(`Grievance status: ${status}`, 'success');
+      setGrievances(prev => prev.map(g => g._id === id ? { ...g, status } : g));
+    } catch (err) { showToast('Update failed', 'error'); }
+  };
+
+  const handleStatusUpdate = async (id, status) => {
+    try {
+      await api.put(`/updateInstituteStatus/${id}`, { status });
+      showToast(`Institute marked as ${status}`, 'success');
+      setInstitutes(prev => prev.map(inst => inst._id === id ? { ...inst, status } : inst));
+      if (selectedInstitute && selectedInstitute._id === id) {
+        setSelectedInstitute({ ...selectedInstitute, status });
+      }
+    } catch (err) { showToast('Update failed', 'error'); }
+  };
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/broadcast', broadcast);
+      showToast('Broadcast sent', 'success');
+      setBroadcast({ title: '', message: '', type: 'Info' });
+    } catch (err) { showToast('Broadcast failed', 'error'); }
+  };
+
+  const handleNaacValidation = async () => {
+    setIsLoading(true);
+    try {
       const res = await api.post('/naacValidator', {});
+      showToast(`AI Grade: ${res.data.grade} (Score: ${res.data.score})`, 'success');
       setModals({ ...modals, naacUpload: false });
-      showToast(`Score ${res.data.score}`, 'success');
-    } catch (err) {
-      showToast('Validation failed', 'error');
-    }
+    } catch (err) { showToast('Validation failed', 'error'); } 
+    finally { setIsLoading(false); }
   };
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), 3000);
   };
 
-  // ---------- small UI helpers ----------
-  const Stat = ({ label, value, icon: Icon }) => (
-    <div className="flex items-center gap-4 p-4 bg-white/6 rounded-xl backdrop-blur-sm border border-white/6">
-      <div className="p-3 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600/80 flex items-center justify-center shadow-sm">
-        <Icon className="w-5 h-5 text-white" />
-      </div>
-      <div>
-        <div className="text-xs text-slate-300">{label}</div>
-        <div className="text-2xl font-semibold text-white">{value ?? '-'}</div>
-      </div>
-    </div>
-  );
-
-  const Modal = ({ isOpen, title, children, onClose }) => {
-    if (!isOpen) return null;
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="w-full max-w-xl bg-slate-900 rounded-2xl border border-white/6 p-6 shadow-2xl">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-white">{title}</h3>
-            <button onClick={onClose} className="p-2 rounded-md bg-white/5"><X className="w-4 h-4 text-slate-300"/></button>
-          </div>
-          <div>{children}</div>
-        </div>
-      </div>
-    );
+  // Helper to pre-fill the create form from a request
+  const openPromoteModal = (request) => {
+    setNewInst({
+      name: request.name,
+      code: request.code,
+      email: request.email,
+      aisheCode: request.aisheCode || '',
+      address: request.state || '',
+      password: '', // Admin sets password
+      requestId: request._id
+    });
+    setModals({ ...modals, addInstitute: true });
   };
 
-  // ---------- views ----------
-  const DashboardView = () => {
-    if (dataLoading && !analytics) return (
-      <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-slate-300"/></div>
-    );
+  // ---------- Render Views ----------
 
-    if (!analytics) return (
-      <div className="p-8 rounded-xl bg-white/3 border border-white/6 text-slate-300">No analytics available</div>
-    );
-
+  const renderDashboard = () => {
+    if (!analytics) return <div className="text-slate-400 p-8">Loading analytics...</div>;
+    const chartData = [
+      { name: 'Active', value: analytics.activeInstitutes },
+      { name: 'Requests', value: analytics.pendingApprovals },
+      { name: 'Grievances', value: analytics.openGrievances },
+    ];
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Stat label="Total Institutes" value={analytics.totalInstitutes} icon={Building} />
-          <Stat label="Active Institutes" value={analytics.activeInstitutes} icon={Users} />
-          <Stat label="Pending Approvals" value={analytics.pendingApprovals} icon={ShieldAlert} />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-indigo-600/20 border border-indigo-500/30 p-4 rounded-xl">
+            <div className="text-indigo-300 text-sm font-medium mb-1">Total Institutes</div>
+            <div className="text-3xl font-bold text-white">{analytics.totalInstitutes}</div>
+          </div>
+          <div className="bg-emerald-600/20 border border-emerald-500/30 p-4 rounded-xl">
+            <div className="text-emerald-300 text-sm font-medium mb-1">Active Accounts</div>
+            <div className="text-3xl font-bold text-white">{analytics.activeInstitutes}</div>
+          </div>
+          <div className="bg-amber-600/20 border border-amber-500/30 p-4 rounded-xl">
+            <div className="text-amber-300 text-sm font-medium mb-1">Pending Requests</div>
+            <div className="text-3xl font-bold text-white">{analytics.pendingApprovals}</div>
+          </div>
+          <div className="bg-rose-600/20 border border-rose-500/30 p-4 rounded-xl">
+            <div className="text-rose-300 text-sm font-medium mb-1">Open Grievances</div>
+            <div className="text-3xl font-bold text-white">{analytics.openGrievances}</div>
+          </div>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white/5 p-6 rounded-2xl border border-white/6">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-white font-semibold">Institute Growth</h4>
-              <div className="text-xs text-slate-300">Last 30 days</div>
-            </div>
-            <div className="h-72">
+          <div className="lg:col-span-2 bg-slate-800/50 p-6 rounded-2xl border border-white/5">
+            <h4 className="text-white font-semibold mb-6">System Overview</h4>
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis dataKey="name" tick={{ fill: '#cbd5e1' }} />
-                  <YAxis tick={{ fill: '#cbd5e1' }} />
-                  <Tooltip wrapperStyle={{ background: '#0f172a', color: '#fff' }} />
-                  <Bar dataKey="value" fill="#7c3aed" radius={[6,6,0,0]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="name" tick={{ fill: '#94a3b8' }} />
+                  <YAxis tick={{ fill: '#94a3b8' }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }} />
+                  <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
-
-          <div className="bg-white/5 p-6 rounded-2xl border border-white/6">
-            <h4 className="text-white font-semibold mb-3">System Status</h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-slate-300">
-                <div className="flex items-center gap-3"><Server className="w-4 h-4"/> Backend</div>
-                <div className="text-sm text-emerald-400">Online</div>
-              </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <div className="flex items-center gap-3"><Database className="w-4 h-4"/> MongoDB</div>
-                <div className="text-sm text-emerald-400">Connected</div>
-              </div>
+          {/* Logs */}
+          <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5">
+             <h4 className="text-white font-semibold mb-4">Recent Activity</h4>
+             <div className="space-y-4">
+              {analytics.recentActivity && analytics.recentActivity.map((log, i) => (
+                <div key={i} className="flex gap-3 text-sm">
+                  <div className="mt-1 w-2 h-2 rounded-full bg-indigo-500"></div>
+                  <div>
+                    <div className="text-slate-200">{log.action}</div>
+                    <div className="text-slate-500 text-xs">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -224,188 +258,358 @@ const AdminPanel = () => {
     );
   };
 
-  const InstituteView = () => {
+  const renderInstitutes = () => {
+    // FILTER LOGIC: Search by name OR code
+    const filteredInstitutes = institutes.filter(inst => 
+      inst.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      inst.code.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-white text-xl font-semibold">Institute Management</h3>
-          <button onClick={() => setModals({...modals, addInstitute: true})} className="inline-flex items-center gap-2 bg-indigo-600 px-4 py-2 rounded-lg shadow">
-            <Plus className="w-4 h-4 text-white"/> <span className="text-white text-sm font-medium">Add Institute</span>
-          </button>
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <h2 className="text-2xl font-bold text-white">Institutes Registry</h2>
+          
+          <div className="flex w-full md:w-auto gap-3">
+             {/* SEARCH BAR */}
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+              <input 
+                type="text"
+                placeholder="Search Institute..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2.5 rounded-lg text-white text-sm focus:border-indigo-500 outline-none"
+              />
+            </div>
+
+            <button 
+              onClick={() => { setNewInst({ name: '', code: '', email: '', address: '', aisheCode: '', password: '', requestId: null }); setModals({ ...modals, addInstitute: true }); }} 
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" /> Add Manually
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white/5 p-4 rounded-2xl border border-white/6">
-          {institutes.length === 0 ? (
-            <div className="p-12 text-center text-slate-300">No institutes. Create one.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left table-auto">
-                <thead className="text-slate-300 text-xs uppercase tracking-wider">
-                  <tr>
-                    <th className="p-3">Institute</th>
-                    <th className="p-3">Code</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {institutes.map(inst => (
-                    <tr key={inst._id} className="border-t border-white/4 text-slate-200 hover:bg-white/2">
-                      <td className="p-3 font-medium">{inst.name}</td>
-                      <td className="p-3 text-slate-300">{inst.code}</td>
-                      <td className="p-3">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${inst.status === 'Active' ? 'bg-emerald-800 text-emerald-200' : inst.status === 'Suspended' ? 'bg-red-800 text-red-200' : 'bg-amber-800 text-amber-200'}`}>
-                          {inst.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <button className="p-2 rounded-md bg-white/5 mr-2"><Edit className="w-4 h-4"/></button>
-                        <button className="p-2 rounded-md bg-white/5"><Trash2 className="w-4 h-4"/></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+              <tr>
+                <th className="p-4">Name</th>
+                <th className="p-4">Code / AISHE</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filteredInstitutes.map(inst => (
+                <tr key={inst._id} className="hover:bg-white/5 transition-colors">
+                  <td className="p-4">
+                    <div className="font-medium text-white flex items-center gap-2">
+                      {inst.name}
+                      {inst.type === 'REQUEST' && <span className="text-[10px] bg-blue-600/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">REQ</span>}
+                    </div>
+                    <div className="text-xs text-slate-500">{inst.email}</div>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                    <div className="font-mono">{inst.code}</div>
+                    <div className="text-xs text-slate-500">{inst.aisheCode || 'N/A'}</div>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      inst.status === 'Active' ? 'bg-emerald-500/20 text-emerald-400' :
+                      inst.status.includes('Pending') ? 'bg-amber-500/20 text-amber-400' :
+                      inst.status === 'Rejected' ? 'bg-rose-500/20 text-rose-400' :
+                      'bg-slate-500/20 text-slate-400'
+                    }`}>
+                      {inst.status}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    {/* If it's a REQUEST, show Promote button, else show Manage */}
+                    {inst.type === 'REQUEST' && !inst.status.includes('Approved') ? (
+                       <button 
+                        onClick={() => openPromoteModal(inst)}
+                        className="text-emerald-400 hover:text-emerald-300 hover:underline text-sm font-medium mr-4"
+                      >
+                        Approve & Create
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => { setSelectedInstitute(inst); setModals({ ...modals, instituteDetail: true }); }}
+                        className="text-indigo-400 hover:text-indigo-300 hover:underline text-sm font-medium"
+                      >
+                        Manage
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filteredInstitutes.length === 0 && (
+                <tr><td colSpan="4" className="p-8 text-center text-slate-500">No institutes found matching "{searchQuery}".</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     );
   };
 
-  const ToolsView = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="bg-white/5 p-6 rounded-2xl border border-white/6">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-white font-semibold">AI NAAC Validator</h4>
-          <div className="text-xs text-slate-300">Beta</div>
-        </div>
-        <div className="border-2 border-dashed border-white/6 rounded-xl p-6 text-center cursor-pointer" onClick={() => setModals({...modals, naacUpload: true})}>
-          <UploadCloud className="w-8 h-8 text-slate-300 mx-auto"/>
-          <div className="mt-2 text-slate-300">Upload SSR to validate</div>
-        </div>
+  const renderGrievances = () => ( // NEW VIEW
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+        <MessageSquare className="w-6 h-6" /> Grievance Portal
+      </h2>
+      <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+            <tr>
+              <th className="p-4">Ticket ID</th>
+              <th className="p-4">Subject & Description</th>
+              <th className="p-4">Status</th>
+              <th className="p-4">Update</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {grievances.map(g => (
+              <tr key={g._id} className="hover:bg-white/5">
+                <td className="p-4 text-slate-300 font-mono text-xs">
+                  {g.ticketId || '#' + g._id.slice(-6)}
+                  <div className="text-slate-500 mt-1">{new Date(g.createdAt).toLocaleDateString()}</div>
+                </td>
+                <td className="p-4">
+                  <div className="text-white font-medium">{g.subject}</div>
+                  <div className="text-slate-400 text-sm mt-1 max-w-md">{g.description}</div>
+                  <div className="text-xs text-indigo-400 mt-1">By: {g.raisedBy}</div>
+                </td>
+                <td className="p-4">
+                   <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      g.status === 'Solved' ? 'bg-emerald-500/20 text-emerald-400' :
+                      g.status === 'Solving' ? 'bg-blue-500/20 text-blue-400' :
+                      g.status === 'Accepted' ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-slate-500/20 text-slate-400'
+                    }`}>
+                      {g.status}
+                    </span>
+                </td>
+                <td className="p-4">
+                  <select 
+                    value={g.status}
+                    onChange={(e) => handleGrievanceStatus(g._id, e.target.value)}
+                    className="bg-slate-900 border border-white/10 text-white text-xs rounded px-2 py-1 outline-none focus:border-indigo-500"
+                  >
+                    <option value="Received">Received</option>
+                    <option value="Accepted">Accepted</option>
+                    <option value="Solving">Solving</option>
+                    <option value="Solved">Solved</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {grievances.length === 0 && (
+               <tr><td colSpan="4" className="p-8 text-center text-slate-500">No active grievances.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 
-  // ---------- layout ----------
+  const renderBroadcast = () => (
+    <div className="max-w-2xl mx-auto space-y-8">
+      <div className="bg-slate-800/50 p-8 rounded-2xl border border-white/5">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="p-3 bg-indigo-600/20 rounded-lg">
+            <Megaphone className="w-6 h-6 text-indigo-400" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">System Broadcast</h3>
+            <p className="text-slate-400 text-sm">Send global alerts or announcements.</p>
+          </div>
+        </div>
+        <form onSubmit={handleBroadcast} className="space-y-4">
+          <div>
+            <label className="block text-sm text-slate-300 mb-1">Title</label>
+            <input required value={broadcast.title} onChange={e => setBroadcast({...broadcast, title: e.target.value})} className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-indigo-500 outline-none"/>
+          </div>
+          <div>
+            <label className="block text-sm text-slate-300 mb-1">Type</label>
+            <select value={broadcast.type} onChange={e => setBroadcast({...broadcast, type: e.target.value})} className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-indigo-500 outline-none">
+              <option>Info</option><option>Warning</option><option>Critical</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-slate-300 mb-1">Message</label>
+            <textarea required rows="4" value={broadcast.message} onChange={e => setBroadcast({...broadcast, message: e.target.value})} className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:border-indigo-500 outline-none"/>
+          </div>
+          <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition-colors">Publish</button>
+        </form>
+      </div>
+    </div>
+  );
+
+  const renderLogs = () => (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+        <History className="w-6 h-6" /> System Audit Logs
+      </h2>
+      <div className="bg-slate-800/50 rounded-xl border border-white/5 p-4">
+        {logs.length === 0 ? <div className="text-slate-500 text-center py-8">No logs available.</div> : (
+          <div className="space-y-2">
+            {logs.map((log) => (
+              <div key={log._id} className="p-3 bg-slate-900/50 rounded-lg border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="text-xs font-mono px-2 py-1 rounded bg-slate-800 text-slate-300">{log.action}</div>
+                  <div className="text-sm text-slate-200 font-medium">{log.details}</div>
+                </div>
+                <div className="text-xs text-slate-500 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderTools = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5 hover:border-indigo-500/50 transition-colors">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="p-3 bg-purple-500/20 rounded-lg"><FileCheck className="w-6 h-6 text-purple-400" /></div>
+          <div><h3 className="text-lg font-bold text-white">AI NAAC Validator</h3></div>
+        </div>
+        <button onClick={() => setModals({...modals, naacUpload: true})} className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium">Launch Validator</button>
+      </div>
+      <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5 hover:border-indigo-500/50 transition-colors">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="p-3 bg-blue-500/20 rounded-lg"><ShieldAlert className="w-6 h-6 text-blue-400" /></div>
+          <div><h3 className="text-lg font-bold text-white">Plagiarism Checker</h3></div>
+        </div>
+        <button className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">Open Scanner</button>
+      </div>
+    </div>
+  );
+
+  // ---------- Login Screen ----------
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-gradient-to-br from-white/4 to-white/2 backdrop-blur-sm border border-white/6 rounded-2xl p-8 shadow-2xl">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 rounded-lg bg-indigo-600"><Lock className="w-6 h-6 text-white"/></div>
-            <div>
-              <h1 className="text-white text-2xl font-bold">Admin Portal</h1>
-              <div className="text-slate-300 text-sm">Central governance - secure access</div>
-            </div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-8 shadow-2xl">
+          <div className="text-center mb-8">
+            <div className="w-12 h-12 bg-indigo-600 rounded-xl mx-auto flex items-center justify-center mb-4"><Lock className="w-6 h-6 text-white" /></div>
+            <h1 className="text-2xl font-bold text-white">Super Admin</h1>
           </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="text-slate-300 text-xs">Username</label>
-              <input value={loginCreds.username} onChange={e => setLoginCreds({...loginCreds, username: e.target.value})} className="w-full mt-1 p-3 rounded-lg bg-white/3 border border-white/6 text-white outline-none" placeholder="admin" />
-            </div>
-            <div>
-              <label className="text-slate-300 text-xs">Password</label>
-              <input type="password" value={loginCreds.password} onChange={e => setLoginCreds({...loginCreds, password: e.target.value})} className="w-full mt-1 p-3 rounded-lg bg-white/3 border border-white/6 text-white outline-none" placeholder="••••" />
-            </div>
-            <button type="submit" disabled={authLoading} className="w-full py-3 rounded-lg bg-indigo-600 text-white font-semibold flex items-center justify-center gap-2">
-              {authLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Sign in'}
-            </button>
-            <div className="text-xs text-slate-400 text-center">Tip: use your admin credentials</div>
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div><label className="text-xs uppercase font-bold text-slate-500">Username</label><input value={loginCreds.username} onChange={e => setLoginCreds({...loginCreds, username: e.target.value})} className="w-full mt-1 bg-slate-950 border border-white/10 p-3 rounded-lg text-white outline-none"/></div>
+            <div><label className="text-xs uppercase font-bold text-slate-500">Password</label><input type="password" value={loginCreds.password} onChange={e => setLoginCreds({...loginCreds, password: e.target.value})} className="w-full mt-1 bg-slate-950 border border-white/10 p-3 rounded-lg text-white outline-none"/></div>
+            <button disabled={isLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 py-3 rounded-lg text-white font-bold transition-colors flex justify-center gap-2">{isLoading && <Loader2 className="w-4 h-4 animate-spin"/>} Access Dashboard</button>
           </form>
-
-          <div className="mt-6 text-center text-slate-400 text-xs">© Campusversa</div>
-
-          {toast && (
-            <div className={`fixed bottom-6 right-6 px-4 py-2 rounded-lg ${toast.type === 'error' ? 'bg-red-600' : toast.type === 'info' ? 'bg-slate-600' : 'bg-emerald-600'} text-white`}>{toast.msg}</div>
-          )}
         </div>
+        {toast && <div className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg">{toast.msg}</div>}
       </div>
     );
   }
 
+  // ---------- Main Layout ----------
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white">
-      <div className="flex">
-        {/* sidebar */}
-        <aside className="w-64 h-screen sticky top-0 p-6 bg-gradient-to-b from-black/20 to-transparent border-r border-white/6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-bold">CV</div>
-            <div>
-              <div className="font-bold">Campusversa</div>
-              <div className="text-xs text-slate-400">Admin</div>
-            </div>
-          </div>
-
-          <nav className="space-y-1">
-            {[{id:'dashboard', label:'Overview', icon:LayoutDashboard},{id:'institutes', label:'Institutes', icon:Building},{id:'tools', label:'Tools', icon:FileCheck}].map(item => (
-              <button key={item.id} onClick={() => setActiveView(item.id)} className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm ${activeView===item.id ? 'bg-white/6' : 'hover:bg-white/4 text-slate-200'}`}>
-                <item.icon className="w-5 h-5"/>
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="mt-8">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 hover:bg-red-700 text-sm">
-              <LogOut className="w-4 h-4"/> Sign out
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex">
+      <aside className="w-64 border-r border-white/5 bg-slate-900/50 flex flex-col fixed h-full z-10">
+        <div className="p-6 border-b border-white/5 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white">CV</div>
+          <span className="font-bold text-white tracking-tight">CampusVersa</span>
+        </div>
+        <nav className="flex-1 p-4 space-y-1">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'institutes', label: 'Registry', icon: Building },
+            { id: 'grievance', label: 'Grievances', icon: MessageSquare }, // NEW ITEM
+            { id: 'broadcast', label: 'Broadcasts', icon: Megaphone },
+            { id: 'tools', label: 'AI Tools', icon: FileCheck },
+            { id: 'logs', label: 'Audit Logs', icon: History },
+          ].map(item => (
+            <button key={item.id} onClick={() => setActiveView(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeView === item.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <item.icon className="w-5 h-5" />{item.label}
             </button>
+          ))}
+        </nav>
+        <div className="p-4 border-t border-white/5">
+          <button onClick={() => { setIsAuthenticated(false); localStorage.removeItem('adminToken'); }} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm"><LogOut className="w-4 h-4" /> Sign Out</button>
+        </div>
+      </aside>
+
+      <main className="flex-1 ml-64 p-8">
+        <header className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-white capitalize">{activeView}</h1>
+            <p className="text-slate-400 text-sm">System Overview & Controls</p>
           </div>
-        </aside>
+          <div className="bg-slate-900 border border-white/10 rounded-full px-4 py-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><span className="text-xs text-emerald-400 font-mono">SYSTEM ONLINE</span></div>
+        </header>
 
-        {/* main area */}
-        <main className="flex-1 p-8">
-          <header className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="bg-white/6 rounded-full p-2"><Search className="w-4 h-4 text-slate-200"/></div>
-              <input placeholder="Search records..." className="bg-transparent border border-white/6 text-slate-300 px-3 py-2 rounded-lg outline-none w-96" />
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-slate-300">Super Admin</div>
-            </div>
-          </header>
+        {activeView === 'dashboard' && renderDashboard()}
+        {activeView === 'institutes' && renderInstitutes()}
+        {activeView === 'grievance' && renderGrievances()}
+        {activeView === 'broadcast' && renderBroadcast()}
+        {activeView === 'logs' && renderLogs()}
+        {activeView === 'tools' && renderTools()}
+      </main>
 
-          <div className="space-y-6">
-            {activeView === 'dashboard' && <DashboardView />}
-            {activeView === 'institutes' && <InstituteView />}
-            {activeView === 'tools' && <ToolsView />}
-          </div>
-        </main>
-      </div>
+      {/* --- MODALS --- */}
 
-      <Modal isOpen={modals.addInstitute} title="Register Institute" onClose={() => setModals({...modals, addInstitute:false})}>
+      {/* 1. Add/Promote Institute Modal */}
+      <Modal isOpen={modals.addInstitute} title={newInst.requestId ? "Approve Request & Create" : "Register New Institute"} onClose={() => setModals({...modals, addInstitute: false})}>
         <div className="space-y-4">
-          <div>
-            <label className="text-sm text-slate-300">Name</label>
-            <input value={newInst.name} onChange={e => setNewInst({...newInst, name: e.target.value})} className="w-full mt-1 p-3 rounded-lg bg-white/3 border border-white/6 text-white" />
+          <input placeholder="Institute Name" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.name} onChange={e => setNewInst({...newInst, name: e.target.value})}/>
+          <div className="grid grid-cols-2 gap-4">
+            <input placeholder="Code (Login ID)" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.code} onChange={e => setNewInst({...newInst, code: e.target.value})}/>
+            <input placeholder="AISHE Code" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.aisheCode} onChange={e => setNewInst({...newInst, aisheCode: e.target.value})}/>
           </div>
-          <div>
-            <label className="text-sm text-slate-300">Code</label>
-            <input value={newInst.code} onChange={e => setNewInst({...newInst, code: e.target.value})} className="w-full mt-1 p-3 rounded-lg bg-white/3 border border-white/6 text-white" />
+          <input placeholder="Official Email" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.email} onChange={e => setNewInst({...newInst, email: e.target.value})}/>
+          <div className="relative">
+             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="w-4 h-4 text-slate-500" /></div>
+             <input type="text" placeholder="Set Initial Password" className="w-full bg-slate-800 border border-indigo-500/30 p-3 pl-10 rounded-lg text-white focus:border-indigo-500 outline-none" value={newInst.password} onChange={e => setNewInst({...newInst, password: e.target.value})}/>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <button onClick={() => setModals({...modals, addInstitute:false})} className="px-4 py-2 rounded-lg bg-white/5">Cancel</button>
-            <button onClick={handleCreateInstitute} className="px-4 py-2 rounded-lg bg-indigo-600">Create</button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={modals.naacUpload} title="NAAC Validator" onClose={() => setModals({...modals, naacUpload:false})}>
-        <div className="text-center space-y-4">
-          <FileText className="w-12 h-12 mx-auto text-slate-300"/>
-          <div className="text-slate-300">Upload SSR (pdf) to validate</div>
-          <div className="flex gap-2 justify-center">
-            <button onClick={() => setModals({...modals, naacUpload:false})} className="px-4 py-2 rounded-lg bg-white/5">Cancel</button>
-            <button onClick={handleNaacValidation} className="px-4 py-2 rounded-lg bg-indigo-600">Run</button>
+          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-white/5">
+            <button onClick={() => setModals({...modals, addInstitute: false})} className="px-4 py-2 text-slate-400 hover:text-white">Cancel</button>
+            <button onClick={handleCreateInstitute} className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-white">{newInst.requestId ? 'Approve & Create' : 'Create Account'}</button>
           </div>
         </div>
       </Modal>
 
-      {toast && (
-        <div className={`fixed bottom-6 right-6 px-4 py-2 rounded-lg ${toast.type === 'error' ? 'bg-red-600' : toast.type === 'info' ? 'bg-slate-600' : 'bg-emerald-600'} text-white`}>{toast.msg}</div>
-      )}
+      {/* 2. Institute Detail View */}
+      <Modal isOpen={modals.instituteDetail} title="Institute Profile" onClose={() => setModals({...modals, instituteDetail: false})}>
+        {selectedInstitute && (
+          <div className="space-y-6">
+            <div className="bg-slate-800 p-4 rounded-lg space-y-2">
+              <div className="flex justify-between"><span className="text-slate-400 text-sm">Name:</span><span className="text-white font-medium">{selectedInstitute.name}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400 text-sm">Code:</span><span className="text-white font-mono">{selectedInstitute.code}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400 text-sm">Status:</span><span className={`font-bold ${selectedInstitute.status === 'Active' ? 'text-emerald-400' : 'text-amber-400'}`}>{selectedInstitute.status}</span></div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-xs uppercase font-bold text-slate-500 mb-2">Governance Actions</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleStatusUpdate(selectedInstitute._id, 'Active')} className="bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/50 text-emerald-400 py-3 rounded-lg flex items-center justify-center gap-2"><UserCheck className="w-4 h-4" /> Activate</button>
+                <button onClick={() => handleStatusUpdate(selectedInstitute._id, 'Rejected')} className="bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-400 py-3 rounded-lg flex items-center justify-center gap-2"><UserX className="w-4 h-4" /> Reject</button>
+              </div>
+              <button onClick={() => handleStatusUpdate(selectedInstitute._id, 'Suspended')} className="w-full bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/50 text-amber-400 py-3 rounded-lg flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4" /> Suspend Account</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 3. NAAC Upload Modal */}
+      <Modal isOpen={modals.naacUpload} title="NAAC SSR Validator" onClose={() => setModals({...modals, naacUpload: false})}>
+        <div className="text-center py-6 space-y-4">
+          <div className="border-2 border-dashed border-slate-600 rounded-xl p-8 hover:border-indigo-500 transition-colors cursor-pointer bg-slate-800/50">
+            <UploadCloud className="w-12 h-12 text-slate-400 mx-auto mb-2" />
+            <p className="text-slate-300">Drag & Drop SSR PDF here</p>
+          </div>
+          <button onClick={handleNaacValidation} disabled={isLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 py-3 rounded-lg text-white font-bold flex justify-center items-center gap-2">{isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Process with AI'}</button>
+        </div>
+      </Modal>
+
+      {toast && <div className={`fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-xl border border-white/10 flex items-center gap-3 animate-in slide-in-from-bottom-5 ${toast.type === 'error' ? 'bg-rose-900 text-rose-100' : 'bg-emerald-900 text-emerald-100'}`}>{toast.type === 'error' ? <AlertTriangle className="w-5 h-5"/> : <Check className="w-5 h-5"/>}{toast.msg}</div>}
     </div>
   );
 };
