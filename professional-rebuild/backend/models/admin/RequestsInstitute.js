@@ -11,11 +11,18 @@ const RequestsInstituteSchema = new mongoose.Schema({
   state: String,
   pincode: String,
   notes: String,
+  urgency: { type: String },
+  type: { type: String },
   status: { 
     type: String, 
     enum: ['Pending', 'Approved', 'Rejected'], 
     default: 'Pending' 
   },
+  replies: [{
+    sender: { type: String }, // 'Admin' or 'Institute'
+    message: { type: String },
+    createdAt: { type: Date, default: Date.now }
+  }],
   createdAt: { type: Date, default: Date.now }
 }, { collection: 'requestsinstitute' }); // Explicitly setting collection name
 

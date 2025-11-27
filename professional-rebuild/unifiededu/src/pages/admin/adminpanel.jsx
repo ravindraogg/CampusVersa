@@ -5,7 +5,7 @@ import {
   Database, Settings, LogOut, Plus, Search, X, Check, Trash2, Edit,
   UploadCloud, FileText, Activity, Server, Loader2, Lock,
   Megaphone, History, Eye, UserCheck, UserX, AlertTriangle, Key,
-  MessageSquare, ChevronDown
+  MessageSquare, ChevronDown, UserPlus, LifeBuoy, CheckCircle2 // Added Icons
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -38,11 +38,11 @@ const AdminPanel = () => {
   // Data State
   const [analytics, setAnalytics] = useState(null);
   const [institutes, setInstitutes] = useState([]);
-  const [grievances, setGrievances] = useState([]); // NEW STATE
+  const [grievances, setGrievances] = useState([]); 
   const [logs, setLogs] = useState([]);
   
   // Search State
-  const [searchQuery, setSearchQuery] = useState(''); // NEW STATE
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedInstitute, setSelectedInstitute] = useState(null);
 
@@ -80,8 +80,9 @@ const AdminPanel = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
     if (activeView === 'dashboard') fetchDashboardData();
-    if (activeView === 'institutes') fetchInstitutes();
-    if (activeView === 'grievance') fetchGrievances(); // NEW FETCH
+    // Fetch institutes data for Registry, Join Requests, AND Support Tickets
+    if (['institutes', 'requests', 'support'].includes(activeView)) fetchInstitutes();
+    if (activeView === 'grievance') fetchGrievances();
     if (activeView === 'logs') fetchLogs();
   }, [activeView, isAuthenticated]);
 
@@ -110,11 +111,11 @@ const AdminPanel = () => {
     try {
       const res = await api.get('/getAllInstitutes');
       setInstitutes(res.data);
-    } catch (err) { showToast('Failed to load institutes', 'error'); } 
+    } catch (err) { showToast('Failed to load data', 'error'); } 
     finally { setIsLoading(false); }
   };
 
-  const fetchGrievances = async () => { // NEW ACTION
+  const fetchGrievances = async () => { 
     try {
       const res = await api.get('/grievances');
       setGrievances(res.data);
@@ -137,7 +138,7 @@ const AdminPanel = () => {
     }
   };
 
-  const handleGrievanceStatus = async (id, status) => { // NEW ACTION
+  const handleGrievanceStatus = async (id, status) => {
     try {
       await api.put(`/grievance/${id}`, { status });
       showToast(`Grievance status: ${status}`, 'success');
@@ -180,7 +181,6 @@ const AdminPanel = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Helper to pre-fill the create form from a request
   const openPromoteModal = (request) => {
     setNewInst({
       name: request.name,
@@ -188,7 +188,7 @@ const AdminPanel = () => {
       email: request.email,
       aisheCode: request.aisheCode || '',
       address: request.state || '',
-      password: '', // Admin sets password
+      password: '', 
       requestId: request._id
     });
     setModals({ ...modals, addInstitute: true });
@@ -238,7 +238,6 @@ const AdminPanel = () => {
               </ResponsiveContainer>
             </div>
           </div>
-          {/* Logs */}
           <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5">
              <h4 className="text-white font-semibold mb-4">Recent Activity</h4>
              <div className="space-y-4">
@@ -258,25 +257,25 @@ const AdminPanel = () => {
     );
   };
 
+  // --- VIEW 1: Active Institutes Only ---
   const renderInstitutes = () => {
-    // FILTER LOGIC: Search by name OR code
     const filteredInstitutes = institutes.filter(inst => 
-      inst.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      inst.code.toLowerCase().includes(searchQuery.toLowerCase())
+      inst.type === 'REGISTERED' && 
+      (inst.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+       inst.code.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     return (
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <h2 className="text-2xl font-bold text-white">Institutes Registry</h2>
+          <h2 className="text-2xl font-bold text-white">Registered Institutes</h2>
           
           <div className="flex w-full md:w-auto gap-3">
-             {/* SEARCH BAR */}
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
               <input 
                 type="text"
-                placeholder="Search Institute..."
+                placeholder="Search Active Institutes..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2.5 rounded-lg text-white text-sm focus:border-indigo-500 outline-none"
@@ -308,7 +307,6 @@ const AdminPanel = () => {
                   <td className="p-4">
                     <div className="font-medium text-white flex items-center gap-2">
                       {inst.name}
-                      {inst.type === 'REQUEST' && <span className="text-[10px] bg-blue-600/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">REQ</span>}
                     </div>
                     <div className="text-xs text-slate-500">{inst.email}</div>
                   </td>
@@ -319,35 +317,24 @@ const AdminPanel = () => {
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                       inst.status === 'Active' ? 'bg-emerald-500/20 text-emerald-400' :
-                      inst.status.includes('Pending') ? 'bg-amber-500/20 text-amber-400' :
-                      inst.status === 'Rejected' ? 'bg-rose-500/20 text-rose-400' :
+                      inst.status === 'Suspended' ? 'bg-amber-500/20 text-amber-400' :
                       'bg-slate-500/20 text-slate-400'
                     }`}>
                       {inst.status}
                     </span>
                   </td>
                   <td className="p-4 text-right">
-                    {/* If it's a REQUEST, show Promote button, else show Manage */}
-                    {inst.type === 'REQUEST' && !inst.status.includes('Approved') ? (
-                       <button 
-                        onClick={() => openPromoteModal(inst)}
-                        className="text-emerald-400 hover:text-emerald-300 hover:underline text-sm font-medium mr-4"
-                      >
-                        Approve & Create
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => { setSelectedInstitute(inst); setModals({ ...modals, instituteDetail: true }); }}
-                        className="text-indigo-400 hover:text-indigo-300 hover:underline text-sm font-medium"
-                      >
-                        Manage
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => { setSelectedInstitute(inst); setModals({ ...modals, instituteDetail: true }); }}
+                      className="text-indigo-400 hover:text-indigo-300 hover:underline text-sm font-medium"
+                    >
+                      Manage
+                    </button>
                   </td>
                 </tr>
               ))}
               {filteredInstitutes.length === 0 && (
-                <tr><td colSpan="4" className="p-8 text-center text-slate-500">No institutes found matching "{searchQuery}".</td></tr>
+                <tr><td colSpan="4" className="p-8 text-center text-slate-500">No registered institutes found.</td></tr>
               )}
             </tbody>
           </table>
@@ -356,7 +343,169 @@ const AdminPanel = () => {
     );
   };
 
-  const renderGrievances = () => ( // NEW VIEW
+  // --- VIEW 2: Pending Join Requests Only ---
+  const renderRequests = () => {
+    // Filter: Is a Request AND (Urgency is missing OR Empty) -> Means it's a Registration Request
+    const filteredRequests = institutes.filter(inst => 
+      inst.type === 'REQUEST' && 
+      !inst.urgency && 
+      (inst.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+       inst.code.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <UserPlus className="w-6 h-6 text-amber-400"/> Joining Requests
+          </h2>
+          
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search Requests..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2.5 rounded-lg text-white text-sm focus:border-indigo-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+              <tr>
+                <th className="p-4">Requester</th>
+                <th className="p-4">Contact</th>
+                <th className="p-4">Request Status</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filteredRequests.map(inst => (
+                <tr key={inst._id} className="hover:bg-white/5 transition-colors">
+                  <td className="p-4">
+                    <div className="font-medium text-white flex items-center gap-2">
+                      {inst.name}
+                    </div>
+                    <div className="text-xs text-slate-500">Proposed Code: {inst.code}</div>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                    <div>{inst.email}</div>
+                    <div className="text-xs text-slate-500">{inst.phone || 'No Phone'}</div>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      inst.status.includes('Pending') ? 'bg-blue-500/20 text-blue-400' :
+                      inst.status.includes('Approved') ? 'bg-emerald-500/20 text-emerald-400' :
+                      'bg-slate-500/20 text-slate-400'
+                    }`}>
+                      {inst.status}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    {!inst.status.includes('Approved') ? (
+                       <button 
+                        onClick={() => openPromoteModal(inst)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
+                      >
+                        Approve & Create
+                      </button>
+                    ) : (
+                      <span className="text-slate-500 text-sm">Completed</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filteredRequests.length === 0 && (
+                <tr><td colSpan="4" className="p-8 text-center text-slate-500">No pending requests found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // --- VIEW 3: Support Tickets (Internal Requests) ---
+// --- VIEW 3: Support Tickets (Internal Requests) ---
+  const renderSupport = () => {
+    const filteredSupport = institutes.filter(inst => 
+      inst.type === 'REQUEST' && 
+      inst.urgency && 
+      (inst.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+       inst.code.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center gap-4">
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <LifeBuoy className="w-6 h-6 text-indigo-400"/> Support Tickets
+          </h2>
+       <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search Requests..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2.5 rounded-lg text-white text-sm focus:border-indigo-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+              <tr>
+                <th className="p-4">Ticket</th>
+                <th className="p-4">Institute</th>
+                <th className="p-4">Urgency</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filteredSupport.map(inst => (
+                <tr key={inst._id} className="hover:bg-white/5 transition-colors">
+                  <td className="p-4">
+                    <div className="font-medium text-white">{inst.code}</div>
+                    <div className="text-xs text-slate-400 mt-1 max-w-xs truncate">{inst.notes}</div>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                     <div className="text-sm">{inst.name}</div>
+                     <div className="text-xs text-slate-500">{new Date(inst.createdAt).toLocaleDateString()}</div>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      inst.urgency === 'Critical' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                    }`}>{inst.urgency}</span>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      inst.status === 'Solved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                    }`}>{inst.status}</span>
+                  </td>
+                  <td className="p-4 text-right">
+                     <button 
+                       onClick={() => { setSelectedInstitute(inst); setModals({ ...modals, ticketModal: true }); }}
+                       className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors"
+                     >
+                       Manage / Reply
+                     </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderGrievances = () => (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-white flex items-center gap-2">
         <MessageSquare className="w-6 h-6" /> Grievance Portal
@@ -522,8 +671,10 @@ const AdminPanel = () => {
         <nav className="flex-1 p-4 space-y-1">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'institutes', label: 'Registry', icon: Building },
-            { id: 'grievance', label: 'Grievances', icon: MessageSquare }, // NEW ITEM
+            { id: 'institutes', label: 'All Institutes', icon: Building }, 
+            { id: 'requests', label: 'Join Requests', icon: UserPlus },
+            { id: 'support', label: 'Support Tickets', icon: LifeBuoy }, // New Section
+            { id: 'grievance', label: 'Grievances', icon: MessageSquare }, 
             { id: 'broadcast', label: 'Broadcasts', icon: Megaphone },
             { id: 'tools', label: 'AI Tools', icon: FileCheck },
             { id: 'logs', label: 'Audit Logs', icon: History },
@@ -541,7 +692,7 @@ const AdminPanel = () => {
       <main className="flex-1 ml-64 p-8">
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white capitalize">{activeView}</h1>
+            <h1 className="text-2xl font-bold text-white capitalize">{activeView.replace('requests', 'Institute Requests')}</h1>
             <p className="text-slate-400 text-sm">System Overview & Controls</p>
           </div>
           <div className="bg-slate-900 border border-white/10 rounded-full px-4 py-2 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><span className="text-xs text-emerald-400 font-mono">SYSTEM ONLINE</span></div>
@@ -549,6 +700,8 @@ const AdminPanel = () => {
 
         {activeView === 'dashboard' && renderDashboard()}
         {activeView === 'institutes' && renderInstitutes()}
+        {activeView === 'requests' && renderRequests()} 
+        {activeView === 'support' && renderSupport()} {/* New View Render */}
         {activeView === 'grievance' && renderGrievances()}
         {activeView === 'broadcast' && renderBroadcast()}
         {activeView === 'logs' && renderLogs()}
@@ -556,8 +709,6 @@ const AdminPanel = () => {
       </main>
 
       {/* --- MODALS --- */}
-
-      {/* 1. Add/Promote Institute Modal */}
       <Modal isOpen={modals.addInstitute} title={newInst.requestId ? "Approve Request & Create" : "Register New Institute"} onClose={() => setModals({...modals, addInstitute: false})}>
         <div className="space-y-4">
           <input placeholder="Institute Name" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.name} onChange={e => setNewInst({...newInst, name: e.target.value})}/>
@@ -577,7 +728,6 @@ const AdminPanel = () => {
         </div>
       </Modal>
 
-      {/* 2. Institute Detail View */}
       <Modal isOpen={modals.instituteDetail} title="Institute Profile" onClose={() => setModals({...modals, instituteDetail: false})}>
         {selectedInstitute && (
           <div className="space-y-6">
@@ -597,8 +747,100 @@ const AdminPanel = () => {
           </div>
         )}
       </Modal>
+        {/* --- 4. TICKET / SUPPORT CONVERSATION MODAL --- */}
+      <Modal isOpen={modals.ticketModal} title="Support Ticket Management" onClose={() => setModals({...modals, ticketModal: false})}>
+        {selectedInstitute && (
+          <div className="space-y-4">
+            {/* Ticket Info Header */}
+            <div className="bg-slate-800 p-4 rounded-lg space-y-2 border border-white/5">
+              <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                <span className="text-slate-400 text-xs font-bold uppercase">Subject</span>
+                <span className="text-white font-medium">{selectedInstitute.code}</span>
+              </div>
+              <div className="pt-2">
+                <span className="text-slate-400 text-xs font-bold uppercase block mb-1">Original Description</span>
+                <p className="text-slate-300 text-sm bg-slate-900/50 p-2 rounded">{selectedInstitute.notes}</p>
+              </div>
+            </div>
 
-      {/* 3. NAAC Upload Modal */}
+            {/* Conversation Thread Container */}
+            <div className="bg-slate-950 border border-white/10 rounded-xl h-72 overflow-y-auto p-4 space-y-4 flex flex-col">
+              {selectedInstitute.replies && selectedInstitute.replies.length > 0 ? (
+                selectedInstitute.replies.map((reply, idx) => (
+                  <div key={idx} className={`flex flex-col max-w-[85%] ${reply.sender === 'Admin' ? 'self-end items-end' : 'self-start items-start'}`}>
+                    <div className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${
+                      reply.sender === 'Admin' 
+                        ? 'bg-indigo-600 text-white rounded-br-sm' 
+                        : 'bg-slate-800 text-slate-200 border border-white/10 rounded-bl-sm'
+                    }`}>
+                      {reply.message}
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 px-1">
+                      {reply.sender === 'Admin' ? 'You' : 'Institute'} • {new Date(reply.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-500 opacity-50">
+                  <MessageSquare className="w-8 h-8 mb-2" />
+                  <p className="text-xs">No replies yet. Start the conversation.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Admin Action Area */}
+            <div className="space-y-3 pt-2">
+              <textarea 
+                id="adminReplyInput"
+                placeholder="Type your reply here..." 
+                className="w-full bg-slate-800 border border-white/10 rounded-lg p-3 text-white text-sm focus:border-indigo-500 outline-none resize-none h-20"
+              ></textarea>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={async () => {
+                    const msg = document.getElementById('adminReplyInput').value;
+                    if(!msg) return showToast("Please type a message", "error");
+                    
+                    setIsLoading(true);
+                    try {
+                      await api.post('/request/reply', { requestId: selectedInstitute._id, message: msg });
+                      showToast("Reply sent", "success");
+                      setModals({...modals, ticketModal: false});
+                      fetchInstitutes(); // Refresh list to show updated status/thread
+                    } catch(e) { 
+                      showToast("Failed to send", "error"); 
+                    } finally { setIsLoading(false); }
+                  }}
+                  disabled={isLoading}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 py-2.5 rounded-lg text-white font-medium text-sm transition-colors flex justify-center items-center gap-2"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Send Reply'}
+                </button>
+                
+                <button 
+                  onClick={async () => {
+                    const msg = document.getElementById('adminReplyInput').value || "Ticket marked as solved.";
+                    setIsLoading(true);
+                    try {
+                      await api.post('/request/reply', { requestId: selectedInstitute._id, message: msg, status: 'Solved' });
+                      showToast("Ticket Solved", "success");
+                      setModals({...modals, ticketModal: false});
+                      fetchInstitutes();
+                    } catch(e) { 
+                      showToast("Failed to update", "error"); 
+                    } finally { setIsLoading(false); }
+                  }}
+                  disabled={isLoading}
+                  className="flex-1 bg-emerald-600/10 border border-emerald-500/30 hover:bg-emerald-600/20 text-emerald-400 py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Mark Solved
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
       <Modal isOpen={modals.naacUpload} title="NAAC SSR Validator" onClose={() => setModals({...modals, naacUpload: false})}>
         <div className="text-center py-6 space-y-4">
           <div className="border-2 border-dashed border-slate-600 rounded-xl p-8 hover:border-indigo-500 transition-colors cursor-pointer bg-slate-800/50">

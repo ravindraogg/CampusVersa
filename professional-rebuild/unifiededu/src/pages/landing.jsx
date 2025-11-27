@@ -218,7 +218,7 @@ const CampusVersaLanding = () => {
 
       <header className="fixed top-0 left-0 w-full z-50 p-6 flex justify-between items-center bg-black/30 backdrop-blur-lg border-b border-blue-500/10">
         <Logo />
-        <Link to="/auth">
+        <Link to="/in/auth">
         <button className="group px-6 py-2 bg-white/5 hover:bg-white/10 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 text-white">
             Get Started <ChevronsRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>

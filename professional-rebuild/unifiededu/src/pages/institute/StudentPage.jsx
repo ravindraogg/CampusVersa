@@ -1,5 +1,6 @@
+// StudentPage.jsx
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, Edit, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Edit, ChevronDown, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 
 
 export default function StudentPage({ authFetch, theme, institute, pushToast }) {
@@ -8,10 +9,14 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
 
   // UI / loading states
   const [loading, setLoading] = useState(false); // small loads
-  const [isPageLoading, setIsPageLoading] = useState(false); // full overlay (Option C)
+  const [isPageLoading, setIsPageLoading] = useState(false); // full overlay
   const [isAdding, setIsAdding] = useState(false);
   const [isUploadingPic, setIsUploadingPic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Delete Modal State
+  const [deleteId, setDeleteId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // modals/forms
   const [showAdd, setShowAdd] = useState(false);
@@ -21,9 +26,9 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
   const [filterDept, setFilterDept] = useState("");
 
   // add form
-const [form, setForm] = useState({
+  const [form, setForm] = useState({
     name: "",
-    rollNumber: "", // CHANGED from 'roll' to 'rollNumber'
+    rollNumber: "",
     department: "",
     section: "",
     year: "",
@@ -32,7 +37,8 @@ const [form, setForm] = useState({
     profilePic: null,
     admissionNo: "",
   });
-  // dropdown open state (for glass dropdown)
+
+  // dropdown open state
   const [dropdownOpen, setDropdownOpen] = useState({
     year: false,
     section: false,
@@ -76,10 +82,9 @@ const [form, setForm] = useState({
       setDepartments(dRes || []);
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Load failed", message: "Could not load students" });
+      pushToast({ type: "error", message: "Load failed: Could not load students" });
     } finally {
       setLoading(false);
-      // small delay so overlay doesn't flicker
       setTimeout(() => setIsPageLoading(false), 180);
     }
   };
@@ -95,7 +100,7 @@ const [form, setForm] = useState({
     return txt.includes(search.toLowerCase()) && (filterDept ? st.department === filterDept : true);
   });
 
-  // custom glass dropdown (apple style)
+  // custom glass dropdown
   const GlassDropdown = ({ label, value, list, keyName }) => (
     <div className="relative w-full">
       <div
@@ -132,7 +137,7 @@ const [form, setForm] = useState({
   // --- Add student submit ---
   const submit = async () => {
     if (!form.name || !form.rollNumber || !form.department) {
-      pushToast({ type: "error", title: "Validation", message: "Name, roll and department required" });
+      pushToast({ type: "error", message: "Validation: Name, roll and department required" });
       return;
     }
     setIsAdding(true);
@@ -144,7 +149,7 @@ const [form, setForm] = useState({
       });
       const data = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Added", message: "Student added" });
+        pushToast({ type: "success", message: "Student added successfully" });
         setShowAdd(false);
         setForm({
           name: "",
@@ -159,11 +164,11 @@ const [form, setForm] = useState({
         });
         await load();
       } else {
-        pushToast({ type: "error", title: "Failed", message: data.message || "Add failed" });
+        pushToast({ type: "error", message: data.message || "Add failed" });
       }
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Server", message: "Could not add student" });
+      pushToast({ type: "error", message: "Server error: Could not add student" });
     } finally {
       setIsAdding(false);
     }
@@ -194,31 +199,32 @@ const [form, setForm] = useState({
     reader.readAsDataURL(file);
   };
 
-  // --- delete student ---
-  const deleteStudent = async (id) => {
-    if (!window.confirm("Delete this student?")) return;
-    setIsPageLoading(true);
+  // --- Delete Student (Updated Logic) ---
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    setIsDeleting(true);
     try {
-      const res = await authFetch(`/institute/students/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/institute/students/${deleteId}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Deleted", message: "Student removed" });
+        pushToast({ type: "success", message: "Student removed successfully" });
         await load();
+        setDeleteId(null);
       } else {
-        pushToast({ type: "error", title: "Failed", message: data.message || "Delete failed" });
+        pushToast({ type: "error", message: data.message || "Delete failed" });
       }
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Server", message: "Delete failed" });
+      pushToast({ type: "error", message: "Server error: Delete failed" });
     } finally {
-      setTimeout(() => setIsPageLoading(false), 150);
+      setIsDeleting(false);
     }
   };
 
   // --- save edited student ---
   const saveStudentChanges = async (data) => {
     if (!data || !data._id) {
-      pushToast({ type: "error", title: "Validation", message: "Invalid student data" });
+      pushToast({ type: "error", message: "Validation: Invalid student data" });
       return;
     }
     setIsSaving(true);
@@ -229,15 +235,15 @@ const [form, setForm] = useState({
       });
       const out = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Updated", message: "Student updated" });
+        pushToast({ type: "success", message: "Student updated successfully" });
         setSelected(null);
         await load();
       } else {
-        pushToast({ type: "error", title: "Failed", message: out.message || "Update failed" });
+        pushToast({ type: "error", message: out.message || "Update failed" });
       }
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Server", message: "Could not update" });
+      pushToast({ type: "error", message: "Server error: Could not update" });
     } finally {
       setIsSaving(false);
     }
@@ -246,7 +252,7 @@ const [form, setForm] = useState({
   return (
     <div className="w-full relative">
 
-      {/* Full-page glass loader (Option C) */}
+      {/* Full-page glass loader */}
       {isPageLoading && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
           <div className="rounded-2xl p-6 bg-white/90 backdrop-blur-md flex flex-col items-center gap-4">
@@ -289,7 +295,7 @@ const [form, setForm] = useState({
           <button
             onClick={() => setShowAdd(true)}
             className="px-5 py-3 rounded-xl flex items-center gap-2 font-semibold disabled:opacity-60"
-            style={{ background: theme.primary, color: "black" }}
+            style={{ background: theme.primary, color: "white" }}
             disabled={isAdding}
           >
             {isAdding ? <Spinner size={16} color="white" /> : <><Plus className="w-4 h-4" /> Add Student</>}
@@ -343,7 +349,7 @@ const [form, setForm] = useState({
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold text-white"
                     style={{ background: "#E53935" }}
-                    onClick={(e) => { e.stopPropagation(); deleteStudent(s._id); }}
+                    onClick={(e) => { e.stopPropagation(); setDeleteId(s._id); }}
                   >
                     Delete
                   </button>
@@ -387,7 +393,7 @@ const [form, setForm] = useState({
               <div className="relative">
                 <input
                   value={form.rollNumber}
-                  onChange={(e) => setForm({ ...form, roll: e.target.value })}
+                  onChange={(e) => setForm({ ...form, rollNumber: e.target.value })}
                   className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
                   style={{ borderColor: `#00000040` }}
                   placeholder=" "
@@ -425,7 +431,7 @@ const [form, setForm] = useState({
                 </label>
               </div>
 
-              {/* DEPARTMENT (black-themed select) */}
+              {/* DEPARTMENT */}
               <div className="relative">
                 <select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg outline-none cursor-pointer" style={{ borderColor: `#00000040` }}>
                   <option value="">Select department</option>
@@ -457,7 +463,7 @@ const [form, setForm] = useState({
             {/* ACTIONS */}
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">Cancel</button>
-              <button onClick={submit} disabled={isAdding} className="px-4 py-2 rounded-xl flex items-center gap-2 border-[black]"  style={{ background: theme.primary, color: "black" }}>
+              <button onClick={submit} disabled={isAdding} className="px-4 py-2 rounded-xl flex items-center gap-2 border-[black]"  style={{ background: theme.primary, color: theme.textOnPrimary || "white" }}>
                 {isAdding ? <Spinner size={16} color="white" /> : "Add Student"}
               </button>
             </div>
@@ -517,6 +523,38 @@ const [form, setForm] = useState({
               <button onClick={() => saveStudentChanges(selected)} disabled={isSaving} className="px-6 py-2 rounded-xl font-semibold flex items-center gap-2" style={{ background: "black", color: "white" }}>
                 {isSaving ? <Spinner size={16} color="white" /> : "Save Changes"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CUSTOM DELETE CONFIRMATION MODAL --- */}
+      {deleteId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Student?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to delete this student? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setDeleteId(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center"
+                >
+                  {isDeleting ? <Spinner size={16} /> : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

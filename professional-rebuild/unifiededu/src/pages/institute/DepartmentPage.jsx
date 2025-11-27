@@ -1,13 +1,17 @@
 // DepartmentPage.jsx
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Edit, ChevronDown, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 
 export default function DepartmentPage({ authFetch, theme, institute, pushToast }) {
   // --- Data & UI State ---
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false); // Local loading for grid text
-  const [isPageLoading, setIsPageLoading] = useState(false); // Full-page glass overlay (New)
+  const [isPageLoading, setIsPageLoading] = useState(false); // Full-page glass overlay
   const [showAdd, setShowAdd] = useState(false);
+
+  // Delete Modal State
+  const [deleteId, setDeleteId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -24,7 +28,7 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
   const genreList = ["Engineering", "Science", "Commerce", "Arts", "Management"];
   const sectionList = ["A", "B", "C", "D"];
 
-  // --- Helper Component: Spinner (Copied from FacultyPage) ---
+  // --- Helper Component: Spinner ---
   const Spinner = ({ size = 6, color = "white" }) => (
     <div
       className="rounded-full animate-spin"
@@ -42,31 +46,28 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Load Departments with Overlay ---
+  // --- Load Departments ---
   const load = async () => {
-    setIsPageLoading(true); // Start overlay
+    setIsPageLoading(true);
     setLoading(true);
     try {
       const res = await authFetch("/institute/departments", { method: "GET" });
       const data = await res.json();
       setList(data || []);
     } catch (err) {
-      pushToast({ type: "error", title: "Load Failed", message: "Could not load departments" });
+      pushToast({ type: "error", message: "Load Failed: Could not load departments" });
     } finally {
       setLoading(false);
-      // Slight delay to prevent flicker, matching FacultyPage style
       setTimeout(() => setIsPageLoading(false), 200); 
     }
   };
 
   const submit = async () => {
     if (!form.name || !form.code) {
-      pushToast({ type: "error", title: "Validation", message: "Name & code required" });
+      pushToast({ type: "error", message: "Validation: Name & code required" });
       return;
     }
 
-    // Optional: You could use isPageLoading here too, but usually Submit buttons have their own spinners.
-    // We'll keep it simple for now or you can add setIsPageLoading(true) here if you want to block screen on add.
     try {
       const res = await authFetch("/institute/departments/add", {
         method: "POST",
@@ -75,36 +76,42 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
 
       const data = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Added", message: "Department added" });
+        pushToast({ type: "success", message: "Department added successfully" });
         setShowAdd(false);
         setForm({ name: "", code: "", genre: "", section: "" });
-        load(); // Reloads list (triggers overlay)
+        load();
       } else {
-        pushToast({ type: "error", title: "Failed", message: data.message || "Add failed" });
+        pushToast({ type: "error", message: data.message || "Add failed" });
       }
     } catch (err) {
-      pushToast({ type: "error", title: "Server", message: "Could not add" });
+      pushToast({ type: "error", message: "Server error: Could not add" });
     }
   };
 
-  // --- Delete Department with Overlay ---
-  const deleteDept = async (id) => {
-    if (!window.confirm("Delete this department?")) return;
-    
-    setIsPageLoading(true); // Start overlay
+const confirmDelete = async () => {
+    if (!deleteId) return;
+    setIsDeleting(true);
     try {
-      const res = await authFetch(`/institute/departments/${id}`, { method: "DELETE" });
-      const data = await res.json();
+      const res = await authFetch(`/institute/departments/${deleteId}`, { method: "DELETE" });
+      
+      // FIX: Handle cases where server returns empty body (204) or HTML error
+      let data = {};
+      try {
+        const text = await res.text();
+        if (text) data = JSON.parse(text);
+      } catch (e) { /* ignore json parse error */ }
+
       if (res.ok) {
-        pushToast({ type: "success", title: "Deleted", message: "Department removed" });
-        load(); // Reloads list
+        pushToast({ type: "success", message: "Department removed successfully" });
+        load();
+        setDeleteId(null);
       } else {
-        pushToast({ type: "error", title: "Failed", message: data.message });
-        setIsPageLoading(false); // Stop overlay if load() isn't called
+        pushToast({ type: "error", message: data.message || "Delete failed" });
       }
     } catch (err) {
-      pushToast({ type: "error", title: "Server", message: "Delete failed" });
-      setIsPageLoading(false); // Stop overlay on error
+      pushToast({ type: "error", message: "Server connection failed" });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -150,9 +157,9 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
   return (
     <div className="w-full relative">
       
-      {/* --- Full-page glass loader (New) --- */}
+      {/* --- Full-page glass loader --- */}
       {isPageLoading && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
           <div className="rounded-2xl p-6 bg-white/90 backdrop-blur-md flex flex-col items-center gap-4">
             <Spinner size={28} color={theme.primary || "#111"} />
             <div style={{ color: "#374151" }}>Working…</div>
@@ -170,7 +177,7 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
         <button
           onClick={() => setShowAdd(true)}
           className="px-5 py-3 rounded-xl flex items-center gap-2 font-semibold"
-          style={{ background: theme.primary, color: theme.textOnPrimary }}
+          style={{ background: theme.primary, color: "white" }}
         >
           <Plus className="w-4 h-4" />
           Add Department
@@ -205,7 +212,7 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
                 <button
                   className="px-3 py-1 rounded-lg text-xs font-semibold text-white"
                   style={{ background: "#E53935" }}
-                  onClick={() => deleteDept(d._id)}
+                  onClick={() => setDeleteId(d._id)} // Changed to open modal
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -298,6 +305,38 @@ export default function DepartmentPage({ authFetch, theme, institute, pushToast 
               >
                 Add Department
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CUSTOM DELETE MODAL --- */}
+      {deleteId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Department?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to delete this department? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setDeleteId(null)} 
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center"
+                >
+                  {isDeleting ? <Spinner size={16} /> : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

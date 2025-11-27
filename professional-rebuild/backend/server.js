@@ -31,6 +31,7 @@ const NAACTracker = require('./models/institute/NAACTracker');
 const Timetable = require('./models/institute/Timetable');
 const AllGrievance = require('./models/admin/AllGrievance');
 const Department = require('./models/institute/Department');
+
 // Middleware
 const { verifyToken } = require('./middleware/authMiddleware'); // assumes this sets req.user
 
@@ -804,23 +805,6 @@ app.post('/institute/naac/update', verifyToken, async (req, res) => {
 // -------------------
 // AI Timetable Generation (Hybrid)
 // -------------------
-app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
-  try {
-    const { department, semester, subjects = [] } = req.body;
-    // Fetch faculty names for context
-    const facultyRows = await Faculty.find({ instituteId: req.user.id, department }).limit(100);
-    const facultyNames = facultyRows.map(f => f.name);
-    const schedule = await generateWeeklyTimetable({ department, semester, subjects, facultyList: facultyNames });
-    // Save
-    const tt = new Timetable({ instituteId: req.user.id, department, semester, scheduleData: schedule, createdAt: Date.now() });
-    await tt.save();
-    res.json({ message: 'Timetable generated', data: tt });
-  } catch (err) {
-    console.error('/institute/timetable/generate error:', err);
-    res.status(500).json({ error: 'AI generation failed' });
-  }
-});
-
 // -------------------
 // Misc: get timetables
 // -------------------
@@ -874,7 +858,269 @@ exports.getHybridInstitute = async (req, res) => {
     res.status(500).json({ message: "Hybrid data fetch failed" });
   }
 };
+// --- ADMIN: Reply to Request / Ticket ---
+app.post('/admin/request/reply', verifyToken, async (req, res) => {
+  try {
+    const { requestId, message, status } = req.body;
+    const updateData = {
+      $push: { replies: { sender: 'Admin', message, createdAt: Date.now() } }
+    };
+    if (status) updateData.status = status; // Optional status update (e.g. 'Solved')
 
+    const updated = await RequestsInstitute.findByIdAndUpdate(requestId, updateData, { new: true });
+    res.json(updated);
+  } catch (err) {
+    console.error('Admin reply error:', err);
+    res.status(500).json({ error: 'Reply failed' });
+  }
+});
+
+// --- INSTITUTE: Reply to Admin (Optional, for two-way chat) ---
+app.post('/institute/request/reply', verifyToken, async (req, res) => {
+  try {
+    const { requestId, message } = req.body;
+    // Verify this request belongs to the institute
+    const inst = await Institute.findById(req.user.id);
+    const reqDoc = await RequestsInstitute.findOne({ _id: requestId, email: inst.email });
+    
+    if (!reqDoc) return res.status(403).json({ message: "Request not found or access denied" });
+
+    reqDoc.replies.push({ sender: 'Institute', message, createdAt: Date.now() });
+    // Re-open ticket if it was solved
+    if (reqDoc.status === 'Solved') reqDoc.status = 'In Progress';
+    
+    await reqDoc.save();
+    res.json(reqDoc);
+  } catch (err) {
+    console.error('Institute reply error:', err);
+    res.status(500).json({ error: 'Reply failed' });
+  }
+});
+// --- INSTITUTE: Submit NAAC Data ---
+app.post('/institute/naac/submit', verifyToken, async (req, res) => {
+  try {
+    const { criteriaId, submissionText } = req.body;
+    
+    // Find tracker
+    const tracker = await NAACTracker.findOne({ instituteId: req.user.id });
+    if (!tracker) return res.status(404).json({ message: "Tracker not found" });
+
+    // Find specific criteria by ID
+    const itemIndex = tracker.criteria.findIndex(c => c.id === Number(criteriaId));
+    if (itemIndex === -1) return res.status(404).json({ message: "Criterion not found" });
+
+    // Update fields
+    tracker.criteria[itemIndex].submissionText = submissionText;
+    tracker.criteria[itemIndex].status = "Submitted"; // Mark as ready for admin
+    tracker.criteria[itemIndex].lastUpdated = Date.now();
+    // Clear previous rejection comments if any
+    tracker.criteria[itemIndex].adminComments = ""; 
+
+    tracker.markModified('criteria'); // Important for array updates in Mongoose
+    await tracker.save();
+
+    res.json({ success: true, data: tracker });
+  } catch (err) {
+    console.error("NAAC Submit Error:", err);
+    res.status(500).json({ error: "Submission failed" });
+  }
+});
+
+// --- ADMIN: Verify or Reject NAAC Submission ---
+app.post('/admin/naac/verify', verifyToken, async (req, res) => {
+  try {
+    const { instituteId, criteriaId, action, comments } = req.body;
+    // action: 'Approve' | 'Reject'
+
+    const tracker = await NAACTracker.findOne({ instituteId });
+    if (!tracker) return res.status(404).json({ message: "Tracker not found" });
+
+    const itemIndex = tracker.criteria.findIndex(c => c.id === Number(criteriaId));
+    if (itemIndex === -1) return res.status(404).json({ message: "Criterion not found" });
+
+    if (action === 'Approve') {
+      tracker.criteria[itemIndex].status = "Verified";
+      tracker.criteria[itemIndex].adminComments = comments || "Verified by Admin";
+    } else if (action === 'Reject') {
+      tracker.criteria[itemIndex].status = "Rejected";
+      tracker.criteria[itemIndex].adminComments = comments || "Please review and resubmit.";
+    }
+
+    tracker.markModified('criteria');
+    await tracker.save();
+
+    // Log it
+    await Log.create({ 
+        action: `NAAC_${action.toUpperCase()}`, 
+        adminId: req.user.id, 
+        details: `Updated criteria ${criteriaId} for institute ${instituteId}` 
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("NAAC Verify Error:", err);
+    res.status(500).json({ error: "Verification failed" });
+  }
+});
+// Delete department
+app.delete('/institute/departments/:id', verifyToken, async (req, res) => {
+  try {
+    // Ensure we only delete if it belongs to this institute
+    const deleted = await Department.findOneAndDelete({ 
+      _id: req.params.id, 
+      instituteId: req.user.id 
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Department not found or access denied' });
+    }
+
+    res.json({ message: 'Department deleted successfully' });
+  } catch (err) {
+    console.error('/institute/departments DELETE error:', err);
+    res.status(500).json({ error: 'Delete failed' });
+  }
+});
+// Delete student
+app.delete('/institute/students/:id', verifyToken, async (req, res) => {
+  try {
+    // Ensure we only delete if it belongs to this institute
+    const deleted = await Student.findOneAndDelete({ 
+      _id: req.params.id, 
+      instituteId: req.user.id 
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Student not found or access denied' });
+    }
+
+    res.json({ message: 'Student deleted successfully' });
+  } catch (err) {
+    console.error('/institute/students DELETE error:', err);
+    res.status(500).json({ error: 'Delete failed' });
+  }
+});
+// Delete a specific notice
+app.delete('/institute/notices/:id', verifyToken, async (req, res) => {
+  try {
+    // Ensure the notice belongs to the logged-in institute
+    const deleted = await Notice.findOneAndDelete({ 
+      _id: req.params.id, 
+      instituteId: req.user.id 
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Notice not found or access denied' });
+    }
+
+    res.json({ message: 'Notice deleted successfully' });
+  } catch (err) {
+    console.error('/institute/notices DELETE error:', err);
+    res.status(500).json({ error: 'Delete failed' });
+  }
+});
+// -------------------
+// UPDATED: AI Timetable Generation Route
+// -------------------
+// ✅ KEEP OR PASTE THIS AT THE BOTTOM OF SERVER.JS
+// -------------------
+// UPDATED: AI Timetable Generation Route
+// -------------------
+app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
+
+  try {
+    const { prompt, semester, subjects, workingDays } = req.body; 
+
+    if (!prompt) return res.status(400).json({ message: "Prompt is required" });
+
+    // SAFEGUARD: Ensure subjects is a string for storage in 'constraints'
+    // Frontend sends Array, DB might expect String.
+    const subjectsStr = Array.isArray(subjects) ? subjects.join(", ") : subjects;
+
+    let generatedJson = null;
+
+    // --- OPTION A: Google Gemini ---
+    if (aiProvider === 'google' && googleClient) {
+      try {
+        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        
+        const finalPrompt = `
+          ${prompt}
+          
+          CRITICAL INSTRUCTION: 
+          Return ONLY valid JSON. Do not include markdown formatting (like \`\`\`json). 
+          The JSON keys must be the Days (e.g., "Monday", "Tuesday").
+          The values must be arrays of objects: { "time": "...", "subject": "...", "faculty": "...", "room": "..." }.
+        `;
+
+        const result = await model.generateContent(finalPrompt);
+        const text = (await result.response).text().trim();
+        const cleanText = text.replace(/```json|```/g, '').trim();
+        generatedJson = JSON.parse(cleanText);
+        
+      } catch (err) {
+        console.error('Gemini Generation Error:', err.message);
+      }
+    }
+
+    // --- OPTION B: OpenAI (Fallback) ---
+    if (!generatedJson && aiProvider === 'openai' && openaiClient) {
+      try {
+        const resp = await openaiClient.createChatCompletion({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are a scheduling assistant. Return ONLY valid JSON. No markdown.' },
+            { role: 'user', content: prompt }
+          ]
+        });
+        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '');
+        generatedJson = JSON.parse(text);
+      } catch (err) {
+        console.error('OpenAI Generation Error:', err.message);
+      }
+    }
+
+    // 2. Validate Result
+    if (!generatedJson || Object.keys(generatedJson).length === 0) {
+      return res.status(500).json({ message: "AI generation failed or returned empty data." });
+    }
+
+    // 3. Save to Database
+    try {
+      const Timetable = require('./models/institute/Timetable');
+      
+      const newTimetable = new Timetable({
+        instituteId: req.user.id,
+        semester: semester || "General", 
+        constraints: {
+          subjects: subjectsStr || "N/A", // Saved safely as string
+          workingDays: workingDays || []
+        },
+        schedule: generatedJson 
+      });
+
+      await newTimetable.save();
+      
+      res.json({ 
+        message: 'Timetable generated successfully', 
+        schedule: generatedJson,
+        id: newTimetable._id 
+      });
+      
+    } catch (saveError) {
+      console.error("Database Save Error:", saveError);
+      // Return schedule even if DB save fails
+      res.json({ 
+        message: 'Timetable generated (but not saved to history)', 
+        schedule: generatedJson 
+      });
+    }
+
+  } catch (err) {
+    console.error('/institute/timetable/generate error:', err);
+    res.status(500).json({ error: 'Server error during generation' });
+  }
+});
 // -------------------
 // Generic Error Handler (fallback)
 // -------------------

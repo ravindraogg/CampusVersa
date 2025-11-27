@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit } from "lucide-react";
+import { Plus, Trash2, Edit, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 
 export default function FacultyPage({ authFetch, theme, institute, pushToast }) {
   // data
@@ -7,11 +7,15 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   const [departments, setDepartments] = useState([]);
 
   // UI state
-  const [loading, setLoading] = useState(false); // local page loading for list (kept for small states)
-  const [isPageLoading, setIsPageLoading] = useState(false); // full-page overlay loader (Option C)
+  const [loading, setLoading] = useState(false); // local page loading for list
+  const [isPageLoading, setIsPageLoading] = useState(false); // full-page overlay loader
   const [isAdding, setIsAdding] = useState(false);
   const [isUploadingPic, setIsUploadingPic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Delete Modal State (New)
+  const [deleteId, setDeleteId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
@@ -72,7 +76,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       setDepartments(r2 || []);
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Load failed", message: "Could not load faculty" });
+      pushToast({ type: "error", message: "Load failed: Could not load faculty" });
     } finally {
       setLoading(false);
       // slight delay so spinner isn't too flickery
@@ -100,7 +104,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   // --- Add faculty (submit) ---
   const submit = async () => {
     if (!form.name || !form.department) {
-      pushToast({ type: "error", title: "Validation", message: "Name and department required" });
+      pushToast({ type: "error", message: "Validation: Name and department required" });
       return;
     }
 
@@ -113,7 +117,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       });
       const data = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Added", message: "Faculty added" });
+        pushToast({ type: "success", message: "Faculty added successfully" });
         setShowAdd(false);
         setForm({
           name: "",
@@ -131,11 +135,11 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
         });
         await load();
       } else {
-        pushToast({ type: "error", title: "Failed", message: data.message || "Add failed" });
+        pushToast({ type: "error", message: data.message || "Add failed" });
       }
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Server", message: "Could not add" });
+      pushToast({ type: "error", message: "Server error: Could not add faculty" });
     } finally {
       setIsAdding(false);
     }
@@ -174,31 +178,32 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     reader.readAsDataURL(file);
   };
 
-  // --- delete faculty ---
-  const deleteFaculty = async (id) => {
-    if (!window.confirm("Delete this faculty?")) return;
-    setIsPageLoading(true);
+  // --- delete faculty (Updated Logic) ---
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    setIsDeleting(true);
     try {
-      const res = await authFetch(`/institute/faculty/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/institute/faculty/${deleteId}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Deleted", message: "Faculty removed" });
+        pushToast({ type: "success", message: "Faculty removed successfully" });
         await load();
+        setDeleteId(null); // Close modal
       } else {
-        pushToast({ type: "error", title: "Failed", message: data.message || "Delete failed" });
+        pushToast({ type: "error", message: data.message || "Delete failed" });
       }
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Server", message: "Delete failed" });
+      pushToast({ type: "error", message: "Server error: Delete failed" });
     } finally {
-      setTimeout(() => setIsPageLoading(false), 150);
+      setIsDeleting(false);
     }
   };
 
   // --- save edited faculty ---
   const saveFacultyChanges = async (data) => {
     if (!data || !data._id) {
-      pushToast({ type: "error", title: "Validation", message: "Invalid faculty data" });
+      pushToast({ type: "error", message: "Validation: Invalid faculty data" });
       return;
     }
     setIsSaving(true);
@@ -209,15 +214,15 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       });
       const out = await res.json();
       if (res.ok) {
-        pushToast({ type: "success", title: "Updated", message: "Faculty updated" });
+        pushToast({ type: "success", message: "Faculty updated successfully" });
         setSelected(null);
         await load();
       } else {
-        pushToast({ type: "error", title: "Failed", message: out.message || "Update failed" });
+        pushToast({ type: "error", message: out.message || "Update failed" });
       }
     } catch (err) {
       console.error(err);
-      pushToast({ type: "error", title: "Server", message: "Could not update" });
+      pushToast({ type: "error", message: "Server error: Could not update" });
     } finally {
       setIsSaving(false);
     }
@@ -270,7 +275,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
           <button
             onClick={() => setShowAdd(true)}
             className="px-5 py-3 rounded-xl flex items-center gap-2 font-semibold disabled:opacity-60"
-            style={{ background: theme.primary, color: theme.textOnPrimary }}
+            style={{ background: theme.primary, color: "white" }}
             disabled={isAdding}
           >
             {isAdding ? <Spinner size={16} color="white" /> : <><Plus className="w-4 h-4" /> Add Faculty</>}
@@ -317,8 +322,8 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                 <div className="flex gap-2 shrink-0 ml-3">
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold"
-                    style={{ background: `${theme.primary}20`, color: theme.secondary }}
-                    onClick={(e) => { e.stopPropagation(); /* TODO: open edit drawer if needed */ setSelected(f); }}
+                    style={{color: theme.secondary }}
+                    onClick={(e) => { e.stopPropagation(); setSelected(f); }}
                   >
                     Edit
                   </button>
@@ -326,7 +331,10 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold text-white"
                     style={{ background: "#E53935" }}
-                    onClick={(e) => { e.stopPropagation(); deleteFaculty(f._id); }}
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      setDeleteId(f._id); // Open Custom Modal
+                    }}
                   >
                     Delete
                   </button>
@@ -352,207 +360,205 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
               <button onClick={() => setShowAdd(false)} className="text-slate-500">✕</button>
             </div>
 
-            {/* PREMIUM FORM */}
-         {/* PREMIUM FORM — BLACK THEME */}
-<div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
+            {/* PREMIUM FORM — BLACK THEME */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
 
-  {/* NAME */}
-  <div className="relative">
-    <input
-      value={form.name}
-      onChange={(e) => setForm({ ...form, name: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      style={{ borderColor: `#00000040` }}
-      placeholder=" "
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-focus:text-[12px] peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      Full Name
-    </label>
-  </div>
+              {/* NAME */}
+              <div className="relative">
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  style={{ borderColor: `#00000040` }}
+                  placeholder=" "
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-focus:text-[12px] peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Full Name
+                </label>
+              </div>
 
-  {/* EMAIL */}
-  <div className="relative">
-    <input
-      value={form.email}
-      onChange={(e) => setForm({ ...form, email: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      placeholder=" "
-      style={{ borderColor: `#00000040` }}
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      Email
-    </label>
-  </div>
+              {/* EMAIL */}
+              <div className="relative">
+                <input
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Email
+                </label>
+              </div>
 
-  {/* PHONE */}
-  <div className="relative">
-    <input
-      value={form.phone}
-      onChange={(e) => setForm({ ...form, phone: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      placeholder=" "
-      style={{ borderColor: `#00000040` }}
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      Phone
-    </label>
-  </div>
+              {/* PHONE */}
+              <div className="relative">
+                <input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Phone
+                </label>
+              </div>
 
-  {/* DESIGNATION */}
-  <div className="relative">
-    <input
-      value={form.designation}
-      onChange={(e) => setForm({ ...form, designation: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      placeholder=" "
-      style={{ borderColor: `#00000040` }}
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      Designation
-    </label>
-  </div>
+              {/* DESIGNATION */}
+              <div className="relative">
+                <input
+                  value={form.designation}
+                  onChange={(e) => setForm({ ...form, designation: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Designation
+                </label>
+              </div>
 
-  {/* DEPARTMENT */}
-  <div className="relative">
-    <select
-      value={form.department}
-      onChange={(e) => setForm({ ...form, department: e.target.value })}
-      className="w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg outline-none cursor-pointer"
-      style={{ borderColor: `#00000040` }}
-    >
-      <option value="">Select department</option>
-      {departments.map((d) => (
-        <option key={d.DID} value={d.code}>
-          {d.code} — {d.name}
-        </option>
-      ))}
-    </select>
+              {/* DEPARTMENT */}
+              <div className="relative">
+                <select
+                  value={form.department}
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  className="w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg outline-none cursor-pointer"
+                  style={{ borderColor: `#00000040` }}
+                >
+                  <option value="">Select department</option>
+                  {departments.map((d) => (
+                    <option key={d.DID} value={d.code}>
+                      {d.code} — {d.name}
+                    </option>
+                  ))}
+                </select>
 
-    <label
-      className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700"
-      style={{ color: "black" }}
-    >
-      Department
-    </label>
-  </div>
+                <label
+                  className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700"
+                  style={{ color: "black" }}
+                >
+                  Department
+                </label>
+              </div>
 
-  {/* POSITION */}
-  <div className="relative">
-    <input
-      value={form.position}
-      onChange={(e) => setForm({ ...form, position: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      placeholder=" "
-      style={{ borderColor: `#00000040` }}
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      Position
-    </label>
-  </div>
+              {/* POSITION */}
+              <div className="relative">
+                <input
+                  value={form.position}
+                  onChange={(e) => setForm({ ...form, position: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Position
+                </label>
+              </div>
 
-  {/* WORKING HOURS */}
-  <div className="relative">
-    <input
-      value={form.workingHours}
-      onChange={(e) => setForm({ ...form, workingHours: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      placeholder=" "
-      style={{ borderColor: `#00000040` }}
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      Working Hours
-    </label>
-  </div>
+              {/* WORKING HOURS */}
+              <div className="relative">
+                <input
+                  value={form.workingHours}
+                  onChange={(e) => setForm({ ...form, workingHours: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Working Hours
+                </label>
+              </div>
 
-  {/* SSR STATUS */}
-  <div className="relative">
-    <input
-      value={form.ssrStatus}
-      onChange={(e) => setForm({ ...form, ssrStatus: e.target.value })}
-      className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
-      placeholder=" "
-      style={{ borderColor: `#00000040` }}
-    />
-    <label
-      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-      style={{ color: "black" }}
-    >
-      SSR Status
-    </label>
-  </div>
+              {/* SSR STATUS */}
+              <div className="relative">
+                <input
+                  value={form.ssrStatus}
+                  onChange={(e) => setForm({ ...form, ssrStatus: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  SSR Status
+                </label>
+              </div>
 
-  {/* NAAC Checkbox */}
-  <div
-    className="flex items-center gap-3 p-4 rounded-2xl border bg-white/70 backdrop-blur-lg"
-    style={{ borderColor: `#00000040` }}
-  >
-    <input
-      type="checkbox"
-      checked={form.naacFollowing}
-      onChange={(e) => setForm({ ...form, naacFollowing: e.target.checked })}
-      className="w-5 h-5 accent-black"
-    />
-    <span className="text-gray-700 font-medium">NAAC Following</span>
-  </div>
+              {/* NAAC Checkbox */}
+              <div
+                className="flex items-center gap-3 p-4 rounded-2xl border bg-white/70 backdrop-blur-lg"
+                style={{ borderColor: `#00000040` }}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.naacFollowing}
+                  onChange={(e) => setForm({ ...form, naacFollowing: e.target.checked })}
+                  className="w-5 h-5 accent-black"
+                />
+                <span className="text-gray-700 font-medium">NAAC Following</span>
+              </div>
 
-  {/* UPLOAD PROFILE PIC */}
-{/* UPLOAD PROFILE PIC */}
-<label
-  className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer font-medium gap-3"
-  style={{ borderColor: `#00000040` }}
->
-  {isUploadingPic ? (
-    <>
-      <DarkSpinner />
-      <span className="text-yellow-600 font-semibold">Uploading…</span>
-    </>
-  ) : form.profilePic ? (
-    <span className="text-green-600 font-semibold">Uploaded ✓</span>
-  ) : (
-    <span className="text-gray-700">Upload Profile Picture</span>
-  )}
+              {/* UPLOAD PROFILE PIC */}
+              <label
+                className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer font-medium gap-3"
+                style={{ borderColor: `#00000040` }}
+              >
+                {isUploadingPic ? (
+                  <>
+                    <DarkSpinner />
+                    <span className="text-yellow-600 font-semibold">Uploading…</span>
+                  </>
+                ) : form.profilePic ? (
+                  <span className="text-green-600 font-semibold">Uploaded ✓</span>
+                ) : (
+                  <span className="text-gray-700">Upload Profile Picture</span>
+                )}
 
-  <input
-    type="file"
-    accept="image/*"
-    className="hidden"
-    onChange={handlePic}
-  />
-</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePic}
+                />
+              </label>
 
-</div>
- <div className="flex justify-end gap-3 mt-6">
-        <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">
-          Cancel
-        </button>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">
+                Cancel
+              </button>
 
-        <button
-          onClick={submit}
-          disabled={isAdding}
-          className="px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
-          style={{ background: theme.primary, color: theme.textOnPrimary }}
-        >
-          {isAdding ? <Spinner size={16} color="white" /> : "Add Faculty"}
-        </button>
-      </div>
+              <button
+                onClick={submit}
+                disabled={isAdding}
+                className="px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
+                style={{ background: theme.primary, color: theme.textOnPrimary }}
+              >
+                {isAdding ? <Spinner size={16} color="white" /> : "Add Faculty"}
+              </button>
+            </div>
 
           </div>
         </div>
@@ -574,7 +580,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                 {selected.profilePic ? (
                   <img src={selected.profilePic} className="w-full h-full object-cover" alt="pf" />
                 ) : (
-                  <span className="font-bold text-gray-600 text-[20px]">{(selected.name || "").split(" ").map(x => x[0]).slice(0,2).join("").toUpperCase()}</span>
+                  <span className="font-bold text-gray-600 text-[20px]">{(selected.name || "").split(" ").map(x => x[0]).slice(0, 2).join("").toUpperCase()}</span>
                 )}
 
                 <label className="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded-lg text-xs cursor-pointer">
@@ -613,6 +619,39 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
           </div>
         </div>
       )}
+
+      {/* --- NEW DELETE CONFIRMATION MODAL --- */}
+      {deleteId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Faculty?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to delete this faculty member? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setDeleteId(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center"
+                >
+                  {isDeleting ? <Spinner size={16} /> : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
