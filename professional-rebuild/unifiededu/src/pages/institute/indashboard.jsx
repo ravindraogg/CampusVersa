@@ -17,18 +17,26 @@ import {
   ArrowRight,
   LogOut,
   Loader2,
-  Save,
   Upload,
   X,
   Trash2,
-  BellOff
+  BellOff,
+  Hash,       // Added
+  Shield,     // Added
+  FileText,   // Added
+  CalendarDays, // Added
+  Edit3       // Added
 } from "lucide-react";
+
+// Sub-page Components
 import DepartmentPage from "./DepartmentPage";
 import FacultyPage from "./FacultyPage";
 import StudentPage from "./StudentPage";
 import RequestAdminPage from "./RequestAdminPage";
 import NaacPage from "./NaacPage";
 import NoticePage from "./NoticePage"; 
+// Import the new Timetable Manager
+import TimetableManager from "./Timetable"; 
 
 const API_URL = "http://localhost:5000";
 
@@ -43,7 +51,7 @@ const DEFAULT_THEME = {
   textMuted: "#6B7280",
 };
 
-// --- Small helpers (Can remain outside) ---
+// --- Small helpers ---
 const authFetch = async (path, opts = {}) => {
   const token = localStorage.getItem("instituteToken");
   const headers = {
@@ -72,12 +80,16 @@ const Spinner = ({ size = 6, color = "white" }) => (
   />
 );
 
-const InfoBox = ({ label, value }) => (
-  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 min-w-[100px]">
-    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-      {label}
-    </span>
-    <p className="font-semibold text-gray-700 text-sm truncate">{value}</p>
+// Updated Profile Detail Card
+const ProfileDetail = ({ icon: Icon, label, value }) => (
+  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition-all duration-300">
+    <div className="w-10 h-10 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm text-gray-500">
+      <Icon className="w-5 h-5" />
+    </div>
+    <div className="overflow-hidden">
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="font-semibold text-gray-800 text-sm truncate" title={value}>{value || "N/A"}</p>
+    </div>
   </div>
 );
 
@@ -149,36 +161,9 @@ const InstituteDashboard = () => {
   // Section-specific states
   const [dashboardStats, setDashboardStats] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [facultyList, setFacultyList] = useState(null);
-  const [facultyLoading, setFacultyLoading] = useState(false);
-  const [studentsList, setStudentsList] = useState(null);
-  const [studentsLoading, setStudentsLoading] = useState(false);
   const [noticesList, setNoticesList] = useState(null);
   const [noticesLoading, setNoticesLoading] = useState(false);
-  const [requestsList, setRequestsList] = useState(null);
-  const [requestsLoading, setRequestsLoading] = useState(false);
-  const [metricsList, setMetricsList] = useState(null);
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  const [naacData, setNaacData] = useState(null);
-  const [naacLoading, setNaacLoading] = useState(false);
-  const [timetables, setTimetables] = useState(null);
-  const [timetablesLoading, setTimetablesLoading] = useState(false);
-
-  // --- AI Timetable State (MOVED HERE) ---
-  const [timetableConfig, setTimetableConfig] = useState({
-    semester: "",
-    workingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-    startTime: "09:00",
-    endTime: "16:00",
-    slotDuration: "60", // in minutes
-    subjects: "", // Comma separated
-    faculty: "", // Comma separated
-    labs: "", // Comma separated
-    constraints: "" // Free text for AI
-  });
-  const [generatedTimetable, setGeneratedTimetable] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-
+  
   // Profile Edit State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -192,60 +177,6 @@ const InstituteDashboard = () => {
   const showToast = (message, type = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
-  };
-
-  // --- AI Timetable Handler (MOVED HERE) ---
-  const handleGenerateAiTimetable = async () => {
-    if (!timetableConfig.semester || !timetableConfig.subjects) {
-      showToast("Please provide at least a Semester and Subjects.", "error");
-      return;
-    }
-  
-    setIsGenerating(true);
-    try {
-      // Construct payload
-      const payload = {
-        prompt: `Generate a college timetable for ${timetableConfig.semester}. 
-        Working Days: ${timetableConfig.workingDays.join(", ")}.
-        Time: ${timetableConfig.startTime} to ${timetableConfig.endTime}.
-        Slot Duration: ${timetableConfig.slotDuration} minutes.
-        Subjects: ${timetableConfig.subjects}.
-        Faculty: ${timetableConfig.faculty}.
-        Lab Requirements: ${timetableConfig.labs}.
-        Additional Constraints: ${timetableConfig.constraints}.
-        Output strictly in JSON format where keys are Days and values are arrays of objects containing { time, subject, faculty, room }.`,
-        
-        // Pass these explicitly for DB saving
-        semester: timetableConfig.semester,
-        subjects: timetableConfig.subjects
-  .split(",")
-  .map(s => s.trim())
-  .filter(Boolean),
-
-        workingDays: timetableConfig.workingDays
-      };
-  
-      const res = await authFetch("/institute/timetable/generate", { 
-        method: "POST", 
-        body: JSON.stringify(payload) 
-      });
-  
-      const data = await res.json();
-  
-      if (res.ok && data.schedule) {
-        setGeneratedTimetable(data.schedule);
-        showToast("AI Timetable generated successfully!");
-        // Refresh saved timetables list
-        loadTimetables();
-      } else {
-        showToast(data.message || "Failed to generate timetable.", "error");
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Server error during generation.", "error");
-    } finally {
-      setIsGenerating(false);
-    }
   };
 
   // --- Initial fetch ---
@@ -273,7 +204,6 @@ const InstituteDashboard = () => {
       }
 
       await loadDashboardStats();
-      // Load notices initially so bell works immediately
       await loadNotices();
     } catch (err) {
       console.error("Failed to fetch institute:", err);
@@ -306,12 +236,7 @@ const InstituteDashboard = () => {
   // --- Tab Management ---
   useEffect(() => {
     if (activeTab === "dashboard") loadDashboardStats();
-    if (activeTab === "faculty" && facultyList === null) loadFaculty();
-    if (activeTab === "data-tracking" && studentsList === null) loadStudents();
     if (activeTab === "notices" && noticesList === null) loadNotices();
-    if (activeTab === "dept-metrics" && metricsList === null) loadMetrics();
-    if (activeTab === "naac" && naacData === null) loadNAAC();
-    if (activeTab === "ai-timetable" && timetables === null) loadTimetables();
   }, [activeTab]);
 
   // --- Loaders ---
@@ -323,22 +248,7 @@ const InstituteDashboard = () => {
       setDashboardStats(data);
     } catch (err) { console.error("dashboard-stats", err); } finally { setDashboardLoading(false); }
   };
-  const loadFaculty = async () => {
-    setFacultyLoading(true);
-    try {
-      const res = await authFetch("/institute/faculty", { method: "GET" });
-      const data = await res.json();
-      setFacultyList(data);
-    } catch (err) { setFacultyList([]); } finally { setFacultyLoading(false); }
-  };
-  const loadStudents = async () => {
-    setStudentsLoading(true);
-    try {
-      const res = await authFetch("/institute/students", { method: "GET" });
-      const data = await res.json();
-      setStudentsList(data);
-    } catch (err) { setStudentsList([]); } finally { setStudentsLoading(false); }
-  };
+ 
   const loadNotices = async () => {
     setNoticesLoading(true);
     try {
@@ -365,67 +275,6 @@ const InstituteDashboard = () => {
     } finally { 
       setIsPageLoading(false); 
     }
-  };
-
-  const loadMetrics = async () => {
-    setMetricsLoading(true);
-    try {
-      const res = await authFetch("/institute/metrics", { method: "GET" });
-      const data = await res.json();
-      setMetricsList(data);
-    } catch (err) { setMetricsList([]); } finally { setMetricsLoading(false); }
-  };
-
-  const updateMetric = async (payload) => {
-    setIsPageLoading(true);
-    try {
-      const res = await authFetch("/institute/metrics/update", { method: "POST", body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (res.ok) { 
-        showToast("Department metrics updated."); 
-        loadMetrics(); 
-      } else { 
-        showToast(data.message || "Update failed", "error"); 
-      }
-    } catch (err) { 
-      showToast("Server error while updating metrics", "error"); 
-    } finally { 
-      setIsPageLoading(false); 
-    }
-  };
-
-  const loadNAAC = async () => {
-    setNaacLoading(true);
-    try {
-      const res = await authFetch("/institute/naac?ai=1", { method: "GET" });
-      const data = await res.json();
-      setNaacData(data);
-    } catch (err) { setNaacData(null); } finally { setNaacLoading(false); }
-  };
-
-  const updateNAAC = async (payload) => {
-    setIsPageLoading(true);
-    try {
-      const res = await authFetch("/institute/naac/update", { method: "POST", body: JSON.stringify(payload) });
-      if (res.ok) { 
-        loadNAAC(); 
-      } else { 
-        showToast("NAAC update failed", "error"); 
-      }
-    } catch (err) { 
-      showToast("Server error", "error"); 
-    } finally { 
-      setIsPageLoading(false); 
-    }
-  };
-
-  const loadTimetables = async () => {
-    setTimetablesLoading(true);
-    try {
-      const res = await authFetch("/institute/timetables", { method: "GET" });
-      const data = await res.json();
-      setTimetables(data);
-    } catch (err) { setTimetables([]); } finally { setTimetablesLoading(false); }
   };
 
   // --- Profile Logic ---
@@ -496,179 +345,10 @@ const InstituteDashboard = () => {
   // --- Bell / Notification Logic ---
   const clearNotifications = () => {
     setNoticesList([]);
-    // Optionally: Call backend to mark read if supported
     showToast("Notifications cleared locally");
   };
 
-  // --- RENDER FUNCTIONS (Must be inside component to see state) ---
-  const renderTimetableSection = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
-      <SectionHeader 
-        title="AI Timetable Generator" 
-        subtitle="Define your constraints and let AI optimize the schedule." 
-      />
-  
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* LEFT: Configuration Form */}
-        <div className="xl:col-span-1 space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Settings className="w-4 h-4" /> Configuration
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Semester / Batch</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. B.Tech CS - Sem 5"
-                  className="w-full mt-1 p-2 bg-gray-50 border rounded-lg text-sm outline-none focus:border-blue-500"
-                  value={timetableConfig.semester}
-                  onChange={(e) => setTimetableConfig({...timetableConfig, semester: e.target.value})}
-                />
-              </div>
-  
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">Start Time</label>
-                  <input type="time" className="w-full mt-1 p-2 bg-gray-50 border rounded-lg text-sm"
-                    value={timetableConfig.startTime}
-                    onChange={(e) => setTimetableConfig({...timetableConfig, startTime: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">End Time</label>
-                  <input type="time" className="w-full mt-1 p-2 bg-gray-50 border rounded-lg text-sm"
-                    value={timetableConfig.endTime}
-                    onChange={(e) => setTimetableConfig({...timetableConfig, endTime: e.target.value})}
-                  />
-                </div>
-              </div>
-  
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Subjects (Comma Separated)</label>
-                <textarea 
-                  rows={3}
-                  placeholder="Data Structures, Algorithms, OS, Web Dev..."
-                  className="w-full mt-1 p-2 bg-gray-50 border rounded-lg text-sm outline-none focus:border-blue-500"
-                  value={timetableConfig.subjects}
-                  onChange={(e) => setTimetableConfig({...timetableConfig, subjects: e.target.value})}
-                />
-              </div>
-  
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Faculty List (Optional)</label>
-                <input 
-                  type="text" 
-                  placeholder="Dr. Smith, Prof. Doe..."
-                  className="w-full mt-1 p-2 bg-gray-50 border rounded-lg text-sm"
-                  value={timetableConfig.faculty}
-                  onChange={(e) => setTimetableConfig({...timetableConfig, faculty: e.target.value})}
-                />
-              </div>
-  
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Labs / Practicals</label>
-                <input 
-                  type="text" 
-                  placeholder="Physics Lab (2 hrs), Computer Lab..."
-                  className="w-full mt-1 p-2 bg-gray-50 border rounded-lg text-sm"
-                  value={timetableConfig.labs}
-                  onChange={(e) => setTimetableConfig({...timetableConfig, labs: e.target.value})}
-                />
-              </div>
-  
-              <button 
-                onClick={handleGenerateAiTimetable}
-                disabled={isGenerating}
-                className="w-full py-3 rounded-xl text-white font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-2"
-                style={{ backgroundColor: currentTheme.primary }}
-              >
-                {isGenerating ? <Loader2 className="w-5 h-5 animate-spin"/> : <Cpu className="w-5 h-5" />}
-                {isGenerating ? "Generating..." : "Generate Timetable"}
-              </button>
-            </div>
-          </div>
-        </div>
-  
-        {/* RIGHT: Result Display */}
-        <div className="xl:col-span-2">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[500px] flex flex-col">
-            <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-               <h3 className="font-bold text-gray-800">Generated Schedule</h3>
-               {generatedTimetable && (
-                 <button 
-                   onClick={() => showToast("Download feature coming soon!")}
-                   className="text-xs font-bold px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50"
-                 >
-                   Export PDF
-                 </button>
-               )}
-            </div>
-  
-            <div className="p-6 flex-1 overflow-x-auto custom-scrollbar">
-              {!generatedTimetable ? (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                  <BarChart3 className="w-16 h-16 mb-4 text-gray-300" />
-                  <p>Enter details and click Generate to see the AI magic.</p>
-                </div>
-              ) : (
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="p-3 text-left text-xs font-bold text-gray-500 uppercase border-b bg-gray-50 sticky left-0 z-10">Day / Time</th>
-                      {/* Assuming the first day has all time slots to generate headers. */}
-                      {generatedTimetable[Object.keys(generatedTimetable)[0]]?.map((slot, i) => (
-                        <th key={i} className="p-3 text-left text-xs font-bold text-gray-500 uppercase border-b bg-gray-50 min-w-[140px]">
-                          {slot.time}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(generatedTimetable).map(([day, slots]) => (
-                      <tr key={day} className="border-b hover:bg-gray-50 transition-colors">
-                        <td className="p-4 font-bold text-gray-700 border-r bg-gray-50 sticky left-0">{day}</td>
-                        {slots.map((slot, idx) => (
-                          <td key={idx} className="p-3 border-r last:border-r-0 relative group">
-                            <div className={`p-3 rounded-xl border-l-4 shadow-sm h-full ${
-                               slot.subject.toLowerCase().includes("break") || slot.subject.toLowerCase().includes("lunch") 
-                               ? "bg-gray-100 border-gray-400 opacity-70" 
-                               : slot.subject.toLowerCase().includes("lab") 
-                               ? "bg-purple-50 border-purple-500" 
-                               : "bg-green-50"
-                            }`}
-                            style={{ 
-                              backgroundColor: !slot.subject.toLowerCase().includes("break") ? `${currentTheme.primary}10` : undefined,
-                              borderColor: !slot.subject.toLowerCase().includes("break") ? currentTheme.primary : undefined
-                            }}
-                            >
-                              <p className="font-bold text-sm text-gray-800">{slot.subject}</p>
-                              {slot.faculty && (
-                                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                  <Users className="w-3 h-3"/> {slot.faculty}
-                                </p>
-                              )}
-                              {slot.room && (
-                                <span className="absolute top-2 right-2 text-[10px] font-mono bg-white px-1 rounded border">
-                                  {slot.room}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
+  // --- RENDER FUNCTIONS ---
   const renderDashboardHome = () => (
     <div className="animate-in fade-in duration-500 pb-6">
       <SectionHeader title="Institute Overview" subtitle={`Welcome back, ${institute?.name || "Administrator"} (${institute?.code || "..."}).`} />
@@ -705,56 +385,70 @@ const InstituteDashboard = () => {
     </div>
   );
 
-  const renderNoticesSection = () => (
-    <div className="pb-6">
-      <SectionHeader title="Notices & Alerts" subtitle="Publish and manage notices" action={
-        <button onClick={() => { 
-          const t = prompt("Notice Title"); 
-          const c = prompt("Notice Content"); 
-          if (t && c) {
-            postNotice({ title: t, content: c, type: "General", date: new Date().toISOString() }); 
-          } else if (t === null || c === null) {
-            // Cancelled
-          } else {
-            showToast("Title and content required", "error");
-          }
-        }} className="px-4 py-2 rounded-xl bg-blue-600 text-white">Publish Notice</button>
-      } />
-      <div className="bg-white rounded-2xl p-4 border border-gray-100">
-        {noticesLoading ? <div className="py-8 text-center">Loading...</div> : noticesList?.length > 0 ? <div className="space-y-3">{noticesList.map((n) => <div key={n._id} className="p-3 rounded-lg bg-gray-50 border"><div className="font-bold">{n.title}</div><div className="text-sm">{n.content}</div></div>)}</div> : <div className="py-8 text-center text-gray-500">No notices.</div>}
-      </div>
-    </div>
-  );
-
   const renderSettingsSection = () => (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative pb-6">
       <SectionHeader title="Settings" subtitle="Manage your institute profile and appearance" />
       <div className="w-full flex justify-center">
-        <div className="w-full max-w-3xl bg-white rounded-3xl p-8 border border-gray-100 shadow-sm relative overflow-hidden" style={{ margin: "0 auto" }}>
-          <div className="absolute top-0 right-0 w-64 h-64 bg-opacity-5 rounded-full -mr-16 -mt-16 pointer-events-none" style={{ backgroundColor: currentTheme.primary }} />
-          <div className="relative z-10">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-gray-500" /> Institute Profile</h3>
-              {!isEditingProfile && <button onClick={openProfileEditor} className="px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50">Edit Details</button>}
-            </div>
-            {isEditingProfile ? (
-              <div className="space-y-6">
-                <div className="flex flex-col items-center gap-4 p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-                  <div className="w-32 h-32 rounded-full bg-white shadow-md flex items-center justify-center overflow-hidden relative group">
-                    {editForm.previewUrl ? <img src={editForm.previewUrl} className="w-full h-full object-cover" alt="Preview" /> : <Upload className="w-10 h-10 text-gray-300" />}
-                    <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white font-medium text-xs">Change Logo <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
-                  </div>
+        <div className="w-full max-w-4xl bg-white rounded-3xl border border-gray-100 shadow-xl relative overflow-hidden">
+          {/* Decorative Top Banner */}
+          <div 
+            className="h-32 w-full absolute top-0 left-0" 
+            style={{ 
+              background: currentTheme.primary,
+              borderBottom: "1px solid rgba(0,0,0,0.05)"
+            }}
+          ></div>
+          
+          <div className="relative z-10 p-8">
+            
+            {/* Header Section: Logo & Title */}
+            <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-8 mt-4">
+              <div className="w-32 h-32 rounded-full bg-white shadow-lg p-1.5 border-4 border-white relative shrink-0">
+                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"style={{ borderColor: currentTheme.primary }}>
+                  {institute?.logo ? <img src={institute.logo} className="w-full h-full object-cover" alt="Logo" /> : <span className="text-3xl font-bold text-gray-300">IN</span>}
                 </div>
-                <div><label className="block text-sm font-semibold mb-2">Name</label><input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full p-3 rounded-xl border" /></div>
-                <div className="flex justify-end gap-3"><button onClick={() => setIsEditingProfile(false)} className="px-5 py-2.5 rounded-xl border">Cancel</button><button onClick={saveProfile} disabled={uploadLoading} className="px-6 py-2.5 rounded-xl text-white shadow-lg" style={{ backgroundColor: currentTheme.primary }}>Save Changes</button></div>
+                {/* Edit Button Badge */}
+                {!isEditingProfile && (
+                  <button onClick={openProfileEditor} className="absolute bottom-1 right-1 p-2 rounded-full bg-white shadow-md border hover:bg-gray-50 text-gray-600 transition-colors z-20" title="Edit Profile">
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-            ) : (
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className="w-32 h-32 rounded-full bg-white shadow-lg p-1 border border-gray-100"><div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">{institute?.logo ? <img src={institute.logo} className="w-full h-full object-cover" alt="Logo" /> : <span className="text-3xl font-bold text-gray-300">IN</span>}</div></div>
-                <div className="flex-1 text-center md:text-left space-y-4">
-                  <h2 className="text-2xl font-bold text-gray-800">{institute?.name}</h2>
-                  <div className="flex flex-wrap gap-4 justify-center md:justify-start"><InfoBox label="Code" value={institute?.code} /><InfoBox label="Email" value={institute?.email} /></div>
+              
+              <div className="flex-1 text-center md:text-left mb-2">
+                <h2 className="text-3xl font-bold p-2" style={{ color: currentTheme.textOnPrimary }}>{institute?.name || "Institute Name"}</h2>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mt-2 text-sm">
+                  <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 border border-green-200 font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> {institute?.status || "Active"}
+                  </span>
+                  <span className="text-gray-500 flex items-center gap-1 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
+                    <Building2 className="w-3 h-3" /> Code: {institute?.code}
+                  </span>
                 </div>
+              </div>
+            </div>
+
+            {isEditingProfile ? (
+               <div className="space-y-6 max-w-2xl mx-auto animate-in fade-in">
+                  <div className="flex flex-col items-center gap-4 p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                    <div className="w-32 h-32 rounded-full bg-white shadow-md flex items-center justify-center overflow-hidden relative group">
+                      {editForm.previewUrl ? <img src={editForm.previewUrl} className="w-full h-full object-cover" alt="Preview" /> : <Upload className="w-10 h-10 text-gray-300" />}
+                      <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white font-medium text-xs">Change Logo <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
+                    </div>
+                    <p className="text-xs text-gray-500">Click image to upload new logo</p>
+                  </div>
+                  <div><label className="block text-sm font-semibold mb-2">Institute Name</label><input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full p-3 rounded-xl border focus:border-blue-500 outline-none" /></div>
+                  <div className="flex justify-end gap-3 pt-4 border-t"><button onClick={() => setIsEditingProfile(false)} className="px-5 py-2.5 rounded-xl border hover:bg-gray-50 font-medium">Cancel</button><button onClick={saveProfile} disabled={uploadLoading} className="px-6 py-2.5 rounded-xl text-white shadow-lg font-medium" style={{ backgroundColor: currentTheme.primary }}>Save Changes</button></div>
+               </div>
+            ) : (
+              // Info Grid
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-6 border-t border-gray-100">
+                <ProfileDetail label="Official Email" value={institute?.email} icon={Send} />
+                <ProfileDetail label="Institute Code" value={institute?.code} icon={Hash} />
+                <ProfileDetail label="AISHE Code" value={institute?.aisheCode || "Not Assigned"} icon={FileText} />
+                <ProfileDetail label="Internal ID (IID)" value={institute?.IID} icon={Shield} />
+                <ProfileDetail label="College Number" value={institute?.collegeNumber ? `#${institute.collegeNumber}` : "N/A"} icon={Building2} />
+                <ProfileDetail label="Registered On" value={institute?.createdAt ? new Date(institute.createdAt).toLocaleDateString() : "N/A"} icon={CalendarDays} />
               </div>
             )}
           </div>
@@ -934,7 +628,13 @@ const InstituteDashboard = () => {
                 />
               )}
               {activeTab === "requests" && <RequestAdminPage authFetch={authFetch} theme={currentTheme} institute={institute} pushToast={(msg) => showToast(msg.message, msg.type)} />}
-              {activeTab === "ai-timetable" && renderTimetableSection()}
+              {activeTab === "ai-timetable" && (
+                  <TimetableManager
+                    authFetch={authFetch}
+                    theme={currentTheme}
+                    pushToast={(msg) => showToast(msg.message, msg.type)}
+                  />
+              )}
               {activeTab === "settings" && renderSettingsSection()}
             </div>
           )}

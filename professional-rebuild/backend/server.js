@@ -719,6 +719,7 @@ app.get('/institute/naac', verifyToken, async (req, res) => {
       tracker = new NAACTracker({ instituteId: req.user.id, criteria: defaultCriteria, createdAt: Date.now() });
       await tracker.save();
     }
+
     // Optionally include AI suggestions for each criterion
     const includeAI = req.query.ai === '1' && (aiProvider !== null);
     if (includeAI) {
@@ -899,7 +900,7 @@ app.post('/institute/request/reply', verifyToken, async (req, res) => {
 // --- INSTITUTE: Submit NAAC Data ---
 app.post('/institute/naac/submit', verifyToken, async (req, res) => {
   try {
-    const { criteriaId, submissionText } = req.body;
+    const { criteriaId, submissionText, evidenceFiles } = req.body; // Added evidenceFiles
     
     // Find tracker
     const tracker = await NAACTracker.findOne({ instituteId: req.user.id });
@@ -911,12 +912,31 @@ app.post('/institute/naac/submit', verifyToken, async (req, res) => {
 
     // Update fields
     tracker.criteria[itemIndex].submissionText = submissionText;
-    tracker.criteria[itemIndex].status = "Submitted"; // Mark as ready for admin
+    
+    // Process and append files if they exist
+    if (evidenceFiles && Array.isArray(evidenceFiles)) {
+      const formattedFiles = evidenceFiles.map(f => ({
+        title: f.name,
+        url: f.data, // Base64 string directly stored
+        type: f.type,
+        uploadedAt: Date.now()
+      }));
+      
+      // Option A: Replace existing files
+      // tracker.criteria[itemIndex].evidenceFiles = formattedFiles;
+      
+      // Option B: Append to existing (Preferred)
+      if (!tracker.criteria[itemIndex].evidenceFiles) {
+        tracker.criteria[itemIndex].evidenceFiles = [];
+      }
+      tracker.criteria[itemIndex].evidenceFiles.push(...formattedFiles);
+    }
+
+    tracker.criteria[itemIndex].status = "Submitted"; 
     tracker.criteria[itemIndex].lastUpdated = Date.now();
-    // Clear previous rejection comments if any
     tracker.criteria[itemIndex].adminComments = ""; 
 
-    tracker.markModified('criteria'); // Important for array updates in Mongoose
+    tracker.markModified('criteria'); 
     await tracker.save();
 
     res.json({ success: true, data: tracker });
@@ -1032,14 +1052,9 @@ app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
     const { prompt, semester, subjects, workingDays } = req.body; 
 
     if (!prompt) return res.status(400).json({ message: "Prompt is required" });
-
-    // SAFEGUARD: Ensure subjects is a string for storage in 'constraints'
-    // Frontend sends Array, DB might expect String.
     const subjectsStr = Array.isArray(subjects) ? subjects.join(", ") : subjects;
 
     let generatedJson = null;
-
-    // --- OPTION A: Google Gemini ---
     if (aiProvider === 'google' && googleClient) {
       try {
         const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
@@ -1119,6 +1134,141 @@ app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('/institute/timetable/generate error:', err);
     res.status(500).json({ error: 'Server error during generation' });
+  }
+});
+app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
+  try {
+    const { prompt } = req.body; 
+    if (!prompt) return res.status(400).json({ message: "Prompt is required" });
+
+    let generatedJson = null;
+
+    // --- Google Gemini ---
+    if (aiProvider === 'google' && googleClient) {
+      try {
+        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        
+        const finalPrompt = `
+          ${prompt}
+          
+          CRITICAL INSTRUCTION: 
+          Return ONLY valid JSON. Do not include markdown formatting (like \`\`\`json). 
+          The JSON keys must be the Days (e.g., "Monday", "Tuesday").
+          The values must be arrays of objects: { "time": "...", "subject": "...", "faculty": "...", "room": "..." }.
+        `;
+
+        const result = await model.generateContent(finalPrompt);
+        const text = (await result.response).text().trim();
+        const cleanText = text.replace(/```json|```/g, '').trim();
+        generatedJson = JSON.parse(cleanText);
+        
+      } catch (err) {
+        console.error('Gemini Generation Error:', err.message);
+      }
+    }
+
+    // --- OpenAI Fallback ---
+    if (!generatedJson && aiProvider === 'openai' && openaiClient) {
+      try {
+        const resp = await openaiClient.createChatCompletion({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are a scheduling assistant. Return ONLY valid JSON. No markdown.' },
+            { role: 'user', content: prompt }
+          ]
+        });
+        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '');
+        generatedJson = JSON.parse(text);
+      } catch (err) {
+        console.error('OpenAI Generation Error:', err.message);
+      }
+    }
+
+    if (!generatedJson || Object.keys(generatedJson).length === 0) {
+      return res.status(500).json({ message: "AI generation failed." });
+    }
+
+    // Return the JSON directly (Draft Mode)
+    res.json({ 
+      message: 'Timetable generated (Draft)', 
+      schedule: generatedJson 
+    });
+
+  } catch (err) {
+    console.error('/institute/timetable/generate error:', err);
+    res.status(500).json({ error: 'Server error during generation' });
+  }
+});
+
+// 2. Save New Timetable (Called when user clicks "Save" on draft)
+app.post('/institute/timetable/save', verifyToken, async (req, res) => {
+  try {
+    const { semester, subjects, workingDays, schedule } = req.body;
+
+    const subjectsStr = Array.isArray(subjects) ? subjects.join(", ") : subjects;
+
+    const newTimetable = new Timetable({
+      instituteId: req.user.id,
+      semester: semester || "General",
+      constraints: {
+        subjects: subjectsStr || "N/A",
+        workingDays: workingDays || []
+      },
+      schedule: schedule
+    });
+
+    await newTimetable.save();
+    res.json({ message: 'Timetable saved successfully', id: newTimetable._id });
+
+  } catch (err) {
+    console.error('/institute/timetable/save error:', err);
+    res.status(500).json({ error: 'Failed to save timetable' });
+  }
+});
+
+// 3. Update Existing Timetable (For Drag & Drop Edits)
+app.put('/institute/timetable/:id', verifyToken, async (req, res) => {
+  try {
+    const { schedule, semester } = req.body; // Accept semester for renaming
+    
+    const updateData = {};
+    if (schedule) updateData.schedule = schedule;
+    if (semester) updateData.semester = semester;
+    
+    // Update timestamp
+    updateData.createdAt = Date.now(); // Optional: or add an updatedAt field
+
+    const updated = await Timetable.findOneAndUpdate(
+      { _id: req.params.id, instituteId: req.user.id },
+      { $set: updateData },
+      { new: true }
+    );
+    
+    if (!updated) return res.status(404).json({ message: "Timetable not found" });
+    res.json({ message: 'Timetable updated', data: updated });
+  } catch (err) {
+    console.error('/institute/timetable/update error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+// 5. DELETE
+app.delete('/institute/timetable/:id', verifyToken, async (req, res) => {
+  try {
+    const deleted = await Timetable.findOneAndDelete({ _id: req.params.id, instituteId: req.user.id });
+    if (!deleted) return res.status(404).json({ message: "Timetable not found" });
+    res.json({ message: "Timetable deleted" });
+  } catch (err) { res.status(500).json({ error: "Delete failed" }); }
+});
+
+// 4. Get All Timetables
+app.get('/institute/timetables', verifyToken, async (req, res) => {
+  try {
+    const list = await Timetable.find({ instituteId: req.user.id }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/institute/timetables error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
   }
 });
 // -------------------
