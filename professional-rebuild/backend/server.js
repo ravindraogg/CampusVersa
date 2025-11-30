@@ -31,7 +31,16 @@ const NAACTracker = require('./models/institute/NAACTracker');
 const Timetable = require('./models/institute/Timetable');
 const AllGrievance = require('./models/admin/AllGrievance');
 const Department = require('./models/institute/Department');
-
+const Course = require('./models/institute/Course');
+const ReminderSchema = new mongoose.Schema({
+  facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
+  courseName: String,
+  day: String,
+  time: String,
+  message: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const Reminder = mongoose.model('Reminder', ReminderSchema);
 // Middleware
 const { verifyToken } = require('./middleware/authMiddleware'); // assumes this sets req.user
 
@@ -283,6 +292,69 @@ app.post('/admin/createInstitute', verifyToken, async (req, res) => {
 });
 
 
+// UPDATE Faculty (Institute Side)
+app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+
+    // Only update if faculty belongs to this institute
+    const faculty = await Faculty.findOne({ 
+      _id: req.params.id, 
+      instituteId: instId 
+    });
+
+    if (!faculty) {
+      return res.status(404).json({ message: 'Faculty not found or access denied' });
+    }
+
+    const allowed = [
+      'name',
+      'email',
+      'phone',
+      'department',
+      'qualification',
+      'experience',
+      'research',
+      'profilePic',
+      'password',
+      'joinedAt',
+      'status'
+    ];
+
+    const updateData = {};
+    allowed.forEach(key => {
+      if (req.body[key] !== undefined) {
+        updateData[key] = req.body[key];
+      }
+    });
+
+    updateData.updatedAt = Date.now();
+
+    // department change? update dept counts
+    if (req.body.department && req.body.department !== faculty.department) {
+      await Department.findOneAndUpdate(
+        { instituteId: instId, code: faculty.department },
+        { $inc: { facultyCount: -1 } }
+      );
+      await Department.findOneAndUpdate(
+        { instituteId: instId, code: req.body.department },
+        { $inc: { facultyCount: 1 } }
+      );
+    }
+
+    const updated = await Faculty.findByIdAndUpdate(
+      faculty._id,
+      { $set: updateData },
+      { new: true }
+    ).select('-password');
+
+    res.json({ message: 'Faculty updated successfully', data: updated });
+
+  } catch (err) {
+    console.error('/institute/faculty update error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
 
 app.get('/admin/grievances', verifyToken, async (req, res) => {
   try {
@@ -487,45 +559,56 @@ app.get('/institute/dashboard-stats', verifyToken, async (req, res) => {
 // -------------------
 // Faculty CRUD
 // -------------------
+// --- server.js ---
+
 app.post('/institute/faculty/add', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
     const payload = { ...req.body, instituteId: instId };
 
-    // Require department and name
     if (!payload.department || !payload.name) return res.status(400).json({ message: 'Department and name required' });
 
-    // find institute for code and number
-    const inst = await Institute.findById(instId).select('code collegeNumber');
+    const inst = await Institute.findById(instId).select('code collegeNumber themeColorPrimary themeColorSecondary');
     if (!inst) return res.status(404).json({ message: 'Institute not found' });
+
+    payload.themeColorPrimary = inst.themeColorPrimary;
+    payload.themeColorSecondary = inst.themeColorSecondary;
 
     const deptCode = String(payload.department).toUpperCase();
 
-    // Fetch all existing faculty names in the same department
-    const existing = await Faculty.find({ instituteId: instId, department: deptCode }).select('name FID').lean();
+    // --- NEW ID GENERATION LOGIC (Max + 1) ---
+    // 1. Find all existing faculty in this institute & department
+    const existingFaculty = await Faculty.find({ 
+      instituteId: instId, 
+      department: deptCode 
+    }).select('FID');
 
-    // Build combined list with the new name, then sort alphabetically by name
-    const combined = existing.map(e => ({ name: e.name })).concat([{ name: payload.name }]);
-    combined.sort((a, b) => {
-      const A = String(a.name || '').toLowerCase();
-      const B = String(b.name || '').toLowerCase();
-      return A.localeCompare(B);
+    // 2. Extract the numeric sequence from existing FIDs (last 3 digits)
+    const seqNumbers = existingFaculty.map(f => {
+      // Assuming FID format: <CollegeNum><Code><Dept><001>
+      // We grab the last 3 characters and convert to int
+      const last3 = f.FID.slice(-3);
+      const num = parseInt(last3, 10);
+      return isNaN(num) ? 0 : num;
     });
 
-    // Find position (first occurrence matching payload.name) -> sequence index (1-based)
-    const idx = combined.findIndex(x => x.name === payload.name);
-    const seq = idx >= 0 ? idx + 1 : combined.length;
-    const seqStr = String(seq).padStart(3, '0');
+    // 3. Find the highest number and add 1
+    const maxSeq = seqNumbers.length > 0 ? Math.max(...seqNumbers) : 0;
+    const nextSeq = maxSeq + 1;
+    
+    // 4. Pad with zeros (e.g., 1 -> "001")
+    const seqStr = String(nextSeq).padStart(3, '0');
 
-    // FID = <CLG_NO><CLG_SHORT><DEPT_CODE><SEQ3>
+    // 5. Construct new FID
     const FID = `${inst.collegeNumber}${inst.code}${deptCode}${seqStr}`;
     payload.FID = FID;
+    // ----------------------------------------
 
-    // Create faculty
+    if (!payload.research) payload.research = {};
+    
     const f = new Faculty(payload);
     await f.save();
 
-    // Optionally update department facultyCount
     await Department.findOneAndUpdate({ instituteId: instId, code: deptCode }, { $inc: { facultyCount: 1 } }).catch(()=>{});
 
     res.status(201).json(f);
@@ -558,54 +641,150 @@ app.delete('/institute/faculty/:id', verifyToken, async (req, res) => {
 // -------------------
 // Students
 // -------------------
+// server.js - Updated Student Route for Pagination
 app.get('/institute/students', verifyToken, async (req, res) => {
   try {
-    const list = await Student.find({ instituteId: req.user.id }).sort({ createdAt: -1 });
-    res.json(list);
+    // 1. Get query params for lazy loading
+    const limit = parseInt(req.query.limit) || 0; // 0 means all
+    const skip = parseInt(req.query.skip) || 0;
+    
+    // 2. Identify Institute ID (Works for both Admin/Faculty logins)
+    let instituteId = req.user.id;
+    
+    // If logged in as Faculty, we need to use the instituteId stored in their profile
+    if (req.user.role === 'faculty') {
+       const faculty = await Faculty.findById(req.user.id).select('instituteId');
+       if(!faculty) return res.status(404).json({message: "Faculty profile not found"});
+       instituteId = faculty.instituteId;
+    }
+
+    // 3. Fetch with Pagination
+    const query = { instituteId: instituteId };
+    
+    const total = await Student.countDocuments(query);
+    const list = await Student.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      data: list,
+      total: total,
+      hasMore: (skip + list.length) < total
+    });
+
   } catch (err) {
     console.error('/institute/students error:', err);
     res.status(500).json({ error: 'Fetch failed' });
   }
 });
 
+app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) => {
+  try {
+    const { semester, courses } = req.body;
+    const student = await Student.findById(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    // 1. Calculate SGPA: Σ(GradePoint × Credits) / Σ(Credits)
+    let totalSemesterCredits = 0; // Σ Credits
+    let totalSemesterPoints = 0;  // Σ (GradePoint * Credits)
+
+    courses.forEach(c => {
+      totalSemesterCredits += Number(c.credits);
+      totalSemesterPoints += (Number(c.gradePoint) * Number(c.credits));
+    });
+
+    const sgpa = totalSemesterCredits === 0 ? 0 : (totalSemesterPoints / totalSemesterCredits);
+
+    // 2. Update Student Academic History
+    // Remove existing entry for this semester if it exists (update logic)
+    student.academic.semesterResults = student.academic.semesterResults.filter(r => r.semester !== semester);
+    
+    student.academic.semesterResults.push({
+      semester: String(semester),
+      totalCredits: totalSemesterCredits,
+      earnedPoints: totalSemesterPoints,
+      sgpa: parseFloat(sgpa.toFixed(2))
+    });
+
+    // 3. Calculate CGPA: Σ(SGPA_i × C_i) / Σ(C_i)
+    // Based on your formula: Sum of (SGPA of sem * Credits of sem) / Total Credits of all sems
+    let grandTotalPoints = 0;
+    let grandTotalCredits = 0;
+
+    student.academic.semesterResults.forEach(res => {
+      // Re-deriving Σ(SGPA * C) is basically the 'earnedPoints' we calculated earlier
+      grandTotalPoints += res.earnedPoints; 
+      grandTotalCredits += res.totalCredits;
+    });
+
+    const cgpa = grandTotalCredits === 0 ? 0 : (grandTotalPoints / grandTotalCredits);
+
+    // Save
+    student.academic.cgpa = parseFloat(cgpa.toFixed(2));
+    student.academic.creditsEarned = grandTotalCredits;
+    
+    await student.save();
+
+    res.json({ 
+      success: true, 
+      sgpa: student.academic.semesterResults.find(r => r.semester === semester).sgpa,
+      cgpa: student.academic.cgpa 
+    });
+
+  } catch (err) {
+    console.error("GPA Calc Error:", err);
+    res.status(500).json({ error: "Calculation failed" });
+  }
+});
 app.post('/institute/students/add', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
-    const payload = { ...req.body, instituteId: instId };
+    // Destructure semester specifically to ensure it's captured
+    const { department, name, year, semester, ...rest } = req.body;
 
-    if (!payload.department || !payload.name || !payload.year) {
-      return res.status(400).json({ message: 'Department, name and year required' });
+    if (!department || !name || !year || !semester) {
+      return res.status(400).json({ message: 'Department, name, year, and semester are required' });
     }
 
-    const inst = await Institute.findById(instId).select('code collegeNumber');
+    const inst = await Institute.findById(instId).select('code collegeNumber themeColorPrimary themeColorSecondary');
     if (!inst) return res.status(404).json({ message: 'Institute not found' });
 
-    const deptCode = String(payload.department).toUpperCase();
-    // Year last two digits
-    const yearStr = String(payload.year).slice(-2);
+    const deptCode = String(department).toUpperCase();
+    const yearStr = String(year).slice(-2);
 
-    // Fetch existing students in the same department
+    // SID Generation Logic
     const existing = await Student.find({ instituteId: instId, department: deptCode }).select('name SID').lean();
+    const combined = existing.map(e => ({ name: e.name })).concat([{ name }]);
+    combined.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Build combined with new, sort alphabetically
-    const combined = existing.map(e => ({ name: e.name })).concat([{ name: payload.name }]);
-    combined.sort((a, b) => {
-      const A = String(a.name || '').toLowerCase();
-      const B = String(b.name || '').toLowerCase();
-      return A.localeCompare(B);
-    });
-
-    const idx = combined.findIndex(x => x.name === payload.name);
+    const idx = combined.findIndex(x => x.name === name);
     const roll = idx >= 0 ? idx + 1 : combined.length;
     const rollStr = String(roll).padStart(3, '0');
 
-    // SID = <CLG_NO><CLG_SHORT><YY><DEPT_CODE><ROLL3>
     const SID = `${inst.collegeNumber}${inst.code}${yearStr}${deptCode}${rollStr}`;
-    payload.SID = SID;
 
-    const doc = new Student(payload);
+    // Initialize lifecycle
+    const lifecycle = [{
+      event: "Admission",
+      date: new Date(),
+      description: `Admitted to ${department} Dept, Year ${year}, Sem ${semester}`
+    }];
+
+    const doc = new Student({
+      instituteId: instId,
+      SID,
+      name,
+      department,
+      year,
+      semester, // <--- SAVING SEMESTER
+      themeColorPrimary: inst.themeColorPrimary,
+      themeColorSecondary: inst.themeColorSecondary,
+      lifecycle,
+      ...rest
+    });
+
     await doc.save();
-
     res.status(201).json(doc);
   } catch (err) {
     console.error('/institute/students/add error:', err);
@@ -1042,161 +1221,113 @@ app.delete('/institute/notices/:id', verifyToken, async (req, res) => {
 // -------------------
 // UPDATED: AI Timetable Generation Route
 // -------------------
-// ✅ KEEP OR PASTE THIS AT THE BOTTOM OF SERVER.JS
-// -------------------
-// UPDATED: AI Timetable Generation Route
-// -------------------
-app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
-
-  try {
-    const { prompt, semester, subjects, workingDays } = req.body; 
-
-    if (!prompt) return res.status(400).json({ message: "Prompt is required" });
-    const subjectsStr = Array.isArray(subjects) ? subjects.join(", ") : subjects;
-
-    let generatedJson = null;
-    if (aiProvider === 'google' && googleClient) {
-      try {
-        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
-        
-        const finalPrompt = `
-          ${prompt}
-          
-          CRITICAL INSTRUCTION: 
-          Return ONLY valid JSON. Do not include markdown formatting (like \`\`\`json). 
-          The JSON keys must be the Days (e.g., "Monday", "Tuesday").
-          The values must be arrays of objects: { "time": "...", "subject": "...", "faculty": "...", "room": "..." }.
-        `;
-
-        const result = await model.generateContent(finalPrompt);
-        const text = (await result.response).text().trim();
-        const cleanText = text.replace(/```json|```/g, '').trim();
-        generatedJson = JSON.parse(cleanText);
-        
-      } catch (err) {
-        console.error('Gemini Generation Error:', err.message);
-      }
-    }
-
-    // --- OPTION B: OpenAI (Fallback) ---
-    if (!generatedJson && aiProvider === 'openai' && openaiClient) {
-      try {
-        const resp = await openaiClient.createChatCompletion({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: 'You are a scheduling assistant. Return ONLY valid JSON. No markdown.' },
-            { role: 'user', content: prompt }
-          ]
-        });
-        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '');
-        generatedJson = JSON.parse(text);
-      } catch (err) {
-        console.error('OpenAI Generation Error:', err.message);
-      }
-    }
-
-    // 2. Validate Result
-    if (!generatedJson || Object.keys(generatedJson).length === 0) {
-      return res.status(500).json({ message: "AI generation failed or returned empty data." });
-    }
-
-    // 3. Save to Database
-    try {
-      const Timetable = require('./models/institute/Timetable');
-      
-      const newTimetable = new Timetable({
-        instituteId: req.user.id,
-        semester: semester || "General", 
-        constraints: {
-          subjects: subjectsStr || "N/A", // Saved safely as string
-          workingDays: workingDays || []
-        },
-        schedule: generatedJson 
-      });
-
-      await newTimetable.save();
-      
-      res.json({ 
-        message: 'Timetable generated successfully', 
-        schedule: generatedJson,
-        id: newTimetable._id 
-      });
-      
-    } catch (saveError) {
-      console.error("Database Save Error:", saveError);
-      // Return schedule even if DB save fails
-      res.json({ 
-        message: 'Timetable generated (but not saved to history)', 
-        schedule: generatedJson 
-      });
-    }
-
-  } catch (err) {
-    console.error('/institute/timetable/generate error:', err);
-    res.status(500).json({ error: 'Server error during generation' });
-  }
-});
+// --- UPDATED GENERATE ROUTE ---
 app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
   try {
-    const { prompt } = req.body; 
-    if (!prompt) return res.status(400).json({ message: "Prompt is required" });
-
-    let generatedJson = null;
-
-    // --- Google Gemini ---
-    if (aiProvider === 'google' && googleClient) {
-      try {
-        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
-        
-        const finalPrompt = `
-          ${prompt}
-          
-          CRITICAL INSTRUCTION: 
-          Return ONLY valid JSON. Do not include markdown formatting (like \`\`\`json). 
-          The JSON keys must be the Days (e.g., "Monday", "Tuesday").
-          The values must be arrays of objects: { "time": "...", "subject": "...", "faculty": "...", "room": "..." }.
-        `;
-
-        const result = await model.generateContent(finalPrompt);
-        const text = (await result.response).text().trim();
-        const cleanText = text.replace(/```json|```/g, '').trim();
-        generatedJson = JSON.parse(cleanText);
-        
-      } catch (err) {
-        console.error('Gemini Generation Error:', err.message);
-      }
+    const { config } = req.body;
+    
+    if (!config || !config.selectedCourseIds) {
+      return res.status(400).json({ message: "Invalid configuration" });
     }
 
-    // --- OpenAI Fallback ---
-    if (!generatedJson && aiProvider === 'openai' && openaiClient) {
-      try {
-        const resp = await openaiClient.createChatCompletion({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: 'You are a scheduling assistant. Return ONLY valid JSON. No markdown.' },
-            { role: 'user', content: prompt }
-          ]
+    // 1. Fetch Full Course Details (to get Faculty Names)
+    const allIds = [...config.selectedCourseIds, ...config.selectedLabIds];
+    const courses = await Course.find({ _id: { $in: allIds } }).populate('facultyId');
+
+    // 2. Fetch Selected Faculty Details (For Prompt)
+    const selectedFaculty = await Faculty.find({ _id: { $in: config.selectedFacultyIds || [] } });
+    const facultyNames = selectedFaculty.map(f => f.name).join(", ");
+
+    // 3. Fetch ALL Existing Timetables for this Institute (For Conflict Check)
+    const existingTimetables = await Timetable.find({ instituteId: req.user.id });
+
+    // 4. Build "Busy Faculty" Map
+    const busyMap = {};
+    existingTimetables.forEach(tt => {
+      if (tt.schedule) {
+        Object.entries(tt.schedule).forEach(([day, slots]) => {
+          if (Array.isArray(slots)) {
+            slots.forEach(slot => {
+              if (slot.faculty) {
+                if (!busyMap[slot.faculty]) busyMap[slot.faculty] = [];
+                busyMap[slot.faculty].push(`${day}-${slot.time}`);
+              }
+            });
+          }
         });
-        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '');
-        generatedJson = JSON.parse(text);
-      } catch (err) {
-        console.error('OpenAI Generation Error:', err.message);
       }
-    }
-
-    if (!generatedJson || Object.keys(generatedJson).length === 0) {
-      return res.status(500).json({ message: "AI generation failed." });
-    }
-
-    // Return the JSON directly (Draft Mode)
-    res.json({ 
-      message: 'Timetable generated (Draft)', 
-      schedule: generatedJson 
     });
 
+    // 5. Construct the Detailed AI Prompt
+    let prompt = `
+      Create a university class timetable JSON.
+      
+      --- CONSTRAINTS ---
+      Department: ${config.department}
+      Semester: ${config.semester}
+      Days: ${config.workingDays.join(", ")}
+      Time Range: ${config.startTime} to ${config.endTime}
+      Slot Duration: 60 minutes
+      Lunch Break: MUST be at ${config.lunchTime} for 1 hour. Label it "Lunch Break".
+      Additional Remarks: ${config.remarks || "None"}
+      
+      --- AVAILABLE FACULTY POOL ---
+      ${facultyNames || "No specific faculty selected"}
+      
+      --- SUBJECTS TO ASSIGN ---
+      Assign these subjects. 
+      IMPORTANT: If a course has a Faculty listed, use them. If "TBD", pick from the "Available Faculty Pool".
+      ALWAYS CHECK the "BUSY LIST" before assigning a time slot to avoid conflicts.
+    `;
+
+    courses.forEach(c => {
+      const facultyName = c.facultyId ? c.facultyId.name : "TBD";
+      const isLab = config.selectedLabIds.includes(c._id.toString());
+      
+      prompt += `\n- ${c.name} (${isLab ? "LAB - Requires 2 consecutive slots" : "Theory"}). Faculty: ${facultyName}`;
+      
+      if (busyMap[facultyName]) {
+        prompt += ` [BUSY AT: ${busyMap[facultyName].join(", ")}]`;
+      }
+    });
+
+    prompt += `
+      \n\n--- OUTPUT FORMAT ---
+      Return ONLY valid JSON. Keys are Days. Values are arrays of objects.
+      Format: { "Monday": [{ "time": "09:00 - 10:00", "subject": "...", "faculty": "..." }, ...] }
+      Ensure no conflicts with the BUSY AT times provided.
+    `;
+
+    // 6. Call AI (Gemini / OpenAI logic)
+    let generatedJson = null;
+
+    if (aiProvider === 'google' && googleClient) {
+      try {
+        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
+        const result = await model.generateContent(prompt);
+        const text = (await result.response).text().trim().replace(/```json|```/g, '').trim();
+        generatedJson = JSON.parse(text);
+      } catch (err) { console.error('Gemini Error:', err.message); }
+    }
+
+    if (!generatedJson && aiProvider === 'openai' && openaiClient) {
+      try {
+        const resp = await openaiClient.createChatCompletion({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'system', content: 'You are a scheduler.' }, { role: 'user', content: prompt }]
+        });
+        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '').trim();
+        generatedJson = JSON.parse(text);
+      } catch (err) { console.error('OpenAI Error:', err.message); }
+    }
+
+    if (!generatedJson) return res.status(500).json({ message: "AI Generation failed" });
+
+    res.json({ schedule: generatedJson });
+
   } catch (err) {
     console.error('/institute/timetable/generate error:', err);
-    res.status(500).json({ error: 'Server error during generation' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -1269,6 +1400,504 @@ app.get('/institute/timetables', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('/institute/timetables error:', err);
     res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+// --- 1. Faculty Login ---
+// ... inside server.js
+
+app.post('/faculty/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+
+    const faculty = await Faculty.findOne({
+      $or: [
+        { FID: identifier },
+        { email: identifier }
+      ]
+    });
+
+    if (!faculty) return res.status(401).json({ message: 'Invalid Faculty ID or Email' });
+    
+    if (faculty.password !== password) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+
+    // --- NEW STEP: Fetch Institute Logo ---
+    // We use the instituteId stored in the faculty document
+    const institute = await Institute.findById(faculty.instituteId).select('logo');
+
+    const token = jwt.sign(
+      { id: faculty._id, role: 'faculty', FID: faculty.FID },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.json({
+      token,
+      role: 'faculty',
+      name: faculty.name,
+      FID: faculty.FID,
+      department: faculty.department,
+      isKycVerified: faculty.kyc?.verified || false,
+      
+      // Colors (Stored on Faculty)
+      themeColorPrimary: faculty.themeColorPrimary,
+      themeColorSecondary: faculty.themeColorSecondary,
+
+      // Logo (Fetched dynamically from Institute)
+      instituteLogo: institute ? institute.logo : null 
+    });
+
+  } catch (err) {
+    console.error('/faculty/login error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+// server.js (Partial Update - Replace the /faculty/me endpoint)
+
+app.get('/faculty/me', verifyToken, async (req, res) => {
+  try {
+    // 1. Find Faculty
+    const faculty = await Faculty.findById(req.user.id).select('-password');
+    if (!faculty) return res.status(404).json({ message: 'Faculty not found' });
+
+    // 2. Fetch Institute details - ADDED 'code' to selection
+    const institute = await Institute.findById(faculty.instituteId).select('name code logo themeColorPrimary themeColorSecondary');
+
+    // 3. Combine Data
+    res.json({
+      ...faculty.toObject(),
+      instituteName: institute?.name,
+      instituteCode: institute?.code, // <--- Added this field
+      instituteLogo: institute?.logo,
+      // Prefer faculty specific theme if set, else institute theme
+      themeColorPrimary: faculty.themeColorPrimary || institute?.themeColorPrimary,
+      themeColorSecondary: faculty.themeColorSecondary || institute?.themeColorSecondary
+    });
+  } catch (err) {
+    console.error('/faculty/me error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+// --- server.js ---
+
+app.post('/faculty/update-profile', verifyToken, async (req, res) => {
+  try {
+    // 👇 CHANGED: Extract 'profilePic' to match your schema
+    const { profilePic, phone } = req.body;
+    
+    const updateData = {};
+    
+    // 👇 CHANGED: Check and assign to 'profilePic'
+    if (profilePic) updateData.profilePic = profilePic; 
+    if (phone) updateData.phone = phone;
+
+    updateData.updatedAt = Date.now();
+
+    const updatedFaculty = await Faculty.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateData },
+      { new: true }
+    ).select('-password');
+
+    res.json({ success: true, data: updatedFaculty });
+  } catch (err) {
+    console.error('/faculty/update-profile error:', err);
+    res.status(500).json({ error: 'Profile update failed' });
+  }
+});
+// --- 2. Faculty KYC Verification (Mock UIDAI) ---
+app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
+  try {
+    const { aadharNumber, otp } = req.body;
+
+    // --- MOCK VALIDATION LOGIC ---
+    // In a real scenario, this connects to an NSDL/UIDAI API Gateway.
+    // Here we simulate: 
+    // 1. Aadhaar must be 12 digits.
+    // 2. OTP must be "123456" for success.
+
+    if (!aadharNumber || aadharNumber.length !== 12) {
+      return res.status(400).json({ message: 'Invalid Aadhaar Number format' });
+    }
+
+    if (otp !== '123456') {
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+
+    // Update Faculty Record
+    const updatedFaculty = await Faculty.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          'kyc.verified': true,
+          'kyc.kycType': 'aadhar',
+          'kyc.aadharLast4': aadharNumber.slice(-4) // Only store last 4 digits for security
+        }
+      },
+      { new: true }
+    );
+
+    await Log.create({ 
+      action: 'FACULTY_KYC', 
+      details: `Faculty ${updatedFaculty.FID} completed Aadhaar verification.` 
+    });
+
+    res.json({ success: true, message: 'KYC Verified Successfully' });
+
+  } catch (err) {
+    console.error('/faculty/kyc/verify error:', err);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const [
+      facultyCount,
+      studentCount,
+      deptMetrics,
+      naacDoc,
+      notices,
+      studentsList,
+      faculties,
+      timetables
+    ] = await Promise.all([
+      Faculty.countDocuments({ instituteId: instId }),
+      Student.countDocuments({ instituteId: instId }),
+      DepartmentMetric.find({ instituteId: instId }).lean(),
+      NAACTracker.findOne({ instituteId: instId }).lean(),
+      Notice.find({ instituteId: instId }).sort({ createdAt: -1 }).limit(5).lean(),
+      Student.find({ instituteId: instId }).lean(),
+      Faculty.find({ instituteId: instId }).lean(),
+      Timetable.find({ instituteId: instId }).sort({ createdAt: -1 }).limit(3).lean()
+    ]);
+
+    const attendanceSeries = []; // monthly aggregation
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    for (let m = 0; m < 12; m++) {
+      attendanceSeries.push({
+        month: monthNames[m],
+        attendance: Math.round(Math.random() * 30) + 60,
+        avgScore: Math.round(Math.random() * 30) + 60
+      });
+    }
+
+    const performanceBuckets = [
+      { name: 'Above 80', value: Math.round((studentsList.filter(s => s.avgScore && s.avgScore >= 80).length / (studentsList.length || 1)) * 100) },
+      { name: '60-80', value: Math.round((studentsList.filter(s => s.avgScore && s.avgScore >= 60 && s.avgScore < 80).length / (studentsList.length || 1)) * 100) },
+      { name: 'Below 60', value: Math.round((studentsList.filter(s => s.avgScore && s.avgScore < 60).length / (studentsList.length || 1)) * 100) }
+    ];
+
+    const topCourses = (await Institute.aggregate([
+      { $match: { _id: require('mongoose').Types.ObjectId(instId) } },
+      { $project: { _id: 1 } }
+    ])).slice(0,5).map(() => ({ title: 'Course placeholder', enrolled: Math.floor(Math.random() * 200), avgScore: Math.floor(60 + Math.random() * 30) }));
+
+    const research = {
+      papers: deptMetrics.reduce((s, d) => s + (d.publications || 0), 0),
+      projects: deptMetrics.reduce((s, d) => s + (d.researchGrants || 0), 0),
+      grants: deptMetrics.reduce((s, d) => s + (d.placements || 0), 0)
+    };
+
+    const studentLocations = [];
+    const locationCounts = {};
+    for (const s of studentsList) {
+      if (!s.location) continue;
+      locationCounts[s.location] = (locationCounts[s.location] || 0) + 1;
+    }
+    for (const k of Object.keys(locationCounts)) studentLocations.push({ name: k, count: locationCounts[k] });
+    studentLocations.sort((a,b)=>b.count-a.count);
+
+    const stats = {
+      facultyCount,
+      studentCount,
+      avgAttendance: attendanceSeries.reduce((a,b)=>a+b.attendance,0)/attendanceSeries.length,
+      teachingIndex: Math.round((Math.random()*30)+70),
+      researchScore: research.papers + research.projects,
+      naacOverall: naacDoc ? (naacDoc.overallScore || 'N/A') : 'Pending'
+    };
+
+    res.json({
+      stats,
+      attendanceSeries,
+      performanceBuckets,
+      topCourses,
+      research,
+      naac: { overall: stats.naacOverall, criteria: naacDoc ? naacDoc.criteria : [] },
+      studentLocations,
+      notices,
+      recentFaculties: faculties.slice(0,5),
+      timetables
+    });
+  } catch (err) {
+    console.error('/institute/dashboard-full error:', err);
+    res.status(500).json({ error: 'Failed to fetch dashboard' });
+  }
+});
+// -------------------
+// COURSE MANAGEMENT (Institute Side)
+// -------------------
+
+// 1. Get All Courses
+app.get('/institute/courses', verifyToken, async (req, res) => {
+  try {
+    // Fetch courses and optionally populate Faculty name if assigned
+    const courses = await Course.find({ instituteId: req.user.id })
+      .populate('facultyId', 'name')
+      .sort({ department: 1, year: 1, name: 1 });
+    res.json(courses);
+  } catch (err) {
+    console.error('/institute/courses error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+// 2. Add New Course
+app.post('/institute/courses/add', verifyToken, async (req, res) => {
+  try {
+    const { name, code, department, year, semester, credits } = req.body;
+
+    if (!name || !code || !department || !year) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Check for duplicates (Same Code in Same Dept)
+    const existing = await Course.findOne({ 
+      instituteId: req.user.id, 
+      code: code, 
+      department: department 
+    });
+    
+    if (existing) {
+      return res.status(400).json({ message: "Course code already exists in this department" });
+    }
+
+    const newCourse = new Course({
+      instituteId: req.user.id,
+      name,
+      code,
+      department,
+      year,
+      semester,
+      credits: credits || 3
+    });
+
+    await newCourse.save();
+    res.status(201).json(newCourse);
+  } catch (err) {
+    console.error('/institute/courses/add error:', err);
+    res.status(500).json({ error: 'Creation failed' });
+  }
+});
+
+// 3. Delete Course
+app.delete('/institute/courses/:id', verifyToken, async (req, res) => {
+  try {
+    const deleted = await Course.findOneAndDelete({ 
+      _id: req.params.id, 
+      instituteId: req.user.id 
+    });
+
+    if (!deleted) return res.status(404).json({ message: "Course not found" });
+    res.json({ message: "Course deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Delete failed" });
+  }
+});
+// 1. Add Material to Course
+app.post('/faculty/course/:id/resource', verifyToken, async (req, res) => {
+  try {
+    const { title, type, url } = req.body;
+    const course = await Course.findById(req.params.id);
+    
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    course.resources.push({ title, type, url });
+    await course.save();
+
+    res.json({ success: true, resources: course.resources });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to add resource" });
+  }
+});
+
+// 2. Fetch Eligible Students (Same Dept & Year as Course)
+app.get('/faculty/course/:id/eligible-students', verifyToken, async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+// Normalize year and sem (remove "rd", "th", "nd")
+const normalizedYear = String(course.year).replace(/\D/g, "");
+const normalizedSem  = String(course.semester).replace(/\D/g, "");
+
+const students = await Student.find({
+  instituteId: course.instituteId,
+  department: course.department,
+  year: normalizedYear,
+  semester: normalizedSem
+}).select('name SID profilePic rollNumber section');
+
+
+    res.json({ students, enrolled: course.enrolledStudents });
+  } catch (err) {
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+// ----------------------------------------------------
+// FACULTY NOTICE MANAGEMENT
+// ----------------------------------------------------
+
+// 1. Get All Notices (Institute + Faculty level)
+app.get('/faculty/notices', verifyToken, async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(req.user.id);
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
+
+    // Fetch notices belonging to this Faculty's Institute
+    const notices = await Notice.find({ instituteId: faculty.instituteId })
+      .sort({ createdAt: -1 });
+
+    res.json(notices);
+  } catch (err) {
+    console.error('/faculty/notices error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// 2. Post a New Notice by Faculty
+app.post('/faculty/notices/add', verifyToken, async (req, res) => {
+  try {
+    const { title, description, type } = req.body; // type e.g., 'Student', 'General'
+    
+    const faculty = await Faculty.findById(req.user.id);
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
+
+    const newNotice = new Notice({
+      instituteId: faculty.instituteId,
+      title,
+      description, // or 'content' depending on your Schema
+      type: type || 'General',
+      postedBy: `Faculty: ${faculty.name}`, // Tag the author
+      createdAt: Date.now()
+    });
+
+    await newNotice.save();
+    res.status(201).json(newNotice);
+  } catch (err) {
+    console.error('/faculty/notices/add error:', err);
+    res.status(500).json({ error: "Post failed" });
+  }
+});
+app.put('/institute/students/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+
+    // Security: Prevent changing immutable fields like ID or Institute ownership
+    delete updateData._id;
+    delete updateData.instituteId;
+    delete updateData.createdAt;
+
+    // Find and update, ensuring the student belongs to the logged-in institute
+    const updatedStudent = await Student.findOneAndUpdate(
+      { _id: id, instituteId: req.user.id },
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedStudent) {
+      return res.status(404).json({ message: "Student not found or access denied" });
+    }
+
+    res.json(updatedStudent);
+  } catch (err) {
+    console.error('/institute/students/:id PUT error:', err);
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+// 3. Map (Enroll) Students to Course
+app.post('/faculty/course/:id/enroll', verifyToken, async (req, res) => {
+  try {
+    const { studentIds } = req.body; // Array of IDs
+    const course = await Course.findById(req.params.id);
+    
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    course.enrolledStudents = studentIds; // Overwrite enrollment
+    await course.save();
+
+    res.json({ success: true, message: "Students mapped successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Enrollment failed" });
+  }
+});
+
+app.get('/faculty/courses', verifyToken, async (req, res) => {
+  try {
+    // 1. Find the logged-in Faculty to get their Institute ID
+    const faculty = await Faculty.findById(req.user.id);
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
+    const courses = await Course.find({ instituteId: faculty.instituteId })
+      .sort({ createdAt: -1 }); // Newest first
+      
+    res.json(courses);
+  } catch (err) {
+    console.error('/faculty/courses error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+app.get('/faculty/timetables', verifyToken, async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(req.user.id);
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
+
+    // Fetch all timetables for this institute
+    const timetables = await Timetable.find({ instituteId: faculty.instituteId });
+    res.json(timetables);
+  } catch (err) {
+    console.error('/faculty/timetables error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// 2. Add Reminder
+app.post('/faculty/reminders/add', verifyToken, async (req, res) => {
+  try {
+    const { courseName, day, time, message } = req.body;
+    const newReminder = new Reminder({
+      facultyId: req.user.id,
+      courseName,
+      day,
+      time,
+      message
+    });
+    await newReminder.save();
+    res.json(newReminder);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to add reminder" });
+  }
+});
+
+// 3. Get Reminders
+app.get('/faculty/reminders', verifyToken, async (req, res) => {
+  try {
+    const reminders = await Reminder.find({ facultyId: req.user.id }).sort({ createdAt: -1 });
+    res.json(reminders);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch reminders" });
+  }
+});
+
+// 4. Delete Reminder
+app.delete('/faculty/reminders/:id', verifyToken, async (req, res) => {
+  try {
+    await Reminder.findOneAndDelete({ _id: req.params.id, facultyId: req.user.id });
+    res.json({ message: "Deleted" });
+  } catch (err) {
+    res.status(500).json({ error: "Delete failed" });
   }
 });
 // -------------------

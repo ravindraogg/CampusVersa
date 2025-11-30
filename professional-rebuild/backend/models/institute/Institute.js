@@ -10,7 +10,8 @@ const InstituteSchema = new mongoose.Schema({
   
   // --- NEW FIELDS ---
   logo: { type: String },       // Stores Base64 image string
-  themeColor: { type: String }, // Stores Hex Code (e.g., #66BB6A)
+  themeColorPrimary: { type: String },
+  themeColorSecondary: { type: String },
   website: { type: String },    // Added website field as used in the profile update
   
   status: { 

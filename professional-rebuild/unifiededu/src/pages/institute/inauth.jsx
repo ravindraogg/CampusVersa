@@ -18,12 +18,12 @@ import {
   ArrowLeft,
 } from "lucide-react";
 // Import the custom website icon
-import bookImage from "../../assets/book1.jpg";
+import bookImage from "../../assets/logo.png";
 
 // --- FIXED: Constants ---
 const primaryColor = "#66BB6A"; // Green
 const secondaryColor = "#7D5AFE"; // Purple
-const API_URL = "http://localhost:5000"; // Adjust if hosted elsewhere
+const API_URL = import.meta.env.VITE_BACK_URI; // Adjust if hosted elsewhere
 
 // --- FIXED: Sub-component ---
 const InputField = ({

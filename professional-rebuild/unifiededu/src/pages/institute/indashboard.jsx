@@ -21,11 +21,12 @@ import {
   X,
   Trash2,
   BellOff,
-  Hash,       // Added
-  Shield,     // Added
-  FileText,   // Added
-  CalendarDays, // Added
-  Edit3       // Added
+  Hash,
+  Shield,
+  FileText,
+  CalendarDays,
+  Edit3,
+  BookOpen // Ensure BookOpen is imported
 } from "lucide-react";
 
 // Sub-page Components
@@ -35,10 +36,10 @@ import StudentPage from "./StudentPage";
 import RequestAdminPage from "./RequestAdminPage";
 import NaacPage from "./NaacPage";
 import NoticePage from "./NoticePage"; 
-// Import the new Timetable Manager
 import TimetableManager from "./Timetable"; 
+import CoursesPage from "./CoursesPage"; // Import CoursesPage
 
-const API_URL = "http://localhost:5000";
+const API_URL = import.meta.env.VITE_BACK_URI;
 
 // --- Default Theme ---
 const DEFAULT_THEME = {
@@ -146,8 +147,8 @@ const SectionHeader = ({ title, subtitle, action }) => (
 // --- Main Dashboard Component ---
 const InstituteDashboard = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [notification, setNotification] = useState(null); // Toast state
-  const [showNotificationsModal, setShowNotificationsModal] = useState(false); // Bell Modal state
+  const [notification, setNotification] = useState(null); 
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false); 
 
   // Data State
   const [institute, setInstitute] = useState(null);
@@ -173,13 +174,11 @@ const InstituteDashboard = () => {
     previewUrl: null,
   });
 
-  // --- Helper: Centralized Toast Function ---
   const showToast = (message, type = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // --- Initial fetch ---
   const fetchInstituteData = useCallback(async () => {
     setLoading(true);
     try {
@@ -217,7 +216,6 @@ const InstituteDashboard = () => {
     fetchInstituteData();
   }, [fetchInstituteData]);
 
-  // --- Update Browser Tab ---
   useEffect(() => {
     if (institute) {
       document.title = `${institute.code || "Institute"} | CampusVersa`;
@@ -233,13 +231,11 @@ const InstituteDashboard = () => {
     }
   }, [institute]);
 
-  // --- Tab Management ---
   useEffect(() => {
     if (activeTab === "dashboard") loadDashboardStats();
     if (activeTab === "notices" && noticesList === null) loadNotices();
   }, [activeTab]);
 
-  // --- Loaders ---
   const loadDashboardStats = async () => {
     setDashboardLoading(true);
     try {
@@ -258,26 +254,6 @@ const InstituteDashboard = () => {
     } catch (err) { setNoticesList([]); } finally { setNoticesLoading(false); }
   };
   
-  // --- ACTIONS ---
-  const postNotice = async (payload) => {
-    setIsPageLoading(true);
-    try {
-      const res = await authFetch("/institute/notices/add", { method: "POST", body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (res.ok) { 
-        showToast("Notice published successfully."); 
-        loadNotices(); 
-      } else { 
-        showToast(data.message || "Failed to post notice", "error"); 
-      }
-    } catch (err) { 
-      showToast("Server error while posting notice", "error"); 
-    } finally { 
-      setIsPageLoading(false); 
-    }
-  };
-
-  // --- Profile Logic ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -342,7 +318,6 @@ const InstituteDashboard = () => {
     window.location.href = "/in/auth";
   };
 
-  // --- Bell / Notification Logic ---
   const clearNotifications = () => {
     setNoticesList([]);
     showToast("Notifications cleared locally");
@@ -390,7 +365,6 @@ const InstituteDashboard = () => {
       <SectionHeader title="Settings" subtitle="Manage your institute profile and appearance" />
       <div className="w-full flex justify-center">
         <div className="w-full max-w-4xl bg-white rounded-3xl border border-gray-100 shadow-xl relative overflow-hidden">
-          {/* Decorative Top Banner */}
           <div 
             className="h-32 w-full absolute top-0 left-0" 
             style={{ 
@@ -400,14 +374,11 @@ const InstituteDashboard = () => {
           ></div>
           
           <div className="relative z-10 p-8">
-            
-            {/* Header Section: Logo & Title */}
             <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-8 mt-4">
               <div className="w-32 h-32 rounded-full bg-white shadow-lg p-1.5 border-4 border-white relative shrink-0">
-                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"style={{ borderColor: currentTheme.primary }}>
+                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"style={{ background: currentTheme.primary }}>
                   {institute?.logo ? <img src={institute.logo} className="w-full h-full object-cover" alt="Logo" /> : <span className="text-3xl font-bold text-gray-300">IN</span>}
                 </div>
-                {/* Edit Button Badge */}
                 {!isEditingProfile && (
                   <button onClick={openProfileEditor} className="absolute bottom-1 right-1 p-2 rounded-full bg-white shadow-md border hover:bg-gray-50 text-gray-600 transition-colors z-20" title="Edit Profile">
                     <Edit3 className="w-4 h-4" />
@@ -441,7 +412,6 @@ const InstituteDashboard = () => {
                   <div className="flex justify-end gap-3 pt-4 border-t"><button onClick={() => setIsEditingProfile(false)} className="px-5 py-2.5 rounded-xl border hover:bg-gray-50 font-medium">Cancel</button><button onClick={saveProfile} disabled={uploadLoading} className="px-6 py-2.5 rounded-xl text-white shadow-lg font-medium" style={{ backgroundColor: currentTheme.primary }}>Save Changes</button></div>
                </div>
             ) : (
-              // Info Grid
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-6 border-t border-gray-100">
                 <ProfileDetail label="Official Email" value={institute?.email} icon={Send} />
                 <ProfileDetail label="Institute Code" value={institute?.code} icon={Hash} />
@@ -457,15 +427,11 @@ const InstituteDashboard = () => {
     </div>
   );
 
-  // --- Main Render ---
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 animate-spin" style={{ color: DEFAULT_THEME.primary }} /></div>;
   if (error) return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>;
 
   return (
-    // 1. Root Container: Fixed Screen Dimensions (No Scroll)
     <div className="h-screen w-screen bg-white p-6 flex flex-col overflow-hidden relative">
-      
-      {/* CUSTOM SCROLLBAR STYLES (Dynamic based on Theme) */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
@@ -475,7 +441,7 @@ const InstituteDashboard = () => {
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background-color: ${currentTheme.primary}60; /* 60% opacity for subtleness */
+          background-color: ${currentTheme.primary}60; 
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -483,14 +449,12 @@ const InstituteDashboard = () => {
         }
       `}</style>
 
-      {/* Loading Overlay */}
       {isPageLoading && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
           <div className="rounded-2xl p-6 bg-white/90 backdrop-blur-md flex flex-col items-center gap-4"><Spinner size={28} color={currentTheme.primary || "#111"} /><div style={{ color: "#374151" }}>Working…</div></div>
         </div>
       )}
 
-      {/* Notification Toast */}
       {notification && (
         <div className="fixed bottom-6 right-6 z-[100] bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-10 fade-in">
           <div className={`p-2 rounded-full ${notification.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{notification.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}</div>
@@ -499,11 +463,9 @@ const InstituteDashboard = () => {
         </div>
       )}
 
-      {/* Notification Center Modal (Bell Click) */}
       {showNotificationsModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            {/* Modal Header */}
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
                 <Bell className="w-5 h-5 text-indigo-600"/> Notifications
@@ -513,7 +475,6 @@ const InstituteDashboard = () => {
               </button>
             </div>
             
-            {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white custom-scrollbar">
               {noticesList && noticesList.length > 0 ? (
                 noticesList.map((notice, idx) => (
@@ -538,7 +499,6 @@ const InstituteDashboard = () => {
               )}
             </div>
 
-            {/* Modal Footer (Clear All) */}
             {noticesList && noticesList.length > 0 && (
               <div className="p-4 border-t border-gray-100 bg-gray-50/50">
                 <button 
@@ -555,33 +515,64 @@ const InstituteDashboard = () => {
 
       {/* 2. HEADER: Fixed Height (Shrink-0) */}
       <div className="shrink-0 flex items-start justify-between mb-6">
-        <div className="rounded-2xl px-4 py-3 flex items-center gap-3 shadow-md" style={{ backgroundColor: currentTheme.primary, width: "220px" }}>
-          <div className="w-10 h-10 rounded-xl overflow-hidden bg-white">{institute?.logo ? <img src={institute.logo} className="w-full h-full object-cover" alt="Logo" /> : <Building2 className="w-5 h-5 m-auto" />}</div>
-          <p className="font-bold text-[25px] " style={{ color: currentTheme.textOnPrimary }}>{institute?.code}</p>
+        <div className=" px-4 py-3 flex items-center gap-3 shadow-md rounded-4xl" style={{ backgroundColor: currentTheme.primary, width: "220px" }}>
+          <div className="w-17 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center p-1 border-2 border-white/30">
+
+            {institute?.logo ? (
+              <img
+                src={institute.logo}
+                alt="Logo"
+                className="w-full h-full object-contain p-1"
+              />
+            ) : (
+              <Building2 className="w-5 h-5 m-auto" />
+            )}
+          </div>
+          <div>
+                   <h1 className="text-white font-extrabold text-xl leading-none tracking-tight">
+                     {institute.code || "INST"}
+                   </h1>
+                   <p className="text-[10px] opacity-90 uppercase tracking-widest font-bold mt-1"style={{color:currentTheme.textOnPrimary}}>
+                     Institute Portal
+                   </p>
+                 </div>
         </div>
         
-        {/* BELL ICON BUTTON */}
-        <button 
-          onClick={() => setShowNotificationsModal(true)}
-          className="rounded-2xl px-6 py-4 flex items-center gap-6 hover:bg-gray-50 transition-colors cursor-pointer relative" 
-          style={{ backgroundColor: "transparent" }}
-        >
-          <Bell className="w-6 h-6" style={{ color: currentTheme.primary }} />
-          {noticesList && noticesList.length > 0 && (
-            <span className="absolute top-3 right-5 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
-          )}
-        </button>
+        {/* Right Action Icons: Bell & Logout */}
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setShowNotificationsModal(true)}
+            className="rounded-2xl px-6 py-4 flex items-center gap-6 hover:bg-gray-50 transition-colors cursor-pointer relative" 
+            style={{ backgroundColor: "transparent" }}
+            title="Notifications"
+          >
+            <Bell className="w-6 h-6" style={{ color: currentTheme.primary }} />
+            {noticesList && noticesList.length > 0 && (
+              <span className="absolute top-3 right-5 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
+            )}
+          </button>
+
+          <button 
+            onClick={handleLogout}
+            className="rounded-2xl px-6 py-4 flex items-center gap-6 hover:bg-gray-50 transition-colors cursor-pointer" 
+            style={{ backgroundColor: "transparent" }}
+            title="Logout"
+          >
+            <LogOut className="w-6 h-6" style={{ color: currentTheme.primary }} />
+          </button>
+        </div>
       </div>
 
       {/* 3. MAIN ROW: Fills Remaining Height */}
       <div className="flex gap-6 flex-1 min-h-0">
         
         {/* SIDEBAR: Full Height, Internal Scroll */}
-        <div className="rounded-3xl p-5 shadow-sm flex flex-col gap-3 h-full overflow-y-auto custom-scrollbar" style={{ backgroundColor: currentTheme.primary, width: "fit-content", minWidth: "220px" }}>
+        <div className="rounded-4xl p-5 shadow-sm flex flex-col gap-3 h-full overflow-y-auto custom-scrollbar" style={{ backgroundColor: currentTheme.primary, width: "fit-content", minWidth: "220px" }}>
           {[
             { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
             { id: "faculty", label: "Manage Faculty", icon: Users },
             { id: "dept-metrics", label: "Manage Department", icon: BarChart3 },
+              { id: "courses", label: "Manage Courses", icon: BookOpen },
             { id: "data-tracking", label: "Manage Student", icon: ClipboardList },
             { id: "naac", label: "NAAC Monitoring", icon: CheckCircle },
             { id: "requests", label: "Requests to Admin", icon: Send },
@@ -593,11 +584,7 @@ const InstituteDashboard = () => {
               <item.icon className="w-5 h-5" /><span className="ml-3 text-sm">{item.label}</span>
             </button>
           ))}
-          <div className="mt-auto">
-            <button onClick={handleLogout} className="flex items-center px-4 py-3 rounded-xl mt-4 transition-all w-full font-semibold" style={{ backgroundColor: currentTheme.textOnPrimary + "20", color: currentTheme.textOnPrimary }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#E53935"; e.currentTarget.style.color = "#FFFFFF"; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = currentTheme.textOnPrimary + "20"; e.currentTarget.style.color = currentTheme.textOnPrimary; }}>
-              <LogOut className="w-5 h-5" /><span className="ml-3 text-sm">Logout</span>
-            </button>
-          </div>
+          {/* Logout button removed from here */}
         </div>
 
         {/* RIGHT CONTENT: Full Height, Internal Scroll Logic */}
@@ -605,7 +592,6 @@ const InstituteDashboard = () => {
           
           {/* Scroll wrapper for normal pages */}
           {activeTab === "naac" ? (
-            // NaacPage handles its own scroll internally
             <NaacPage
               authFetch={authFetch}
               theme={currentTheme}
@@ -613,9 +599,9 @@ const InstituteDashboard = () => {
               pushToast={(msg) => showToast(msg.message, msg.type)}
             />
           ) : (
-            // Other pages need this wrapper to scroll inside the card
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {activeTab === "dashboard" && renderDashboardHome()}
+              {activeTab === "courses" && <CoursesPage authFetch={authFetch} theme={currentTheme} pushToast={(msg) => showToast(msg.message, msg.type)} />}
               {activeTab === "dept-metrics" && <DepartmentPage authFetch={authFetch} theme={currentTheme} institute={institute} pushToast={(msg) => showToast(msg.message, msg.type)} />}
               {activeTab === "faculty" && <FacultyPage authFetch={authFetch} theme={currentTheme} institute={institute} pushToast={(msg) => showToast(msg.message, msg.type)} />}
               {activeTab === "data-tracking" && <StudentPage authFetch={authFetch} theme={currentTheme} institute={institute} pushToast={(msg) => showToast(msg.message, msg.type)} />}

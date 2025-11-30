@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit, AlertTriangle } from "lucide-react"; // Added AlertTriangle
+import { Plus, Trash2, Edit, AlertTriangle } from "lucide-react";
 
 export default function FacultyPage({ authFetch, theme, institute, pushToast }) {
   // data
@@ -13,7 +13,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   const [isUploadingPic, setIsUploadingPic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Delete Modal State (New)
+  // Delete Modal State
   const [deleteId, setDeleteId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -79,7 +79,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       pushToast({ type: "error", message: "Load failed: Could not load faculty" });
     } finally {
       setLoading(false);
-      // slight delay so spinner isn't too flickery
       setTimeout(() => setIsPageLoading(false), 200);
     }
   };
@@ -90,27 +89,53 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   }, []);
 
   // preview FID generator
-  const previewFID = () => {
+const previewFID = () => {
     if (!form.department) return "—";
+    
     const deptCode = form.department.toUpperCase();
     const instCode = institute?.code || "CLG";
+    const clgNum   = institute?.collegeNumber || 1;
+
+    // 1. Filter local list for same department
     const sameDept = list.filter((f) => (f.department || "").toUpperCase() === deptCode);
-    const names = sameDept.map((x) => x.name).concat([form.name || ""]).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    const idx = names.findIndex((n) => n === (form.name || ""));
-    const seq = idx >= 0 ? idx + 1 : names.length;
-    return `${institute?.collegeNumber || 1}${instCode}${deptCode}${String(seq).padStart(3, "0")}`;
+
+    // 2. Extract sequences
+    const seqNumbers = sameDept.map(f => {
+      if(!f.FID) return 0;
+      const last3 = f.FID.slice(-3);
+      const num = parseInt(last3, 10);
+      return isNaN(num) ? 0 : num;
+    });
+
+    // 3. Find max + 1
+    const maxSeq = seqNumbers.length > 0 ? Math.max(...seqNumbers) : 0;
+    const nextSeq = maxSeq + 1;
+
+    // 4. Format
+    return `${clgNum}${instCode}${deptCode}${String(nextSeq).padStart(3, "0")}`;
   };
 
   // --- Add faculty (submit) ---
   const submit = async () => {
-    if (!form.name || !form.department) {
-      pushToast({ type: "error", message: "Validation: Name and department required" });
+    // UPDATED: Added password validation
+    if (!form.name || !form.department || !form.password) {
+      pushToast({ type: "error", message: "Validation: Name, department, and password required" });
       return;
     }
 
     setIsAdding(true);
     try {
-      const payload = { ...form, department: form.department.toUpperCase() };
+      // UPDATED: Calculate FID here to send as loginId
+      const generatedFID = previewFID();
+      // Ensure we don't send the dash if calculation failed (though validation prevents this)
+      const finalLoginId = generatedFID === "—" ? "" : generatedFID;
+
+      const payload = { 
+        ...form, 
+        department: form.department.toUpperCase(),
+        loginId: finalLoginId // Send generated FID as loginId
+      };
+      
       const res = await authFetch("/institute/faculty/add", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -152,7 +177,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   });
 
   // --- file handlers ---
-  // For add-form upload
   const handlePic = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -165,7 +189,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     reader.readAsDataURL(file);
   };
 
-  // For edit popup upload
   const handleEditPic = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -178,7 +201,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     reader.readAsDataURL(file);
   };
 
-  // --- delete faculty (Updated Logic) ---
+  // --- delete faculty ---
   const confirmDelete = async () => {
     if (!deleteId) return;
     setIsDeleting(true);
@@ -188,7 +211,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       if (res.ok) {
         pushToast({ type: "success", message: "Faculty removed successfully" });
         await load();
-        setDeleteId(null); // Close modal
+        setDeleteId(null); 
       } else {
         pushToast({ type: "error", message: data.message || "Delete failed" });
       }
@@ -231,7 +254,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   return (
     <div className="w-full relative">
 
-      {/* Full-page glass loader (Option C) */}
+      {/* Full-page glass loader */}
       {isPageLoading && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
           <div className="rounded-2xl p-6 bg-white/90 backdrop-blur-md flex flex-col items-center gap-4">
@@ -283,7 +306,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
         </div>
       </div>
 
-      {/* FACULTY GRID: 3 cards per row on md+ */}
+      {/* FACULTY GRID */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {loading ? (
           <div className="p-6">Loading...</div>
@@ -296,7 +319,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
               className="cursor-pointer p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] bg-white hover:shadow-[0_6px_25px_rgba(0,0,0,0.14)] transition-all flex items-center gap-4"
               onClick={() => setSelected(f)}
             >
-              {/* Profile Pic */}
               <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
                 {f.profilePic ? (
                   <img src={f.profilePic} className="w-full h-full object-cover" alt="pf" />
@@ -312,7 +334,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                 )}
               </div>
 
-              {/* DETAILS + ACTIONS in one row */}
               <div className="flex-1 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-[15px] truncate">{index + 1}. {f.name}</p>
@@ -333,7 +354,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                     style={{ background: "#E53935" }}
                     onClick={(e) => { 
                       e.stopPropagation(); 
-                      setDeleteId(f._id); // Open Custom Modal
+                      setDeleteId(f._id); 
                     }}
                   >
                     Delete
@@ -360,7 +381,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
               <button onClick={() => setShowAdd(false)} className="text-slate-500">✕</button>
             </div>
 
-            {/* PREMIUM FORM — BLACK THEME */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
 
               {/* NAME */}
@@ -394,6 +414,24 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   style={{ color: "black" }}
                 >
                   Email
+                </label>
+              </div>
+
+              {/* --- ADDED: PASSWORD FIELD --- */}
+              <div className="relative">
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Password
                 </label>
               </div>
 
@@ -620,7 +658,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
         </div>
       )}
 
-      {/* --- NEW DELETE CONFIRMATION MODAL --- */}
+      {/* DELETE MODAL */}
       {deleteId && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100">

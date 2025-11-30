@@ -100,7 +100,7 @@ const InteractiveBackground = ({ mousePosition }) => {
     );
 };
 
-import bookImage from '../assets/book1.jpg';
+import bookImage from '../assets/logo.png';
 // A simple component for the new logo
 const Logo = () => (
   <div className="flex items-center gap-4"> {/* increased gap */}
