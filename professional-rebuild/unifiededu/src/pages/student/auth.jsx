@@ -1,8 +1,12 @@
+// src/pages/student/auth.jsx
 import React, { useState } from "react";
-import { Mail, Lock, ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 
 const StudentLogin = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -11,92 +15,122 @@ const StudentLogin = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+    setError(""); // Clear error on type
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Student Login:", form);
+    setLoading(true);
+    setError("");
+
+    try {
+      const API_URL = import.meta.env.VITE_BACK_URI || "http://localhost:5000";
+      
+      const res = await fetch(`${API_URL}/student/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      // Login Success
+      localStorage.setItem("studentToken", data.token);
+      localStorage.setItem("studentName", data.user.name);
+      
+      // Redirect to Dashboard
+      navigate("/student/dashboard");
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="absolute top-6 left-6">
-        <Link
-          to="/"
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
-        >
-          <ArrowLeft size={18} /> Back to Home
-        </Link>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans">
+      <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden flex">
+        
+        {/* Left Side - Visuals */}
+        <div className="hidden lg:flex lg:w-1/2 bg-[#2E5843] relative items-center justify-center p-12">
+          <div className="absolute top-0 left-0 w-full h-full opacity-10">
+            <div className="absolute top-1/4 left-1/4 w-64 h-64 border-2 border-white rounded-full"></div>
+            <div className="absolute bottom-1/4 right-1/4 w-48 h-48 border-2 border-white rounded-full"></div>
+          </div>
+          <div className="relative z-10 text-center">
+            <img 
+              src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=600&h=600&fit=crop" 
+              alt="Student"
+              className="w-80 h-80 object-cover rounded-2xl shadow-2xl border-4 border-white/20"
+            />
+            <h2 className="text-3xl font-bold text-white mt-8">Welcome Back!</h2>
+            <p className="text-white/70 mt-2">Access your portal to view attendance, results, and more.</p>
+          </div>
+        </div>
 
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-        <h2 className="text-3xl font-semibold text-gray-900 text-center mb-6">
-          Student Login
-        </h2>
-        <p className="text-center text-gray-500 text-sm mb-8">
-          Please sign in using your student email.
-        </p>
+        {/* Right Side - Form */}
+        <div className="w-full lg:w-1/2 p-12 flex flex-col justify-center">
+          <Link to="/" className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition mb-8 w-fit">
+            <ArrowLeft size={18} /> Back to Home
+          </Link>
+          
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-2 h-8 bg-[#2E5843] rounded-full"></div>
+              <span className="text-xl font-bold text-gray-800">CampusVersa</span>
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Student Login</h2>
+            <p className="text-gray-500">Please enter your registered email and password (or USN).</p>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Email */}
-          <div>
-            <label className="text-sm text-gray-600 block mb-2">
-              Student Email
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl flex items-center gap-3 text-sm font-medium animate-in fade-in slide-in-from-top-2">
+              <AlertCircle size={18} />
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Official Email</label>
               <input
                 type="email"
                 name="email"
                 required
-                placeholder="name@student.edu"
+                placeholder="nitesh@edu.in"
                 value={form.email}
                 onChange={handleChange}
-                className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-white text-gray-800"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#2E5843] focus:border-transparent transition bg-gray-50 text-gray-800 outline-none"
               />
             </div>
-          </div>
 
-          {/* Password */}
-          <div>
-            <label className="text-sm text-gray-600 block mb-2">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Password</label>
               <input
                 type="password"
                 name="password"
                 required
-                placeholder="Enter your password"
+                placeholder="••••••••"
                 value={form.password}
                 onChange={handleChange}
-                className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-white text-gray-800"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#2E5843] focus:border-transparent transition bg-gray-50 text-gray-800 outline-none"
               />
             </div>
-          </div>
 
-          {/* Forgot Password */}
-          <div className="flex justify-end">
             <button
-              type="button"
-              onClick={() => alert("Forgot password flow here")}
-              className="text-sm text-blue-600 hover:underline"
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#2E5843] hover:bg-[#1e3b2c] text-white font-bold py-4 rounded-xl shadow-lg shadow-green-900/20 transition-all flex items-center justify-center gap-2 mt-4"
             >
-              Forgot password?
+              {loading ? <Loader2 className="animate-spin" /> : "Sign In to Portal"}
             </button>
-          </div>
-
-          {/* Login Button */}
-          <button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg shadow-md transition"
-          >
-            Login
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-gray-400">
-          © {new Date().getFullYear()} Student Portal — CampusVersa
-        </p>
+          </form>
+        </div>
       </div>
     </div>
   );
