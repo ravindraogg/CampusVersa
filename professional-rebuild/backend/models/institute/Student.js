@@ -1,9 +1,8 @@
-// models/institute/Student.js
 const mongoose = require('mongoose');
 
 const StudentSchema = new mongoose.Schema({
   instituteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Institute', required: true },
-  SID: { type: String, required: true, unique: true }, 
+  SID: { type: String, required: true }, 
   name: { type: String, required: true },
   
   // Basic Info
@@ -14,84 +13,51 @@ const StudentSchema = new mongoose.Schema({
   admissionNo: { type: String },  
   department: { type: String, required: true }, 
   year: { type: String }, 
-  semester: { type: String, required: true }, // <--- ADDED: Current Semester
-  course: { type: String },
-  
-  // Auth & UI
+  semester: { type: String, required: true },
   profilePic: { type: String },
-  loginId: { type: String },
-  password: { type: String },
-  themeColorPrimary: { type: String },
-  themeColorSecondary: { type: String },
+  password: { type: String }, // Make sure not to duplicate keys like in your snippet
 
-  // --- UPDATED FEATURE: Academic Dashboard (GPA, CGPA logic) ---
+  // --- ACADEMIC ---
   academic: {
-    cgpa: { type: Number, default: 0 }, // Calculated using formula: Σ(SGPA * Credits) / Σ(Credits)
-    
-    // Store history to calculate CGPA
+    cgpa: { type: Number, default: 0 }, 
     semesterResults: [{
       semester: String,
-      totalCredits: Number, // The ΣC for this semester
-      earnedPoints: Number, // The Σ(GradePoint * Credits)
-      sgpa: Number          // The calculated SGPA for this semester
+      sgpa: Number
     }],
-    
-    backlogs: { type: Number, default: 0 },
     creditsEarned: { type: Number, default: 0 }
   },
 
-  // ... (Rest of the schema: attendance, lifecycle, placement, freelancing, aiInsights remains the same)
-  attendance: {
+  // --- DETAILED COURSE MAPPING (For Marks) ---
+  courseEnrollments: [{
+    semester: { type: String, required: true },
+    subjects: [{
+      courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
+      facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty' },
+      courseCode: String,
+      courseName: String,
+      
+      // Detailed Marks Breakdown
+      marksDetails: {
+        test1: { type: Number, default: 0 },
+        test2: { type: Number, default: 0 },
+        test3: { type: Number, default: 0 },
+        assignment: { type: Number, default: 0 },
+        external: { type: Number, default: 0 } 
+      },
+
+      // Calculated Total (Optional: You can calculate this on the fly if preferred)
+      marksObtained: { type: Number, default: 0 } 
+    }]
+  }],
+
+  // --- ATTENDANCE SUMMARY ONLY ---
+  // Detailed logs are now in the 'Attendance' collection.
+  // We keep this specific field for quick dashboard "Overall %" display.
+  attendanceOverview: {
     overallPercentage: { type: Number, default: 0 },
-    subjectWise: [{
-      subjectName: String,
-      attended: Number,
-      total: Number,
-      percentage: Number
-    }],
     alertLevel: { type: String, enum: ['Safe', 'Warning', 'Critical'], default: 'Safe' }
   },
-  lifecycle: [{
-    event: String,
-    date: { type: Date, default: Date.now },
-    description: String
-  }],
-  achievements: [{
-    title: String,
-    date: Date,
-    issuer: String,
-    certificateUrl: String,
-    type: { type: String, enum: ['Academic', 'Sports', 'Cultural', 'Hackathon'] }
-  }],
-  placement: {
-    status: { type: String, enum: ['Open to Work', 'Placed', 'Higher Studies', 'Not Interested'], default: 'Open to Work' },
-    skills: [String],
-    resumeUrl: String,
-    applications: [{
-      company: String,
-      role: String,
-      status: { type: String, enum: ['Applied', 'Shortlisted', 'Interview', 'Rejected', 'Offered'] },
-      date: Date
-    }]
-  },
-  freelancing: {
-    isFreelancer: { type: Boolean, default: false },
-    portfolioUrl: String,
-    gigsCompleted: { type: Number, default: 0 },
-    earnings: { type: Number, default: 0 },
-    specialization: [String]
-  },
-  documentLocker: [{
-    docName: String,
-    docUrl: String,
-    verified: { type: Boolean, default: false }
-  }],
-  aiInsights: {
-    performancePrediction: String,
-    riskAnalysis: String,
-    suggestedFocusAreas: [String]
-  },
-
+  
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

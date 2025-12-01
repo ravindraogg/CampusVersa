@@ -32,6 +32,11 @@ const Timetable = require('./models/institute/Timetable');
 const AllGrievance = require('./models/admin/AllGrievance');
 const Department = require('./models/institute/Department');
 const Course = require('./models/institute/Course');
+const Attendance = require('./models/institute/Attendance');
+const FacultySSR = require('./models/institute/FacultySSR');
+const FacultyForm = require('./models/institute/FacultyForm');
+const FacultyFormResponse = require('./models/institute/FacultyFormResponse');
+
 const ReminderSchema = new mongoose.Schema({
   facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
   courseName: String,
@@ -449,89 +454,98 @@ app.get('/institute/me', verifyToken, async (req, res) => {
   }
 });
 
-// Update profile: accepts { logoBase64, name }
-// ✔ FIXED: SINGLE clean update-profile route
-// ✔ FIXED update-profile route (uses googleClient instead of genAI)
-app.post('/institute/update-profile', verifyToken, async (req, res) => {
+app.post('/faculty/course/opt-in', verifyToken, async (req, res) => {
   try {
-    const { logoBase64, name } = req.body;
+    const { courseId, status } = req.body; // status: true (Opt In), false (Opt Out)
+    const facultyId = req.user.id;
 
-    const updateData = {};
-    if (name) updateData.name = name;
+    // 1. Verify Course Exists
+    const course = await Course.findById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
 
-    // Save base64 logo
-    if (logoBase64 && logoBase64.startsWith("data:image")) {
-      updateData.logo = logoBase64;
+    // 2. Verify Faculty Exists
+    const faculty = await Faculty.findById(facultyId);
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
 
-      // Extract raw base64
-      const base64Data = logoBase64.split(",")[1];
-      const mimeType = logoBase64.split(";")[0].split(":")[1];
+    if (status) {
+      // --- OPT IN ---
+      // Add course ID to the faculty's 'courses' array if not already present
+      // We use $addToSet to avoid duplicates
+      await Faculty.findByIdAndUpdate(facultyId, { 
+        $addToSet: { courses: courseId } 
+      });
 
-      // AI color extraction (Google Gemini only)
-     // AI pastel + contrast color extraction
-if (googleClient && aiProvider === "google") {
-  try {
-    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+      // OPTIONAL: If you want to update the Course to say "Taught by X", do it here.
+      // If multiple faculties teach the same course, you might skip this 
+      // or change Course.facultyId to an array. 
+      // For now, I will Set it to the current faculty as the 'Primary' instructor.
+      course.facultyId = facultyId;
+      await course.save();
 
-    const prompt = `
-  Analyze this logo and extract two HEX colors:
+    } else {
+      // --- OPT OUT ---
+      // Remove course ID from the faculty's 'courses' array
+      await Faculty.findByIdAndUpdate(facultyId, { 
+        $pull: { courses: courseId } 
+      });
 
-  1. "primary": choose a darker, rich color taken from the logo. 
-     It must be dark enough to work as a strong sidebar/nav background.
-  
-  2. "secondary": choose a lighter, fully readable contrast color
-     that sits clearly on top of the primary for text/icons.
-
-  Return strictly this JSON:
-  {
-    "primary": "#xxxxxx",
-    "secondary": "#xxxxxx"
-  }
-`;
-
-
-    const result = await model.generateContent([
-      prompt,
-      { inlineData: { data: base64Data, mimeType } }
-    ]);
-
-    let text = result.response.text().trim();
-
-    // Clean code fences if any
-    text = text.replace(/```json/g, "").replace(/```/g, "");
-
-    // Parse JSON safely
-    const colors = JSON.parse(text);
-
-    if (colors.primary && colors.secondary) {
-      updateData.themeColorPrimary = colors.primary;
-      updateData.themeColorSecondary = colors.secondary;
+      // OPTIONAL: If this faculty was the primary instructor, clear the field
+      if (course.facultyId && course.facultyId.toString() === facultyId) {
+        course.facultyId = null;
+        await course.save();
+      }
     }
+
+    res.json({ success: true, message: status ? "Course Opted" : "Course Removed" });
 
   } catch (err) {
-    console.error("AI dual-color extraction failed:", err.message);
+    console.error("Opt-In Error:", err);
+    res.status(500).json({ error: "Operation failed" });
   }
-}
+});
+app.post('/faculty/update-profile', verifyToken, async (req, res) => {
+  try {
+    // Extract all fields sent from the frontend form
+    const { 
+      profilePic, 
+      phone, 
+      qualification, 
+      experience, 
+      research 
+    } = req.body;
+    
+    const updateData = {};
+    
+    // 1. Basic Fields
+    if (profilePic) updateData.profilePic = profilePic; 
+    if (phone) updateData.phone = phone;
+    if (qualification) updateData.qualification = qualification;
+    if (experience) updateData.experience = experience;
 
+    // 2. Nested Research Fields
+    // We use dot notation to update specific fields inside the 'research' object
+    // without overwriting the entire object (preserving other keys if they exist).
+    if (research) {
+      if (research.papersPublished !== undefined) updateData['research.papersPublished'] = research.papersPublished;
+      if (research.citations !== undefined) updateData['research.citations'] = research.citations;
+      if (research.hIndex !== undefined) updateData['research.hIndex'] = research.hIndex;
+      if (research.projectsGuided !== undefined) updateData['research.projectsGuided'] = research.projectsGuided;
     }
 
-    // Save to MongoDB
-    const updated = await Institute.findByIdAndUpdate(
+    updateData.updatedAt = Date.now();
+
+    const updatedFaculty = await Faculty.findByIdAndUpdate(
       req.user.id,
       { $set: updateData },
       { new: true }
-    ).select("-password");
+    ).select('-password');
 
-    res.json({ success: true, data: updated });
-
+    res.json({ success: true, data: updatedFaculty });
   } catch (err) {
-    console.error("update-profile error:", err);
-    res.status(500).json({ success: false, message: "Update failed" });
+    console.error('/faculty/update-profile error:', err);
+    res.status(500).json({ error: 'Profile update failed' });
   }
 });
-
-
-
 // Dashboard stats - aggregated
 app.get('/institute/dashboard-stats', verifyToken, async (req, res) => {
   try {
@@ -740,29 +754,21 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
 app.post('/institute/students/add', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
-    // Destructure semester specifically to ensure it's captured
     const { department, name, year, semester, ...rest } = req.body;
 
     if (!department || !name || !year || !semester) {
       return res.status(400).json({ message: 'Department, name, year, and semester are required' });
     }
 
-    const inst = await Institute.findById(instId).select('code collegeNumber themeColorPrimary themeColorSecondary');
+    const inst = await Institute.findById(instId);
     if (!inst) return res.status(404).json({ message: 'Institute not found' });
 
-    const deptCode = String(department).toUpperCase();
-    const yearStr = String(year).slice(-2);
-
-    // SID Generation Logic
-    const existing = await Student.find({ instituteId: instId, department: deptCode }).select('name SID').lean();
-    const combined = existing.map(e => ({ name: e.name })).concat([{ name }]);
-    combined.sort((a, b) => a.name.localeCompare(b.name));
-
-    const idx = combined.findIndex(x => x.name === name);
-    const roll = idx >= 0 ? idx + 1 : combined.length;
-    const rollStr = String(roll).padStart(3, '0');
-
-    const SID = `${inst.collegeNumber}${inst.code}${yearStr}${deptCode}${rollStr}`;
+    // --- CHANGED LOGIC: TEMP ID GENERATION ---
+    // We generate a temporary unique ID because USN must be generated in bulk 
+    // alphabetically later. The SID field is required/unique in Schema.
+    const timestamp = Date.now();
+    const random = Math.floor(1000 + Math.random() * 9000);
+    const tempSID = `TEMP-${timestamp}-${random}`; 
 
     // Initialize lifecycle
     const lifecycle = [{
@@ -773,11 +779,11 @@ app.post('/institute/students/add', verifyToken, async (req, res) => {
 
     const doc = new Student({
       instituteId: instId,
-      SID,
+      SID: tempSID, // Temporary, will be updated by /generate-usn
       name,
       department,
       year,
-      semester, // <--- SAVING SEMESTER
+      semester,
       themeColorPrimary: inst.themeColorPrimary,
       themeColorSecondary: inst.themeColorSecondary,
       lifecycle,
@@ -789,6 +795,94 @@ app.post('/institute/students/add', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('/institute/students/add error:', err);
     res.status(500).json({ error: 'Add failed' });
+  }
+});
+
+// ==========================================
+// 2. NEW ROUTE: BULK USN GENERATION
+// ==========================================
+app.post('/institute/students/generate-usn', verifyToken, async (req, res) => {
+  try {
+    const { department, admissionYear } = req.body; 
+    // admissionYear: e.g., "2023" or "23"
+    
+    if (!department || !admissionYear) {
+      return res.status(400).json({ message: "Department and Admission Year required" });
+    }
+
+    const instId = req.user.id;
+    
+    // 1. Fetch Institute Details for USN codes
+    const inst = await Institute.findById(instId).select('code regionCode'); 
+    // Assuming 'code' is the 2-letter College Code (e.g., 'RV')
+    // Assuming you might add 'regionCode' to Institute model, defaulting to '1' if missing.
+    
+    const regionNum = inst.regionCode || "1"; 
+    const collegeCode = inst.code ? inst.code.substring(0, 2).toUpperCase() : "XX";
+    
+    // 2. Format Year (Last 2 digits, e.g., 2017 -> 17)
+    const yearShort = String(admissionYear).slice(-2);
+
+    // 3. Format Branch Code (First 2 chars of Dept, e.g., CSE -> CS, ECE -> EC)
+    // You might want a specific mapping object if codes deviate (e.g. 'Civil Engineering' -> 'CV')
+    const deptCodeMap = {
+      'CSE': 'CS', 'ECE': 'EC', 'EEE': 'EE', 'MECH': 'ME', 'CIVIL': 'CV', 'ISE': 'IS', 'AIML': 'AI'
+    };
+    const rawDept = String(department).toUpperCase();
+    const branchCode = deptCodeMap[rawDept] || rawDept.substring(0, 2);
+
+    // 4. Fetch Students, SORT ALPHABETICALLY by Name
+    // We filter by Institute, Department, and Year
+    // Note: Assuming 'year' in Student model represents "1st Year", "2nd Year", etc. 
+    // If you store Admission Year explicitly, use that. 
+    // Here logic matches based on the department provided.
+    const students = await Student.find({ 
+      instituteId: instId, 
+      department: department 
+      // You might want to filter by 'year' (1, 2, 3, 4) if generating for a specific batch
+    }).sort({ name: 1 }); // Sort Alphabetically A-Z
+
+    if (students.length === 0) {
+      return res.status(404).json({ message: "No students found for this selection" });
+    }
+
+    // 5. Generate USNs and Prepare Bulk Operations
+    const bulkOps = students.map((student, index) => {
+      // Serial Number: 001, 002, ..., 099, 100
+      const serialNo = String(index + 1).padStart(3, '0');
+      
+      // Logic: [Region][College][Year][Branch][Serial]
+      // Example: 1RV17CS125
+      const newUSN = `${regionNum}${collegeCode}${yearShort}${branchCode}${serialNo}`;
+
+      return {
+        updateOne: {
+          filter: { _id: student._id },
+          update: { 
+            $set: { 
+              SID: newUSN,       // Unique ID
+              rollNumber: newUSN, // Usually Roll No is same as USN
+              admissionNo: newUSN // Often mapped together
+            } 
+          }
+        }
+      };
+    });
+
+    // 6. Execute Bulk Write
+    if (bulkOps.length > 0) {
+      await Student.bulkWrite(bulkOps);
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Generated USNs for ${students.length} students.`,
+      format: `${regionNum}-${collegeCode}-${yearShort}-${branchCode}-XXX`
+    });
+
+  } catch (err) {
+    console.error("USN Generation Error:", err);
+    res.status(500).json({ error: "Failed to generate USNs" });
   }
 });
 
@@ -1821,16 +1915,70 @@ app.put('/institute/students/:id', verifyToken, async (req, res) => {
 // 3. Map (Enroll) Students to Course
 app.post('/faculty/course/:id/enroll', verifyToken, async (req, res) => {
   try {
-    const { studentIds } = req.body; // Array of IDs
-    const course = await Course.findById(req.params.id);
-    
+    const { studentIds } = req.body; // Array of selected Student IDs
+    const courseId = req.params.id;
+    const facultyId = req.user.id; // The logged-in faculty
+
+    // 1. Get Course Details (to know Semester and Name)
+    const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    course.enrolledStudents = studentIds; // Overwrite enrollment
+    // 2. Update Course Model (Basic Enrollment list)
+    course.enrolledStudents = studentIds;
     await course.save();
 
-    res.json({ success: true, message: "Students mapped successfully" });
+    // 3. Update Student Models (Detailed Mapping)
+    
+    // A. Add/Update logic for selected students
+    await Promise.all(studentIds.map(async (studentId) => {
+      const student = await Student.findById(studentId);
+      if (!student) return;
+
+      // Ensure the semester entry exists
+      // We use the STUDENT'S current semester or the COURSE'S semester. 
+      // Usually, mapping implies the course's semester.
+      const targetSem = course.semester.toString(); 
+
+      // Find if an entry for this semester exists
+      let semEntry = student.courseEnrollments.find(s => s.semester === targetSem);
+      
+      if (!semEntry) {
+        // Create new semester entry
+        student.courseEnrollments.push({
+          semester: targetSem,
+          subjects: []
+        });
+        semEntry = student.courseEnrollments.find(s => s.semester === targetSem);
+      }
+
+      // Check if this course is already mapped in this semester
+      const existingSubjectIndex = semEntry.subjects.findIndex(
+        sub => sub.courseId.toString() === courseId.toString()
+      );
+
+      if (existingSubjectIndex > -1) {
+        // Update existing mapping (in case faculty changed)
+        semEntry.subjects[existingSubjectIndex].facultyId = facultyId;
+      } else {
+        // Push new mapping
+        semEntry.subjects.push({
+          courseId: course._id,
+          facultyId: facultyId,
+          courseCode: course.code,
+          courseName: course.name
+        });
+      }
+
+      await student.save();
+    }));
+
+    // B. (Optional but recommended) Remove this course mapping from students 
+    // who were DESELECTED (passed in previous logic but not in current studentIds).
+    // Skipping for now to keep it simple as per request.
+
+    res.json({ success: true, message: "Students mapped and schema updated successfully" });
   } catch (err) {
+    console.error("Enrollment Error:", err);
     res.status(500).json({ error: "Enrollment failed" });
   }
 });
@@ -1898,6 +2046,462 @@ app.delete('/faculty/reminders/:id', verifyToken, async (req, res) => {
     res.json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json({ error: "Delete failed" });
+  }
+});
+app.post("/faculty/student/enroll-course", verifyToken, async (req, res) => {
+  try {
+    const { studentId, courseId } = req.body;
+
+    const course = await Course.findById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const student = await Student.findById(studentId);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    // Add into course side
+    await Course.findByIdAndUpdate(courseId, {
+      $addToSet: { enrolledStudents: studentId }
+    });
+
+    // Add into student side
+    await Student.findByIdAndUpdate(studentId, {
+      $addToSet: {
+        "courseEnrollments.$[sem].subjects": {
+          courseId: course._id,
+          facultyId: course.facultyId,
+          courseName: course.name,
+          courseCode: course.code
+        }
+      }
+    }, {
+      arrayFilters: [{ "sem.semester": course.semester }]
+    });
+
+    return res.json({ message: "Student enrolled into course" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Enrollment failed" });
+  }
+});
+
+app.put('/faculty/student/update-course-details', verifyToken, async (req, res) => {
+  try {
+    const { studentId, courseId, attendance, marksDetails } = req.body;
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+        console.log("❌ Student not found");
+        return res.status(404).json({ message: "Student not found" });
+    }
+
+    let courseName = "";
+    let semFound = false;
+
+    // 1. UPDATE DATA IN MEMORY
+    if (student.courseEnrollments) {
+      student.courseEnrollments.forEach(sem => {
+        const subIndex = sem.subjects.findIndex(s => s.courseId.toString() === courseId);
+        
+        if (subIndex > -1) {
+          semFound = true;
+          const subject = sem.subjects[subIndex];
+          courseName = subject.courseName;
+
+          if (marksDetails) {
+            // Update raw values
+            subject.marksDetails = {
+              test1: Number(marksDetails.test1 || 0),
+              test2: Number(marksDetails.test2 || 0),
+              test3: Number(marksDetails.test3 || 0),
+              assignment: Number(marksDetails.assignment || 0),
+              external: Number(marksDetails.external || 0)
+            };
+
+            // Calculate Math
+            const t1 = subject.marksDetails.test1;
+            const t2 = subject.marksDetails.test2;
+            const t3 = subject.marksDetails.test3;
+            const assign = subject.marksDetails.assignment;
+            const extRaw = subject.marksDetails.external;
+
+            // Internals: (Sum of 4) / 4
+            const internalTotal = (t1 + t2 + t3 + assign) / 4;
+            // Externals: Raw / 2
+            const externalScaled = extRaw / 2;
+
+            subject.marksObtained = parseFloat((internalTotal + externalScaled).toFixed(2));
+            subject.maxMarks = 100;
+          }
+        }
+      });
+    }
+
+    // 2. UPDATE ATTENDANCE MEMORY
+    if (attendance && semFound) {
+      const attIndex = student.attendance.subjectWise.findIndex(s => s.subjectName === courseName);
+      
+      const newPct = Number(attendance.total) > 0 
+        ? (Number(attendance.attended) / Number(attendance.total)) * 100 
+        : 0;
+
+      const rec = {
+        subjectName: courseName,
+        attended: Number(attendance.attended),
+        total: Number(attendance.total),
+        percentage: parseFloat(newPct.toFixed(1))
+      };
+
+      if (attIndex > -1) student.attendance.subjectWise[attIndex] = rec;
+      else student.attendance.subjectWise.push(rec);
+
+      // Recalculate Overall
+      let att = 0, tot = 0;
+      student.attendance.subjectWise.forEach(s => { att += s.attended; tot += s.total; });
+      const overall = tot > 0 ? (att / tot) * 100 : 0;
+      
+      student.attendance.overallPercentage = parseFloat(overall.toFixed(1));
+      student.attendance.alertLevel = overall < 75 ? "Critical" : (overall < 85 ? "Warning" : "Safe");
+    }
+
+    // 3. FORCE SAVE (Bypass Validation)
+    // We use updateOne instead of save() to avoid "Password Required" error
+    const enrollmentsPlain = student.courseEnrollments.map(s => s.toObject ? s.toObject() : s);
+    const attendancePlain = student.attendance.toObject ? student.attendance.toObject() : student.attendance;
+
+    await Student.updateOne(
+      { _id: studentId },
+      { 
+        $set: { 
+          courseEnrollments: enrollmentsPlain,
+          attendance: attendancePlain
+        } 
+      },
+      { runValidators: false }
+    );
+
+    console.log("✅ Update Successful");
+    res.json({ success: true, message: "Details updated" });
+
+  } catch (err) {
+    console.error("❌ SERVER ERROR:", err);
+    res.status(500).json({ error: "Update failed", details: err.message });
+  }
+});
+app.get('/faculty/courses/:courseId/students', verifyToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+
+    // Option A: If your Course model has 'enrolledStudents' populated
+    const course = await Course.findById(courseId).populate('enrolledStudents', 'name rollNumber profilePic email');
+    
+    if (course && course.enrolledStudents && course.enrolledStudents.length > 0) {
+      return res.json({ students: course.enrolledStudents });
+    }
+
+    // Option B: Fallback - Find students who have this course in their enrollment array
+    // This searches the Student collection where 'courseEnrollments.subjects.courseId' matches
+    const students = await Student.find({
+      'courseEnrollments.subjects.courseId': courseId
+    }).select('name rollNumber profilePic email');
+
+    res.json({ students: students || [] });
+
+  } catch (err) {
+    console.error('/faculty/courses/:id/students error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.get('/faculty/my-department', verifyToken, async (req, res) => {
+  try {
+    // 1. Get the logged-in faculty details
+    const currentFaculty = await Faculty.findById(req.user.id);
+    if (!currentFaculty) return res.status(404).json({ message: "Faculty not found" });
+
+     if (currentFaculty.designation !== "Head of the Department") {
+       return res.status(403).json({ message: "Access Denied. HOD only." });
+    }
+
+    // 3. Find all faculty in the same Institute AND Department
+    const colleagues = await Faculty.find({
+      instituteId: currentFaculty.instituteId,
+      department: currentFaculty.department
+    })
+    .select('-password') // Exclude passwords
+    .sort({ name: 1 });  // Sort A-Z
+
+    res.json(colleagues);
+  } catch (err) {
+    console.error('/faculty/my-department error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
+  try {
+    const { courseId, type, date, records, examType } = req.body; 
+    // records = [{ studentId, value }, ...]
+
+    const course = await Course.findById(courseId);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    // --- ATTENDANCE LOGIC ---
+    if (type === 'attendance') {
+      if (!date) return res.status(400).json({ message: "Date is required" });
+
+      await Promise.all(records.map(async (record) => {
+        const { studentId, value } = record; 
+        
+        // Validation: If value is missing, skip or default to Absent
+        if (!value) return; 
+
+        const isPresent = value === "Present";
+        const numericValue = isPresent ? 1 : 0;
+
+        let attDoc = await Attendance.findOne({ studentId, courseId });
+        if (!attDoc) {
+          attDoc = new Attendance({ studentId, courseId, history: [] });
+        }
+
+        const existingRecordIndex = attDoc.history.findIndex(h => h.date === date);
+        if (existingRecordIndex > -1) {
+          attDoc.history[existingRecordIndex].status = value;
+          attDoc.history[existingRecordIndex].value = numericValue;
+        } else {
+          attDoc.history.push({ date, status: value, value: numericValue });
+        }
+
+        // Update Aggregates
+        const totalClasses = attDoc.history.length;
+        const totalPresent = attDoc.history.filter(h => h.value === 1).length;
+        
+        attDoc.totalClasses = totalClasses;
+        attDoc.totalPresent = totalPresent;
+        attDoc.percentage = totalClasses === 0 ? 0 : (totalPresent / totalClasses) * 100;
+
+        await attDoc.save();
+      }));
+    } 
+    
+    // --- MARKS LOGIC ---
+    else if (type === 'marks') {
+      if (!examType) return res.status(400).json({ message: "Exam Type is required" });
+
+      await Promise.all(records.map(async (record) => {
+        const { studentId, value } = record;
+        
+        // --- FIX: SANITIZE INPUT TO PREVENT NaN ---
+        let numericVal = Number(value);
+        if (isNaN(numericVal) || value === "") {
+            numericVal = 0; // Default to 0 if invalid
+        }
+
+        // Use updateOne for atomic update
+        await Student.updateOne(
+            { _id: studentId, "courseEnrollments.subjects.courseId": courseId },
+            { 
+              $set: { 
+                // Dynamic path to the specific exam (e.g., marksDetails.test1)
+                [`courseEnrollments.$[outer].subjects.$[inner].marksDetails.${examType}`]: numericVal
+              }
+            },
+            { 
+              arrayFilters: [
+                { "outer.semester": course.semester.toString() },
+                { "inner.courseId": courseId }
+              ] 
+            }
+        );
+      }));
+    }
+
+    res.json({ success: true, message: "Updated successfully" });
+
+  } catch (err) {
+    console.error('/faculty/evaluation/bulk-update error:', err);
+    res.status(500).json({ error: 'Update failed', details: err.message });
+  }
+});
+// 1. GET Faculty SSR Data
+app.get('/faculty/ssr', verifyToken, async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(req.user.id);
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
+
+    let ssrData = await FacultySSR.findOne({ facultyId: req.user.id });
+    
+    // If not exists, return empty structure (frontend handles defaults)
+    if (!ssrData) {
+      ssrData = { personal: {}, teaching: [], research: { publications: [], fdpAttended: [] }, documents: [] };
+    }
+
+    res.json(ssrData);
+  } catch (err) {
+    console.error('/faculty/ssr GET error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// 2. UPDATE/SAVE Faculty SSR Data (Section wise)
+app.post('/faculty/ssr/update', verifyToken, async (req, res) => {
+  try {
+    const { section, data } = req.body; 
+    // section: 'personal', 'teaching', 'evaluation', 'research', 'extension', 'mentoring'
+
+    const faculty = await Faculty.findById(req.user.id);
+    
+    let ssrDoc = await FacultySSR.findOne({ facultyId: req.user.id });
+    if (!ssrDoc) {
+      ssrDoc = new FacultySSR({ 
+        facultyId: req.user.id, 
+        instituteId: faculty.instituteId 
+      });
+    }
+
+    // Dynamic update based on section
+    if (section === 'personal') ssrDoc.personal = { ...ssrDoc.personal, ...data };
+    if (section === 'evaluation') ssrDoc.evaluation = { ...ssrDoc.evaluation, ...data };
+    if (section === 'mentoring') ssrDoc.mentoring = { ...ssrDoc.mentoring, ...data };
+    
+    // For Arrays, we usually push or replace. Here we replace for simplicity in editing forms
+    if (section === 'teaching') ssrDoc.teaching = data; 
+    if (section === 'extension') ssrDoc.extension = data;
+    if (section === 'research') ssrDoc.research = { ...ssrDoc.research, ...data };
+
+    ssrDoc.lastUpdated = Date.now();
+    await ssrDoc.save();
+
+    res.json({ success: true, message: "SSR Data Updated", data: ssrDoc });
+
+  } catch (err) {
+    console.error('/faculty/ssr/update error:', err);
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+
+// 3. UPLOAD Document (Simulated Base64 Storage for Prototype)
+app.post('/faculty/ssr/upload', verifyToken, async (req, res) => {
+  try {
+    const { category, title, fileData } = req.body; // fileData is Base64 string
+
+    let ssrDoc = await FacultySSR.findOne({ facultyId: req.user.id });
+    if (!ssrDoc) {
+      // Create if doesn't exist (rare case if they upload before saving profile)
+      const faculty = await Faculty.findById(req.user.id);
+      ssrDoc = new FacultySSR({ facultyId: req.user.id, instituteId: faculty.instituteId });
+    }
+
+    ssrDoc.documents.push({
+      category,
+      title,
+      url: fileData 
+    });
+
+    await ssrDoc.save();
+    res.json({ success: true, message: "Document Added", documents: ssrDoc.documents });
+
+  } catch (err) {
+    console.error('/faculty/ssr/upload error:', err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+// 4. DELETE Document
+app.delete('/faculty/ssr/document/:docId', verifyToken, async (req, res) => {
+  try {
+    await FacultySSR.findOneAndUpdate(
+      { facultyId: req.user.id },
+      { $pull: { documents: { _id: req.params.docId } } }
+    );
+    res.json({ success: true, message: "Document removed" });
+  } catch (err) {
+    res.status(500).json({ error: "Delete failed" });
+  }
+});
+// 1. Submit a Grievance / Request to Admin
+app.post('/faculty/grievance/add', verifyToken, async (req, res) => {
+  try {
+    const { subject, message, type } = req.body; // type: 'Technical', 'General', 'Urgent'
+    const faculty = await Faculty.findById(req.user.id);
+    
+    // Using the AllGrievance model (ensure it's imported at top)
+    const ticketId = `TKT-${Date.now().toString().slice(-6)}`;
+    
+    const doc = new AllGrievance({
+      ticketId,
+      userId: req.user.id,
+      userType: 'Faculty',
+      instituteId: faculty.instituteId,
+      subject,
+      message,
+      type: type || 'General',
+      status: 'Pending'
+    });
+
+    await doc.save();
+    res.status(201).json(doc);
+  } catch (err) {
+    console.error('/faculty/grievance/add error:', err);
+    res.status(500).json({ error: "Failed to submit request" });
+  }
+});
+
+// 2. Get My Grievances
+app.get('/faculty/grievances', verifyToken, async (req, res) => {
+  try {
+    const list = await AllGrievance.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// 3. Create a Custom Form (Survey/Feedback)
+app.post('/faculty/forms/create', verifyToken, async (req, res) => {
+  try {
+    const { courseId, title, description, fields } = req.body;
+
+    if (!courseId || !title || !fields) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const newForm = new FacultyForm({
+      facultyId: req.user.id,
+      courseId,
+      title,
+      description,
+      fields
+    });
+
+    await newForm.save();
+    res.status(201).json(newForm);
+  } catch (err) {
+    console.error('/faculty/forms/create error:', err);
+    res.status(500).json({ error: "Form creation failed" });
+  }
+});
+
+// 4. Get My Created Forms
+app.get('/faculty/forms', verifyToken, async (req, res) => {
+  try {
+    const forms = await FacultyForm.find({ facultyId: req.user.id })
+      .populate('courseId', 'name code')
+      .sort({ createdAt: -1 });
+    res.json(forms);
+  } catch (err) {
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+app.get('/faculty/forms/:formId/responses', verifyToken, async (req, res) => {
+  try {
+    const responses = await FacultyFormResponse.find({ formId: req.params.formId })
+      .populate('studentId', 'name rollNumber') // Get student details if non-anonymous
+      .sort({ submittedAt: -1 });
+    res.json(responses);
+  } catch (err) {
+    console.error('/faculty/forms/:id/responses error:', err);
+    res.status(500).json({ error: "Fetch failed" });
   }
 });
 // -------------------
