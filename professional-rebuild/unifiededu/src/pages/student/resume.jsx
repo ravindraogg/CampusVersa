@@ -43,8 +43,8 @@ const Section = ({ title, children }) => (
     </section>
 );
 
-// Main App Component
-function App() {
+// Main App Component (Renamed to Resume)
+function Resume() {
     const [data, setData] = useState(initialData);
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfLibrariesLoaded, setPdfLibrariesLoaded] = useState(false);
@@ -445,4 +445,4 @@ function App() {
     );
 }
 
-export default App;
+export default Resume;
