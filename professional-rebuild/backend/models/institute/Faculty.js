@@ -33,7 +33,7 @@ const FacultySchema = new mongoose.Schema({
     kycType: { type: String, default: null },
     aadharLast4: { type: String, default: null } 
   },
-
+  courses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
   // --- EXPANDED: Professional Overview ---
   qualification: { type: String }, // e.g., "Ph.D. in Data Science"
   experience: { type: String }, // e.g., "12 Years"

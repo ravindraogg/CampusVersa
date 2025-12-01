@@ -105,7 +105,7 @@ import bookImage from '../assets/logo.png';
 const Logo = () => (
   <div className="flex items-center gap-4"> {/* increased gap */}
     {/* Bigger circular logo */}
-    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-cyan-400"> 
+    <div className="w-12 h-12 overflow-hidden"> 
       <img src={bookImage} alt="Logo" className="w-full h-full object-cover" />
     </div>
     {/* Bigger text */}

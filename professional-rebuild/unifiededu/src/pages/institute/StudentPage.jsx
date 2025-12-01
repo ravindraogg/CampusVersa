@@ -1,6 +1,6 @@
 // StudentPage.jsx
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, Edit, ChevronDown, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Edit, ChevronDown, AlertTriangle, RefreshCw } from "lucide-react";
 
 export default function StudentPage({ authFetch, theme, institute, pushToast }) {
   const [students, setStudents] = useState([]);
@@ -16,6 +16,14 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
   // Delete Modal State
   const [deleteId, setDeleteId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // --- NEW: USN Generation State ---
+  const [showUsnModal, setShowUsnModal] = useState(false);
+  const [usnConfig, setUsnConfig] = useState({
+    department: "",
+    admissionYear: new Date().getFullYear().toString(), // Default to current year
+  });
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // modals/forms
   const [showAdd, setShowAdd] = useState(false);
@@ -38,6 +46,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
     phone: "",
     profilePic: null,
     admissionNo: "",
+    password: "", // ADDED: Password field in state
   });
 
   // dropdown open state
@@ -77,10 +86,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
     setIsPageLoading(true);
     setLoading(true);
     try {
-      const [sRes, dRes] = await Promise.all([
-        authFetch("/institute/students?limit=1000", { method: "GET" }).then((r) => r.json()),
-        authFetch("/institute/departments", { method: "GET" }).then((r) => r.json()),
-      ]);
+      const [sRes, dRes] = await Promise.all([authFetch("/institute/students?limit=1000", { method: "GET" }).then((r) => r.json()), authFetch("/institute/departments", { method: "GET" }).then((r) => r.json())]);
 
       // API returns { data: [...], total, hasMore } — normalize to array
       const studentsList = Array.isArray(sRes) ? sRes : sRes?.data ? sRes.data : [];
@@ -102,19 +108,19 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
 
   // filtered students (use canonical rollNumber)
   const filtered = students.filter((st) => {
-    const txt = `${st.name || ""} ${st.rollNumber || ""} ${st.email || ""} ${st.department || ""}`.toLowerCase();
-    return txt.includes(search.toLowerCase()) && (filterDept ? (st.department === filterDept) : true);
+    const txt = `${st.name || ""} ${st.rollNumber || ""} ${st.SID || ""} ${st.email || ""} ${st.department || ""}`.toLowerCase();
+    return txt.includes(search.toLowerCase()) && (filterDept ? st.department === filterDept : true);
   });
 
   // ensure we open selected with canonical keys
   const openEdit = (s) => {
     setSelected({
       ...s,
-      // normalize legacy keys
+      // normalize legacy keys if needed, primarily map schema fields
       rollNumber: s.rollNumber ?? s.roll ?? "",
       semester: s.semester ?? s.sem ?? "",
       year: s.year ?? "",
-      admissionNo: s.admissionNo ?? s.admissionNo ?? "",
+      admissionNo: s.admissionNo ?? "",
       profilePic: s.profilePic ?? null,
       email: s.email ?? "",
       phone: s.phone ?? "",
@@ -136,10 +142,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
       </div>
 
       {dropdownOpen[keyName] && (
-        <div
-          className="absolute left-0 right-0 mt-2 rounded-2xl shadow-xl bg-white/80 backdrop-blur-lg z-20 overflow-hidden max-h-48 overflow-y-auto"
-          style={{ border: "1px solid #00000020" }}
-        >
+        <div className="absolute left-0 right-0 mt-2 rounded-2xl shadow-xl bg-white/80 backdrop-blur-lg z-20 overflow-hidden max-h-48 overflow-y-auto" style={{ border: "1px solid #00000020" }}>
           {list.map((it, idx) => (
             <div
               key={idx}
@@ -161,8 +164,8 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
 
   // --- Add student submit ---
   const submit = async () => {
-    if (!form.name || !form.rollNumber || !form.department || !form.semester) {
-      pushToast({ type: "error", message: "Validation: Name, roll, department and semester required" });
+    if (!form.name || !form.department || !form.semester || !form.year) {
+      pushToast({ type: "error", message: "Validation: Name, department, year and semester required" });
       return;
     }
     setIsAdding(true);
@@ -187,6 +190,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
           phone: "",
           profilePic: null,
           admissionNo: "",
+          password: "",
         });
         await load();
       } else {
@@ -197,6 +201,36 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
       pushToast({ type: "error", message: "Server error: Could not add student" });
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  // --- NEW: Generate USN Handler ---
+  const handleGenerateUsn = async () => {
+    if (!usnConfig.department || !usnConfig.admissionYear) {
+      pushToast({ type: "error", message: "Select Department and Admission Year" });
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const res = await authFetch("/institute/students/generate-usn", {
+        method: "POST",
+        body: JSON.stringify(usnConfig),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        pushToast({ type: "success", message: data.message });
+        setShowUsnModal(false);
+        await load(); // Reload list to show new USNs
+      } else {
+        pushToast({ type: "error", message: data.message || "Generation failed" });
+      }
+    } catch (err) {
+      pushToast({ type: "error", message: "Server error during generation" });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -255,7 +289,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
     }
     setIsSaving(true);
     try {
-      // ensure we send canonical keys (rollNumber)
+      // ensure we send canonical keys
       const payload = {
         name: data.name,
         rollNumber: data.rollNumber,
@@ -312,7 +346,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search students"
+            placeholder="Search name/roll/SID"
             className="p-3 rounded-xl border w-48"
             style={{ borderColor: "#00000040" }}
           />
@@ -331,6 +365,19 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
             ))}
           </select>
 
+          {/* --- NEW BUTTON: GENERATE USN --- */}
+          <button
+            onClick={() => {
+              // Pre-fill department if filter is active
+              setUsnConfig((prev) => ({ ...prev, department: filterDept || "" }));
+              setShowUsnModal(true);
+            }}
+            className="px-4 py-3 rounded-xl flex items-center gap-2 font-semibold bg-gray-900 text-white hover:bg-gray-800 transition shadow-md"
+            title="Generate VTU USNs for a Batch"
+          >
+            <RefreshCw className="w-4 h-4" /> USN
+          </button>
+
           <button
             onClick={() => {
               // reset form before showing
@@ -345,14 +392,21 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                 phone: "",
                 profilePic: null,
                 admissionNo: "",
+                password: "",
               });
               setShowAdd(true);
             }}
-            className="px-5 py-3 rounded-xl flex items-center gap-2 font-semibold disabled:opacity-60"
+            className="px-5 py-3 rounded-xl flex items-center gap-2 font-semibold disabled:opacity-60 shadow-md"
             style={{ background: theme?.primary, color: "white" }}
             disabled={isAdding}
           >
-            {isAdding ? <Spinner size={16} /> : <><Plus className="w-4 h-4" /> Add Student</>}
+            {isAdding ? (
+              <Spinner size={16} />
+            ) : (
+              <>
+                <Plus className="w-4 h-4" /> Add Student
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -375,16 +429,24 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                   <img src={s.profilePic} className="w-full h-full object-cover" alt="pf" />
                 ) : (
                   <span className="font-bold text-gray-600">
-                    {(s.name || "").split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()}
+                    {(s.name || "")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()}
                   </span>
                 )}
               </div>
 
               <div className="flex-1 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-[15px] truncate">{idx + 1}. {s.name}</p>
-                  <p className="text-[12px] text-gray-600 truncate">
-                    {s.rollNumber || "—"} • {s.department || "—"} • Sem {s.semester || "—"}
+                  <p className="font-semibold text-[15px] truncate">
+                    {idx + 1}. {s.name}
+                  </p>
+                  <p className="text-[12px] text-gray-600 truncate font-mono">{s.SID || s.rollNumber || "—"}</p>
+                  <p className="text-[10px] text-gray-500 truncate">
+                    {s.department || "—"} • Sem {s.semester || "—"}
                   </p>
                 </div>
 
@@ -419,14 +481,19 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
 
       {/* ADD STUDENT MODAL */}
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl p-6 rounded-3xl" style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78))", border: "1px solid #00000030", backdropFilter: "blur(8px)" }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in zoom-in duration-200">
+          <div
+            className="w-full max-w-2xl p-6 rounded-3xl"
+            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78))", border: "1px solid #00000030", backdropFilter: "blur(8px)" }}
+          >
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-[18px] font-bold">Add Student</h3>
                 <div className="text-gray-500">Create a new student record</div>
               </div>
-              <button onClick={() => setShowAdd(false)} className="text-slate-500">✕</button>
+              <button onClick={() => setShowAdd(false)} className="text-slate-500">
+                ✕
+              </button>
             </div>
 
             {/* FORM (floating labels) */}
@@ -440,7 +507,10 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]" style={{ color: "black" }}>
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
                   Full Name
                 </label>
               </div>
@@ -454,8 +524,11 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]" style={{ color: "black" }}>
-                  Roll Number
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Roll Number (Optional)
                 </label>
               </div>
 
@@ -468,8 +541,29 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]" style={{ color: "black" }}>
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
                   Email
+                </label>
+              </div>
+
+              {/* PASSWORD FIELD ADDED */}
+              <div className="relative">
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  placeholder=" "
+                  style={{ borderColor: `#00000040` }}
+                />
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
+                  Password
                 </label>
               </div>
 
@@ -482,7 +576,10 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]" style={{ color: "black" }}>
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
                   Phone
                 </label>
               </div>
@@ -492,20 +589,27 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                 <select
                   value={form.department}
                   onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
-                  className="w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg outline-none cursor-pointer"
+                  // MODIFIED: Added max-w-full, truncate, and solid bg-white to fix "coming off canvas" issues
+                  className="w-full max-w-full truncate p-4 rounded-2xl border bg-white outline-none cursor-pointer text-gray-900"
                   style={{ borderColor: `#00000040` }}
                 >
                   <option value="">Select department</option>
-                  {departments.map((d) => <option key={d.DID} value={d.code}>{d.code} — {d.name}</option>)}
+                  {departments.map((d) => (
+                    <option key={d.DID} value={d.code} className="text-black">
+                      {d.code} — {d.name}
+                    </option>
+                  ))}
                 </select>
-                <label className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700" style={{ color: "black" }}>Department</label>
+                <label className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700" style={{ color: "black" }}>
+                  Department
+                </label>
               </div>
 
               {/* SEMESTER */}
               <GlassDropdown
                 label="Select Semester"
                 value={form.semester ? `Sem ${form.semester}` : ""}
-                list={["1","2","3","4","5","6","7","8"]}
+                list={["1", "2", "3", "4", "5", "6", "7", "8"]}
                 keyName="semester"
                 onChange={(it) => setForm((p) => ({ ...p, semester: it }))}
               />
@@ -514,19 +618,13 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <GlassDropdown
                 label="Select Year"
                 value={form.year ? `${form.year} Year` : ""}
-                list={["1","2","3","4"]}
+                list={["1", "2", "3", "4"]}
                 keyName="year"
                 onChange={(it) => setForm((p) => ({ ...p, year: it }))}
               />
 
               {/* SECTION */}
-              <GlassDropdown
-                label="Select Section"
-                value={form.section}
-                list={["A","B","C","D"]}
-                keyName="section"
-                onChange={(it) => setForm((p) => ({ ...p, section: it }))}
-              />
+              <GlassDropdown label="Select Section" value={form.section} list={["A", "B", "C", "D"]} keyName="section" onChange={(it) => setForm((p) => ({ ...p, section: it }))} />
 
               {/* ADMISSION NO */}
               <div className="relative col-span-2">
@@ -537,13 +635,19 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]" style={{ color: "black" }}>
+                <label
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
+                  style={{ color: "black" }}
+                >
                   Admission No.
                 </label>
               </div>
 
               {/* UPLOAD PROFILE PIC */}
-              <label className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer text-gray-700 font-medium" style={{ borderColor: `#00000040` }}>
+              <label
+                className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer text-gray-700 font-medium"
+                style={{ borderColor: `#00000040` }}
+              >
                 {isUploadingPic ? <DarkSpinner /> : "Upload Profile Picture"}
                 <input type="file" accept="image/*" className="hidden" onChange={handlePic} />
               </label>
@@ -551,8 +655,15 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
 
             {/* ACTIONS */}
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">Cancel</button>
-              <button onClick={submit} disabled={isAdding} className="px-4 py-2 rounded-xl flex items-center gap-2 border-[black]" style={{ background: theme?.primary, color: theme?.textOnPrimary || "white" }}>
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">
+                Cancel
+              </button>
+              <button
+                onClick={submit}
+                disabled={isAdding}
+                className="px-4 py-2 rounded-xl flex items-center gap-2 border-[black]"
+                style={{ background: theme?.primary, color: theme?.textOnPrimary || "white" }}
+              >
                 {isAdding ? <Spinner size={16} color="white" /> : "Add Student"}
               </button>
             </div>
@@ -566,7 +677,9 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
           <div className="w-full max-w-2xl rounded-3xl p-7 shadow-[0_8px_40px_rgba(0,0,0,0.25)]" style={{ background: "white", border: "1px solid #00000033" }}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-[22px] font-bold">Edit Student — {selected.name || ""}</h3>
-              <button onClick={() => setSelected(null)} className="text-gray-600 text-xl hover:text-red-500 transition">✕</button>
+              <button onClick={() => setSelected(null)} className="text-gray-600 text-xl hover:text-red-500 transition">
+                ✕
+              </button>
             </div>
 
             {/* profile + meta */}
@@ -575,7 +688,14 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
                 {selected.profilePic ? (
                   <img src={selected.profilePic} className="w-full h-full object-cover" alt="pf" />
                 ) : (
-                  <span className="font-bold text-gray-600 text-[20px]">{(selected.name || "").split(" ").map(x => x[0]).slice(0,2).join("").toUpperCase()}</span>
+                  <span className="font-bold text-gray-600 text-[20px]">
+                    {(selected.name || "")
+                      .split(" ")
+                      .map((x) => x[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()}
+                  </span>
                 )}
 
                 <label className="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded-lg text-xs cursor-pointer">
@@ -585,8 +705,12 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               </div>
 
               <div className="flex-1">
-                <p className="text-gray-600 text-sm">Roll: <b>{selected.rollNumber || "—"}</b></p>
-                <p className="text-gray-600 text-sm">Department: <b>{selected.department || "—"}</b></p>
+                <p className="text-gray-600 text-sm">
+                  USN/SID: <b>{selected.SID || selected.rollNumber || "—"}</b>
+                </p>
+                <p className="text-gray-600 text-sm">
+                  Department: <b>{selected.department || "—"}</b>
+                </p>
               </div>
             </div>
 
@@ -595,7 +719,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.name || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, name: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -605,7 +729,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.rollNumber || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, rollNumber: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, rollNumber: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -615,7 +739,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.email || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, email: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, email: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -625,7 +749,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.phone || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, phone: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -636,7 +760,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.semester || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, semester: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, semester: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -646,7 +770,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.year || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, year: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, year: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -656,7 +780,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <input
                   value={selected.admissionNo || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, admissionNo: e.target.value }))}
+                  onChange={(e) => setSelected((prev) => ({ ...prev, admissionNo: e.target.value }))}
                   className="peer w-full p-3 rounded-xl border bg-white/70 outline-none"
                   placeholder=" "
                 />
@@ -666,19 +790,30 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <div className="relative">
                 <select
                   value={selected.department || ""}
-                  onChange={(e) => setSelected(prev => ({ ...prev, department: e.target.value }))}
-                  className="p-3 rounded-xl border bg-white/70 outline-none cursor-pointer"
+                  onChange={(e) => setSelected((prev) => ({ ...prev, department: e.target.value }))}
+                  className="p-3 rounded-xl border bg-white/70 outline-none cursor-pointer w-full"
                 >
                   <option value="">Select dept</option>
-                  {departments.map(d => <option key={d.DID} value={d.code}>{d.code} — {d.name}</option>)}
+                  {departments.map((d) => (
+                    <option key={d.DID} value={d.code}>
+                      {d.code} — {d.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
             {/* actions */}
             <div className="flex justify-end gap-3 mt-7">
-              <button onClick={() => setSelected(null)} className="px-5 py-2 rounded-xl border font-semibold">Cancel</button>
-              <button onClick={() => saveStudentChanges(selected)} disabled={isSaving} className="px-6 py-2 rounded-xl font-semibold flex items-center gap-2" style={{ background: "black", color: "white" }}>
+              <button onClick={() => setSelected(null)} className="px-5 py-2 rounded-xl border font-semibold">
+                Cancel
+              </button>
+              <button
+                onClick={() => saveStudentChanges(selected)}
+                disabled={isSaving}
+                className="px-6 py-2 rounded-xl font-semibold flex items-center gap-2"
+                style={{ background: "black", color: "white" }}
+              >
                 {isSaving ? <Spinner size={16} color="white" /> : "Save Changes"}
               </button>
             </div>
@@ -697,11 +832,73 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
               <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Student?</h3>
               <p className="text-sm text-gray-500 mb-6">Are you sure you want to delete this student? This action cannot be undone.</p>
               <div className="flex gap-3 w-full">
-                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">Cancel</button>
-                <button onClick={confirmDelete} disabled={isDeleting} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center">
+                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center"
+                >
                   {isDeleting ? <Spinner size={16} /> : "Delete"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NEW MODAL: USN GENERATION --- */}
+      {showUsnModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Generate USNs</h3>
+              <button onClick={() => setShowUsnModal(false)} className="text-gray-500 hover:text-red-500">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-800">
+                <p className="font-bold mb-1">Logic: Region + College + Year + Branch + Serial</p>
+                <p>This will sort students alphabetically and overwrite their SIDs.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Select Department</label>
+                <select
+                  value={usnConfig.department}
+                  onChange={(e) => setUsnConfig({ ...usnConfig, department: e.target.value })}
+                  className="w-full p-3 rounded-xl border border-gray-300 outline-none"
+                >
+                  <option value="">-- Select Dept --</option>
+                  {departments.map((d) => (
+                    <option key={d.DID} value={d.code}>
+                      {d.code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Admission Year (e.g. 2024)</label>
+                <input
+                  type="number"
+                  value={usnConfig.admissionYear}
+                  onChange={(e) => setUsnConfig({ ...usnConfig, admissionYear: e.target.value })}
+                  className="w-full p-3 rounded-xl border border-gray-300 outline-none"
+                  placeholder="2024"
+                />
+              </div>
+
+              <button
+                onClick={handleGenerateUsn}
+                disabled={isGenerating}
+                className="w-full py-3 rounded-xl bg-black text-white font-bold flex justify-center items-center gap-2 hover:opacity-90 transition"
+              >
+                {isGenerating ? <Spinner size={18} /> : "Generate & Save"}
+              </button>
             </div>
           </div>
         </div>

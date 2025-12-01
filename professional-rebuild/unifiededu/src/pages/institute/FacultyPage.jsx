@@ -89,19 +89,19 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   }, []);
 
   // preview FID generator
-const previewFID = () => {
+  const previewFID = () => {
     if (!form.department) return "—";
-    
+
     const deptCode = form.department.toUpperCase();
     const instCode = institute?.code || "CLG";
-    const clgNum   = institute?.collegeNumber || 1;
+    const clgNum = institute?.collegeNumber || 1;
 
     // 1. Filter local list for same department
     const sameDept = list.filter((f) => (f.department || "").toUpperCase() === deptCode);
 
     // 2. Extract sequences
-    const seqNumbers = sameDept.map(f => {
-      if(!f.FID) return 0;
+    const seqNumbers = sameDept.map((f) => {
+      if (!f.FID) return 0;
       const last3 = f.FID.slice(-3);
       const num = parseInt(last3, 10);
       return isNaN(num) ? 0 : num;
@@ -117,7 +117,6 @@ const previewFID = () => {
 
   // --- Add faculty (submit) ---
   const submit = async () => {
-    // UPDATED: Added password validation
     if (!form.name || !form.department || !form.password) {
       pushToast({ type: "error", message: "Validation: Name, department, and password required" });
       return;
@@ -125,17 +124,15 @@ const previewFID = () => {
 
     setIsAdding(true);
     try {
-      // UPDATED: Calculate FID here to send as loginId
       const generatedFID = previewFID();
-      // Ensure we don't send the dash if calculation failed (though validation prevents this)
       const finalLoginId = generatedFID === "—" ? "" : generatedFID;
 
-      const payload = { 
-        ...form, 
+      const payload = {
+        ...form,
         department: form.department.toUpperCase(),
-        loginId: finalLoginId // Send generated FID as loginId
+        loginId: finalLoginId, // Send generated FID as loginId
       };
-      
+
       const res = await authFetch("/institute/faculty/add", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -211,7 +208,7 @@ const previewFID = () => {
       if (res.ok) {
         pushToast({ type: "success", message: "Faculty removed successfully" });
         await load();
-        setDeleteId(null); 
+        setDeleteId(null);
       } else {
         pushToast({ type: "error", message: data.message || "Delete failed" });
       }
@@ -253,7 +250,6 @@ const previewFID = () => {
 
   return (
     <div className="w-full relative">
-
       {/* Full-page glass loader */}
       {isPageLoading && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
@@ -301,7 +297,13 @@ const previewFID = () => {
             style={{ background: theme.primary, color: "white" }}
             disabled={isAdding}
           >
-            {isAdding ? <Spinner size={16} color="white" /> : <><Plus className="w-4 h-4" /> Add Faculty</>}
+            {isAdding ? (
+              <Spinner size={16} color="white" />
+            ) : (
+              <>
+                <Plus className="w-4 h-4" /> Add Faculty
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -316,7 +318,8 @@ const previewFID = () => {
           filtered.map((f, index) => (
             <div
               key={f._id || f.FID}
-              className="cursor-pointer p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] bg-white hover:shadow-[0_6px_25px_rgba(0,0,0,0.14)] transition-all flex items-center gap-4"
+              // ADDED: overflow-hidden to prevent buttons from spilling out
+              className="cursor-pointer p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] bg-white hover:shadow-[0_6px_25px_rgba(0,0,0,0.14)] transition-all flex items-center gap-4 overflow-hidden w-full relative"
               onClick={() => setSelected(f)}
             >
               <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
@@ -334,17 +337,26 @@ const previewFID = () => {
                 )}
               </div>
 
-              <div className="flex-1 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-[15px] truncate">{index + 1}. {f.name}</p>
-                  <p className="text-[12px] text-gray-600 truncate">{f.designation} • {f.department} • {f.email}</p>
+              {/* Flex wrapper for text and buttons */}
+              <div className="flex-1 flex items-center justify-between gap-2 overflow-hidden">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-[15px] truncate">
+                    {index + 1}. {f.name}
+                  </p>
+                  <p className="text-[12px] text-gray-600 truncate">
+                    {f.designation} • {f.department}
+                  </p>
+                  <p className="text-[10px] text-gray-400 truncate">{f.email}</p>
                 </div>
 
-                <div className="flex gap-2 shrink-0 ml-3">
+                <div className="flex gap-2 shrink-0 ml-2">
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold"
-                    style={{color: theme.secondary }}
-                    onClick={(e) => { e.stopPropagation(); setSelected(f); }}
+                    style={{ color: theme.secondary }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelected(f);
+                    }}
                   >
                     Edit
                   </button>
@@ -352,9 +364,9 @@ const previewFID = () => {
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold text-white"
                     style={{ background: "#E53935" }}
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      setDeleteId(f._id); 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteId(f._id);
                     }}
                   >
                     Delete
@@ -371,18 +383,25 @@ const previewFID = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div
             className="w-full max-w-2xl p-6 rounded-3xl"
-            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78))", border: `1px solid ${theme.primary}33`, backdropFilter: "blur(8px)" }}
+            style={{
+              background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78))",
+              border: `1px solid ${theme.primary}33`,
+              backdropFilter: "blur(8px)",
+            }}
           >
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-[18px] font-bold">Add Faculty</h3>
-                <div className="text-gray-500">Auto FID preview: <span className="font-semibold">{previewFID()}</span></div>
+                <div className="text-gray-500">
+                  Auto FID preview: <span className="font-semibold">{previewFID()}</span>
+                </div>
               </div>
-              <button onClick={() => setShowAdd(false)} className="text-slate-500">✕</button>
+              <button onClick={() => setShowAdd(false)} className="text-slate-500">
+                ✕
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
-
               {/* NAME */}
               <div className="relative">
                 <input
@@ -417,7 +436,7 @@ const previewFID = () => {
                 </label>
               </div>
 
-              {/* --- ADDED: PASSWORD FIELD --- */}
+              {/* PASSWORD */}
               <div className="relative">
                 <input
                   type="password"
@@ -485,10 +504,7 @@ const previewFID = () => {
                   ))}
                 </select>
 
-                <label
-                  className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700"
-                  style={{ color: "black" }}
-                >
+                <label className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700" style={{ color: "black" }}>
                   Department
                 </label>
               </div>
@@ -545,24 +561,13 @@ const previewFID = () => {
               </div>
 
               {/* NAAC Checkbox */}
-              <div
-                className="flex items-center gap-3 p-4 rounded-2xl border bg-white/70 backdrop-blur-lg"
-                style={{ borderColor: `#00000040` }}
-              >
-                <input
-                  type="checkbox"
-                  checked={form.naacFollowing}
-                  onChange={(e) => setForm({ ...form, naacFollowing: e.target.checked })}
-                  className="w-5 h-5 accent-black"
-                />
+              <div className="flex items-center gap-3 p-4 rounded-2xl border bg-white/70 backdrop-blur-lg" style={{ borderColor: `#00000040` }}>
+                <input type="checkbox" checked={form.naacFollowing} onChange={(e) => setForm({ ...form, naacFollowing: e.target.checked })} className="w-5 h-5 accent-black" />
                 <span className="text-gray-700 font-medium">NAAC Following</span>
               </div>
 
               {/* UPLOAD PROFILE PIC */}
-              <label
-                className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer font-medium gap-3"
-                style={{ borderColor: `#00000040` }}
-              >
+              <label className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer font-medium gap-3" style={{ borderColor: `#00000040` }}>
                 {isUploadingPic ? (
                   <>
                     <DarkSpinner />
@@ -574,30 +579,18 @@ const previewFID = () => {
                   <span className="text-gray-700">Upload Profile Picture</span>
                 )}
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handlePic}
-                />
+                <input type="file" accept="image/*" className="hidden" onChange={handlePic} />
               </label>
-
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">
                 Cancel
               </button>
 
-              <button
-                onClick={submit}
-                disabled={isAdding}
-                className="px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
-                style={{ background: theme.primary, color: theme.textOnPrimary }}
-              >
+              <button onClick={submit} disabled={isAdding} className="px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60" style={{ background: theme.primary, color: theme.textOnPrimary }}>
                 {isAdding ? <Spinner size={16} color="white" /> : "Add Faculty"}
               </button>
             </div>
-
           </div>
         </div>
       )}
@@ -609,7 +602,9 @@ const previewFID = () => {
             {/* header */}
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-[22px] font-bold">Edit Faculty — {selected.name}</h3>
-              <button onClick={() => setSelected(null)} className="text-gray-600 text-xl hover:text-red-500 transition">✕</button>
+              <button onClick={() => setSelected(null)} className="text-gray-600 text-xl hover:text-red-500 transition">
+                ✕
+              </button>
             </div>
 
             {/* profile + meta */}
@@ -618,7 +613,14 @@ const previewFID = () => {
                 {selected.profilePic ? (
                   <img src={selected.profilePic} className="w-full h-full object-cover" alt="pf" />
                 ) : (
-                  <span className="font-bold text-gray-600 text-[20px]">{(selected.name || "").split(" ").map(x => x[0]).slice(0, 2).join("").toUpperCase()}</span>
+                  <span className="font-bold text-gray-600 text-[20px]">
+                    {(selected.name || "")
+                      .split(" ")
+                      .map((x) => x[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()}
+                  </span>
                 )}
 
                 <label className="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded-lg text-xs cursor-pointer">
@@ -628,28 +630,34 @@ const previewFID = () => {
               </div>
 
               <div className="flex-1">
-                <p className="text-gray-600 text-sm">Faculty ID: <b>{selected.FID}</b></p>
-                <p className="text-gray-600 text-sm">Department: <b>{selected.department}</b></p>
+                <p className="text-gray-600 text-sm">
+                  Faculty ID: <b>{selected.FID}</b>
+                </p>
+                <p className="text-gray-600 text-sm">
+                  Department: <b>{selected.department}</b>
+                </p>
               </div>
             </div>
 
             {/* edit form */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input value={selected.name} onChange={(e) => setSelected(prev => ({ ...prev, name: e.target.value }))} placeholder="Full Name" className="p-3 rounded-xl border" />
-              <input value={selected.email} onChange={(e) => setSelected(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" className="p-3 rounded-xl border" />
-              <input value={selected.phone} onChange={(e) => setSelected(prev => ({ ...prev, phone: e.target.value }))} placeholder="Phone" className="p-3 rounded-xl border" />
-              <input value={selected.designation} onChange={(e) => setSelected(prev => ({ ...prev, designation: e.target.value }))} placeholder="Designation" className="p-3 rounded-xl border" />
-              <input value={selected.position} onChange={(e) => setSelected(prev => ({ ...prev, position: e.target.value }))} placeholder="Position" className="p-3 rounded-xl border" />
-              <input value={selected.workingHours} onChange={(e) => setSelected(prev => ({ ...prev, workingHours: e.target.value }))} placeholder="Working Hours" className="p-3 rounded-xl border" />
+              <input value={selected.name} onChange={(e) => setSelected((prev) => ({ ...prev, name: e.target.value }))} placeholder="Full Name" className="p-3 rounded-xl border" />
+              <input value={selected.email} onChange={(e) => setSelected((prev) => ({ ...prev, email: e.target.value }))} placeholder="Email" className="p-3 rounded-xl border" />
+              <input value={selected.phone} onChange={(e) => setSelected((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone" className="p-3 rounded-xl border" />
+              <input value={selected.designation} onChange={(e) => setSelected((prev) => ({ ...prev, designation: e.target.value }))} placeholder="Designation" className="p-3 rounded-xl border" />
+              <input value={selected.position} onChange={(e) => setSelected((prev) => ({ ...prev, position: e.target.value }))} placeholder="Position" className="p-3 rounded-xl border" />
+              <input value={selected.workingHours} onChange={(e) => setSelected((prev) => ({ ...prev, workingHours: e.target.value }))} placeholder="Working Hours" className="p-3 rounded-xl border" />
               <label className="flex items-center gap-2 p-3 border rounded-xl cursor-pointer">
                 <span>NAAC Following</span>
-                <input type="checkbox" checked={selected.naacFollowing} onChange={(e) => setSelected(prev => ({ ...prev, naacFollowing: e.target.checked }))} className="ml-2" />
+                <input type="checkbox" checked={selected.naacFollowing} onChange={(e) => setSelected((prev) => ({ ...prev, naacFollowing: e.target.checked }))} className="ml-2" />
               </label>
             </div>
 
             {/* actions */}
             <div className="flex justify-end gap-3 mt-7">
-              <button onClick={() => setSelected(null)} className="px-5 py-2 rounded-xl border font-semibold">Cancel</button>
+              <button onClick={() => setSelected(null)} className="px-5 py-2 rounded-xl border font-semibold">
+                Cancel
+              </button>
               <button onClick={() => saveFacultyChanges(selected)} disabled={isSaving} className="px-6 py-2 rounded-xl font-semibold flex items-center gap-2" style={{ background: theme.primary, color: theme.textOnPrimary }}>
                 {isSaving ? <Spinner size={16} color="white" /> : "Save Changes"}
               </button>
@@ -667,21 +675,12 @@ const previewFID = () => {
                 <AlertTriangle className="w-6 h-6 text-red-600" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Faculty?</h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Are you sure you want to delete this faculty member? This action cannot be undone.
-              </p>
+              <p className="text-sm text-gray-500 mb-6">Are you sure you want to delete this faculty member? This action cannot be undone.</p>
               <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => setDeleteId(null)}
-                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition"
-                >
+                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
                   Cancel
                 </button>
-                <button
-                  onClick={confirmDelete}
-                  disabled={isDeleting}
-                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center"
-                >
+                <button onClick={confirmDelete} disabled={isDeleting} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center">
                   {isDeleting ? <Spinner size={16} /> : "Delete"}
                 </button>
               </div>
@@ -689,7 +688,6 @@ const previewFID = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 }
