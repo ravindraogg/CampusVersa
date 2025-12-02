@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   School,
   Lock,
@@ -16,16 +16,17 @@ import {
   Hash,
   Home,
   ArrowLeft,
+  XCircle // Added for error icon
 } from "lucide-react";
 // Import the custom website icon
 import bookImage from "../../assets/logo.png";
 
-// --- FIXED: Constants ---
+// --- Constants ---
 const primaryColor = "#66BB6A"; // Green
 const secondaryColor = "#7D5AFE"; // Purple
 const API_URL = import.meta.env.VITE_BACK_URI; // Adjust if hosted elsewhere
 
-// --- FIXED: Sub-component ---
+// --- Sub-component ---
 const InputField = ({
   label,
   icon: Icon,
@@ -64,7 +65,9 @@ const InstituteAuth = () => {
   const [loginData, setLoginData] = useState({ identifier: "", password: "" });
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  
+  // Custom Notification State
+  const [notification, setNotification] = useState({ show: false, message: "", type: "success" });
 
   // Form State for Registration
   const [regData, setRegData] = useState({
@@ -80,22 +83,31 @@ const InstituteAuth = () => {
     notes: "",
   });
 
+  // --- Helper: Show Notification ---
+  const showNotification = (message, type = "success") => {
+    setNotification({ show: true, message, type });
+    
+    // Auto hide after 3 seconds if it's just an error/info
+    if (type === 'error') {
+        setTimeout(() => {
+            setNotification(prev => ({ ...prev, show: false }));
+        }, 3000);
+    }
+  };
+
   // --- Handlers ---
 
   const handleLoginChange = (e) => {
     setLoginData({ ...loginData, [e.target.name]: e.target.value });
-    setErrorMsg("");
   };
 
   const handleRegChange = (e) => {
     setRegData({ ...regData, [e.target.name]: e.target.value });
-    setErrorMsg("");
   };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    setErrorMsg("");
 
     try {
       const response = await fetch(`${API_URL}/institute/login`, {
@@ -107,19 +119,25 @@ const InstituteAuth = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // Save token (e.g., localStorage)
+        // Save token
         localStorage.setItem("instituteToken", data.token);
         localStorage.setItem("instituteName", data.name);
-        alert(`Login Successful! Welcome ${data.name}`);
+        
+        // 1. Show Success Notification
+        showNotification(`Login Successful! Welcome ${data.name}`, "success");
 
-        // --- CHANGED: Redirect to /in/dashboard ---
-        window.location.href = "/in/dashboard";
+        // 2. Wait 1.5 Seconds before redirecting
+        setTimeout(() => {
+            window.location.href = "/in/dashboard";
+        }, 1500);
+
       } else {
-        setErrorMsg(data.message || "Login failed");
+        // Show Error Notification
+        showNotification(data.message || "Login failed", "error");
       }
     } catch (error) {
       console.error(error);
-      setErrorMsg("Server error. Please try again later.");
+      showNotification("Server error. Please try again later.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -128,11 +146,8 @@ const InstituteAuth = () => {
   const handleRequestSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    setErrorMsg("");
 
     try {
-      // This hits the /institute/register endpoint in server.js
-      // which saves to the 'requestsinstitute' collection
       const response = await fetch(`${API_URL}/institute/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,6 +158,7 @@ const InstituteAuth = () => {
 
       if (response.ok) {
         setRequestSuccess(true);
+        showNotification("Request submitted successfully!", "success");
         setRegData({
           name: "",
           requestedCode: "",
@@ -156,36 +172,57 @@ const InstituteAuth = () => {
           notes: "",
         });
       } else {
-        setErrorMsg(data.message || "Registration failed");
+        showNotification(data.message || "Registration failed", "error");
       }
     } catch (error) {
       console.error(error);
-      setErrorMsg("Server error. Please try again later.");
+      showNotification("Server error. Please try again later.", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
+    <div className="min-h-screen bg-gray-50 font-sans flex flex-col relative overflow-hidden">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        /* Custom scrollbar for the auth container */
-        .auth-scroll::-webkit-scrollbar {
-          width: 6px;
+        .auth-scroll::-webkit-scrollbar { width: 6px; }
+        .auth-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+        .auth-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+        
+        /* Notification Animation */
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
         }
-        .auth-scroll::-webkit-scrollbar-track {
-          background: #f1f1f1;
-        }
-        .auth-scroll::-webkit-scrollbar-thumb {
-          background: #d1d5db;
-          border-radius: 4px;
-        }
-        .auth-scroll::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
-        }
+        .toast-enter { animation: slideInRight 0.4s ease-out forwards; }
       `}</style>
+
+      {/* --- CUSTOM NOTIFICATION TOAST --- */}
+      {notification.show && (
+        <div className="fixed top-24 right-5 z-[100] toast-enter">
+          <div 
+            className={`flex items-center p-4 rounded-xl shadow-2xl border-l-4 backdrop-blur-md bg-white/95 w-80 md:w-96
+              ${notification.type === 'success' ? 'border-green-500' : 'border-red-500'}
+            `}
+          >
+            <div className={`p-2 rounded-full mr-3 ${notification.type === 'success' ? 'bg-green-100' : 'bg-red-100'}`}>
+              {notification.type === 'success' ? (
+                <CheckCircle className={`w-5 h-5 ${notification.type === 'success' ? 'text-green-600' : 'text-red-600'}`} />
+              ) : (
+                <XCircle className="w-5 h-5 text-red-600" />
+              )}
+            </div>
+            <div>
+              <h4 className={`font-bold text-sm ${notification.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>
+                {notification.type === 'success' ? 'Success' : 'Error'}
+              </h4>
+              <p className="text-gray-600 text-xs mt-0.5">{notification.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- Navbar --- */}
       <nav className="w-full bg-white/60 backdrop-blur-md border-b border-gray-200/50 py-4 px-6 fixed top-0 z-50 flex justify-between items-center transition-all duration-300">
@@ -219,14 +256,9 @@ const InstituteAuth = () => {
 
       {/* --- Main Content Area --- */}
       <div className="flex-1 flex items-center justify-center p-6 pt-24 pb-12">
-        {/* Main Card Container 
-            - Added max-h-[85vh] to constrain height
-            - Added overflow-hidden to keep rounded corners 
-        */}
         <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl flex flex-col md:flex-row overflow-hidden h-auto max-h-[85vh] min-h-[600px] transition-all duration-300 ease-in-out">
           {/* Left Side: Visual/Branding */}
           <div className="md:w-2/5 p-8 flex flex-col justify-between text-white relative bg-[#374232]">
-            {/* Decorative Circles */}
             <div className="absolute top-[-50px] left-[-50px] w-40 h-40 rounded-full bg-white opacity-10"></div>
             <div className="absolute w-60 h-60 rounded-full bg-green-500 opacity-20"></div>
 
@@ -271,17 +303,14 @@ const InstituteAuth = () => {
             </div>
           </div>
 
-          {/* Right Side: Auth Forms 
-                - Added overflow-y-auto to enable scrolling inside this specific panel
-                - Added auth-scroll class for custom scrollbar styling
-            */}
+          {/* Right Side: Auth Forms */}
           <div className="flex-1 bg-white p-8 md:p-12 overflow-y-auto auth-scroll">
             {/* Tab Navigation */}
             <div className="flex p-1 bg-gray-100 rounded-xl mb-8 sticky top-0 z-10">
               <button
                 onClick={() => {
                   setActiveTab("login");
-                  setErrorMsg("");
+                  setNotification({ show: false, message: "", type: "success" }); // Clear notifs on tab switch
                 }}
                 className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   activeTab === "login"
@@ -294,7 +323,7 @@ const InstituteAuth = () => {
               <button
                 onClick={() => {
                   setActiveTab("register");
-                  setErrorMsg("");
+                  setNotification({ show: false, message: "", type: "success" });
                 }}
                 className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   activeTab === "register"
@@ -306,14 +335,6 @@ const InstituteAuth = () => {
               </button>
             </div>
 
-            {/* Error Message Display */}
-            {errorMsg && (
-              <div className="mb-6 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center">
-                <AlertCircle className="w-4 h-4 mr-2" />
-                {errorMsg}
-              </div>
-            )}
-
             {/* --- VIEW 1: LOGIN --- */}
             {activeTab === "login" && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-300 h-full flex flex-col justify-center min-h-[400px]">
@@ -322,7 +343,7 @@ const InstituteAuth = () => {
                     Welcome Back
                   </h2>
                   <p className="text-gray-500 text-sm mt-1">
-                    Enter your institute credentials to continue.
+                    Enter your Institute or Authorized Faculty credentials.
                   </p>
                 </div>
 
@@ -331,12 +352,12 @@ const InstituteAuth = () => {
                   className="space-y-6 max-w-sm mx-auto w-full"
                 >
                   <InputField
-                    label="IID / Email / Code"
+                    label="Institute / Faculty Identifier"
                     icon={Hash}
                     name="identifier"
                     value={loginData.identifier}
                     onChange={handleLoginChange}
-                    placeholder="Enter IID, Email or Institute Code"
+                    placeholder="Institute Code, IID, or Faculty Email/FID"
                   />
 
                   <InputField

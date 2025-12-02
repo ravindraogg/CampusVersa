@@ -1,4 +1,3 @@
-// indashboard.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard,
@@ -26,7 +25,17 @@ import {
   FileText,
   CalendarDays,
   Edit3,
-  BookOpen // Ensure BookOpen is imported
+  BookOpen,
+  Lock,
+  ShieldCheck,
+  Search,
+  Save,
+  UserPlus,
+  UserMinus,
+  MapPin,
+  Globe,
+  Phone,
+  UserCheck
 } from "lucide-react";
 
 // Sub-page Components
@@ -37,7 +46,7 @@ import RequestAdminPage from "./RequestAdminPage";
 import NaacPage from "./NaacPage";
 import NoticePage from "./NoticePage"; 
 import TimetableManager from "./Timetable"; 
-import CoursesPage from "./CoursesPage"; // Import CoursesPage
+import CoursesPage from "./CoursesPage";
 
 const API_URL = import.meta.env.VITE_BACK_URI;
 
@@ -52,7 +61,7 @@ const DEFAULT_THEME = {
   textMuted: "#6B7280",
 };
 
-// --- Small helpers ---
+// --- Helpers ---
 const authFetch = async (path, opts = {}) => {
   const token = localStorage.getItem("instituteToken");
   const headers = {
@@ -79,19 +88,6 @@ const Spinner = ({ size = 6, color = "white" }) => (
       borderTopColor: "transparent",
     }}
   />
-);
-
-// Updated Profile Detail Card
-const ProfileDetail = ({ icon: Icon, label, value }) => (
-  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition-all duration-300">
-    <div className="w-10 h-10 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-sm text-gray-500">
-      <Icon className="w-5 h-5" />
-    </div>
-    <div className="overflow-hidden">
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">{label}</p>
-      <p className="font-semibold text-gray-800 text-sm truncate" title={value}>{value || "N/A"}</p>
-    </div>
-  </div>
 );
 
 const StatCard = ({
@@ -165,11 +161,23 @@ const InstituteDashboard = () => {
   const [noticesList, setNoticesList] = useState(null);
   const [noticesLoading, setNoticesLoading] = useState(false);
   
-  // Profile Edit State
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [uploadLoading, setUploadLoading] = useState(false);
+  // --- SETTINGS STATE ---
+  const [settingsTab, setSettingsTab] = useState("profile"); // profile | security | access
+  const [passForm, setPassForm] = useState({ current: "", new: "", confirm: "" });
+  
+  // Access Control State
+  const [accessUsers, setAccessUsers] = useState([]); // Authorized Admins
+  const [availableFaculty, setAvailableFaculty] = useState([]); // All other faculty
+  const [facultySearch, setFacultySearch] = useState("");
+  
   const [editForm, setEditForm] = useState({
     name: "",
+    website: "",
+    phone: "",
+    address: "",
+    state: "",
+    pincode: "",
+    naacGrade: "",
     logoBase64: null,
     previewUrl: null,
   });
@@ -185,15 +193,20 @@ const InstituteDashboard = () => {
       const res = await authFetch("/institute/me", { method: "GET" });
       const data = await res.json();
       setInstitute(data);
-      if (data.themeColor) {
-        setCurrentTheme((prev) => ({
-          ...prev,
-          primary: data.themeColor,
-          dark: data.themeColor,
-        }));
-      }
+      
+      setEditForm({
+        name: data.name || "",
+        website: data.website || "",
+        phone: data.phone || "",
+        address: data.address || "",
+        state: data.state || "",
+        pincode: data.pincode || "",
+        naacGrade: data.accreditation && data.accreditation.length > 0 ? data.accreditation[0].grade : "",
+        logoBase64: null,
+        previewUrl: data.logo || null,
+      });
+
       if (data.themeColorPrimary) {
-        sessionStorage.setItem("themePrimary", data.themeColorPrimary);
         setCurrentTheme((prev) => ({
           ...prev,
           primary: data.themeColorPrimary,
@@ -217,6 +230,12 @@ const InstituteDashboard = () => {
   }, [fetchInstituteData]);
 
   useEffect(() => {
+    if (activeTab === "dashboard") loadDashboardStats();
+    if (activeTab === "notices" && noticesList === null) loadNotices();
+    // Load Access Data when tab is switched
+    if (activeTab === "settings" && settingsTab === "access") loadAccessControlData();
+  }, [activeTab, settingsTab]);
+   useEffect(() => {
     if (institute) {
       document.title = `${institute.code || "Institute"} | CampusVersa`;
       if (institute.logo) {
@@ -230,12 +249,6 @@ const InstituteDashboard = () => {
       }
     }
   }, [institute]);
-
-  useEffect(() => {
-    if (activeTab === "dashboard") loadDashboardStats();
-    if (activeTab === "notices" && noticesList === null) loadNotices();
-  }, [activeTab]);
-
   const loadDashboardStats = async () => {
     setDashboardLoading(true);
     try {
@@ -254,6 +267,8 @@ const InstituteDashboard = () => {
     } catch (err) { setNoticesList([]); } finally { setNoticesLoading(false); }
   };
   
+  // --- SETTINGS ACTIONS ---
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -265,56 +280,137 @@ const InstituteDashboard = () => {
     }
   };
 
-  const saveProfile = async () => {
-    setUploadLoading(true);
+  const saveProfileFull = async () => {
     setIsPageLoading(true);
     try {
+      const accreditationData = editForm.naacGrade ? [{ type: 'NAAC', grade: editForm.naacGrade, status: true }] : [];
+
       const payload = {
-        name: editForm.name || institute.name,
-        logoBase64: editForm.logoBase64,
+        name: editForm.name,
+        website: editForm.website,
+        phone: editForm.phone,
+        address: editForm.address,
+        state: editForm.state,
+        pincode: editForm.pincode,
+        accreditation: accreditationData,
+        logoBase64: editForm.logoBase64 
       };
+
       const response = await authFetch("/institute/update-profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await response.json();
       
-      if (!response.ok || data.success === false) {
-        throw new Error(data.message || "Failed");
+      if (data.success) {
+        setInstitute(data.data);
+        showToast("Institute profile details updated successfully!", "success");
+      } else {
+        throw new Error(data.message);
       }
-
-      setInstitute(data.data);
-      if (data.data.themeColorPrimary) {
-        setCurrentTheme((prev) => ({
-          ...prev,
-          primary: data.data.themeColorPrimary,
-          dark: data.data.themeColorPrimary,
-          textOnPrimary: data.data.themeColorSecondary || "#FFFFFF",
-        }));
-      }
-      setIsEditingProfile(false);
-      showToast("Profile & Logo updated successfully!", "success");
     } catch (error) {
-      showToast("Profile update failed. Please try again.", "error");
+      showToast(error.message || "Update failed", "error");
     } finally {
-      setUploadLoading(false);
       setIsPageLoading(false);
     }
   };
 
-  const openProfileEditor = () => {
-    setEditForm({
-      name: institute?.name || "",
-      logoBase64: null,
-      previewUrl: institute?.logo || null,
-    });
-    setIsEditingProfile(true);
+  const handlePasswordChange = async () => {
+    if (passForm.new !== passForm.confirm) {
+      showToast("New passwords do not match", "error");
+      return;
+    }
+    setIsPageLoading(true);
+    try {
+      const res = await authFetch("/institute/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword: passForm.current, newPassword: passForm.new })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Password changed successfully", "success");
+        setPassForm({ current: "", new: "", confirm: "" });
+      } else {
+        showToast(data.message || "Failed to change password", "error");
+      }
+    } catch (err) {
+      showToast("Server error", "error");
+    } finally {
+      setIsPageLoading(false);
+    }
   };
+
+  // --- ACCESS CONTROL ACTIONS (UPDATED) ---
+  const loadAccessControlData = async () => {
+    // We need to fetch two things:
+    // 1. Currently Authorized Users
+    // 2. All Faculty (to show the "available to grant" list)
+    try {
+        const [authRes, allRes] = await Promise.all([
+            authFetch("/institute/access-control/users"),
+            authFetch("/institute/faculty") // Uses your existing faculty endpoint
+        ]);
+
+        if (authRes.ok && allRes.ok) {
+            const authorizedData = await authRes.json();
+            const allFacultyData = await allRes.json();
+            
+            setAccessUsers(authorizedData);
+
+            // Filter: Available = All Faculty - Authorized Faculty
+            // We use a Set of IDs for O(1) lookup
+            const authorizedIds = new Set(authorizedData.map(u => u._id));
+            const available = allFacultyData.filter(f => !authorizedIds.has(f._id));
+            
+            setAvailableFaculty(available);
+        }
+    } catch(e) { 
+        console.error("Failed to load access control data", e); 
+        showToast("Failed to load faculty list", "error");
+    }
+  };
+
+  const grantAccess = async (facultyId) => {
+    setIsPageLoading(true);
+    try {
+      const res = await authFetch("/institute/access-control/grant", {
+        method: "POST",
+        body: JSON.stringify({ facultyId })
+      });
+      if(res.ok) {
+        showToast("Access granted successfully", "success");
+        loadAccessControlData(); // Reload lists
+        setFacultySearch("");
+      }
+    } catch(err) { showToast("Failed to grant access", "error"); }
+    finally { setIsPageLoading(false); }
+  };
+
+  const revokeAccess = async (facultyId) => {
+    if(!window.confirm("Are you sure you want to revoke access?")) return;
+    setIsPageLoading(true);
+    try {
+      const res = await authFetch("/institute/access-control/revoke", {
+        method: "POST",
+        body: JSON.stringify({ facultyId })
+      });
+      if(res.ok) {
+        showToast("Access revoked", "success");
+        loadAccessControlData(); // Reload lists
+      }
+    } catch(err) { showToast("Failed to revoke access", "error"); }
+    finally { setIsPageLoading(false); }
+  };
+
+  // Filter available faculty based on search input
+  const filteredAvailableFaculty = availableFaculty.filter(f => 
+    f.name.toLowerCase().includes(facultySearch.toLowerCase()) || 
+    f.email.toLowerCase().includes(facultySearch.toLowerCase()) ||
+    (f.department && f.department.toLowerCase().includes(facultySearch.toLowerCase()))
+  );
 
   const handleLogout = () => {
     localStorage.removeItem("instituteToken");
-    localStorage.removeItem("instituteName");
     window.location.href = "/in/auth";
   };
 
@@ -323,7 +419,7 @@ const InstituteDashboard = () => {
     showToast("Notifications cleared locally");
   };
 
-  // --- RENDER FUNCTIONS ---
+  // --- RENDER SECTIONS ---
   const renderDashboardHome = () => (
     <div className="animate-in fade-in duration-500 pb-6">
       <SectionHeader title="Institute Overview" subtitle={`Welcome back, ${institute?.name || "Administrator"} (${institute?.code || "..."}).`} />
@@ -361,68 +457,293 @@ const InstituteDashboard = () => {
   );
 
   const renderSettingsSection = () => (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative pb-6">
-      <SectionHeader title="Settings" subtitle="Manage your institute profile and appearance" />
-      <div className="w-full flex justify-center">
-        <div className="w-full max-w-4xl bg-white rounded-3xl border border-gray-100 shadow-xl relative overflow-hidden">
-          <div 
-            className="h-32 w-full absolute top-0 left-0" 
-            style={{ 
-              background: currentTheme.primary,
-              borderBottom: "1px solid rgba(0,0,0,0.05)"
-            }}
-          ></div>
-          
-          <div className="relative z-10 p-8">
-            <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-8 mt-4">
-              <div className="w-32 h-32 rounded-full bg-white shadow-lg p-1.5 border-4 border-white relative shrink-0">
-                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"style={{ background: currentTheme.primary }}>
-                  {institute?.logo ? <img src={institute.logo} className="w-full h-full object-cover" alt="Logo" /> : <span className="text-3xl font-bold text-gray-300">IN</span>}
-                </div>
-                {!isEditingProfile && (
-                  <button onClick={openProfileEditor} className="absolute bottom-1 right-1 p-2 rounded-full bg-white shadow-md border hover:bg-gray-50 text-gray-600 transition-colors z-20" title="Edit Profile">
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                )}
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-6 relative">
+      <SectionHeader title="Institute Settings" subtitle="Manage profile, security, and team access" />
+      
+      {/* Settings Navigation Tabs */}
+      <div className="flex gap-2 mb-6 border-b border-gray-100 pb-1 overflow-x-auto">
+        {[
+          { id: 'profile', label: 'General Profile', icon: Building2 },
+          { id: 'security', label: 'Security', icon: Lock },
+          { id: 'access', label: 'Team Access', icon: ShieldCheck },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setSettingsTab(tab.id)}
+            className={`px-4 py-2.5 rounded-t-xl flex items-center gap-2 text-sm font-medium transition-colors whitespace-nowrap ${
+              settingsTab === tab.id 
+                ? 'bg-white border-b-2 text-gray-800' 
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+            style={{ borderColor: settingsTab === tab.id ? currentTheme.primary : 'transparent' }}
+          >
+            <tab.icon className="w-4 h-4" /> {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 max-w-4xl">
+        
+        {/* --- 1. PROFILE TAB --- */}
+        {settingsTab === 'profile' && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row items-start gap-8">
+              {/* Logo Upload */}
+              <div className="shrink-0 group relative self-center md:self-start">
+                 <div className="w-32 h-32 rounded-full bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden">
+                    {editForm.previewUrl ? (
+                      <img src={editForm.previewUrl} className="w-full h-full object-cover" alt="Logo" />
+                    ) : (
+                      <Upload className="w-8 h-8 text-gray-300" />
+                    )}
+                 </div>
+                 <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity rounded-full cursor-pointer">
+                    Change Logo
+                    <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                 </label>
               </div>
-              
-              <div className="flex-1 text-center md:text-left mb-2">
-                <h2 className="text-3xl font-bold p-2" style={{ color: currentTheme.textOnPrimary }}>{institute?.name || "Institute Name"}</h2>
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mt-2 text-sm">
-                  <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 border border-green-200 font-medium flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" /> {institute?.status || "Active"}
-                  </span>
-                  <span className="text-gray-500 flex items-center gap-1 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                    <Building2 className="w-3 h-3" /> Code: {institute?.code}
-                  </span>
+
+              {/* Basic Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 flex-1 w-full">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Institute Name</label>
+                  <input 
+                    value={editForm.name} 
+                    onChange={e => setEditForm({...editForm, name: e.target.value})} 
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Globe className="w-3 h-3"/> Website</label>
+                  <input 
+                    value={editForm.website} 
+                    onChange={e => setEditForm({...editForm, website: e.target.value})} 
+                    placeholder="https://..."
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Official Email</label>
+                   <input value={institute?.email} disabled className="w-full p-2.5 bg-gray-100 border border-gray-200 rounded-lg text-gray-500 cursor-not-allowed" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Phone className="w-3 h-3"/> Phone Number</label>
+                  <input 
+                    value={editForm.phone} 
+                    onChange={e => setEditForm({...editForm, phone: e.target.value})} 
+                    placeholder="+91..."
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                  />
                 </div>
               </div>
             </div>
 
-            {isEditingProfile ? (
-               <div className="space-y-6 max-w-2xl mx-auto animate-in fade-in">
-                  <div className="flex flex-col items-center gap-4 p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-                    <div className="w-32 h-32 rounded-full bg-white shadow-md flex items-center justify-center overflow-hidden relative group">
-                      {editForm.previewUrl ? <img src={editForm.previewUrl} className="w-full h-full object-cover" alt="Preview" /> : <Upload className="w-10 h-10 text-gray-300" />}
-                      <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white font-medium text-xs">Change Logo <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
-                    </div>
-                    <p className="text-xs text-gray-500">Click image to upload new logo</p>
-                  </div>
-                  <div><label className="block text-sm font-semibold mb-2">Institute Name</label><input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full p-3 rounded-xl border focus:border-blue-500 outline-none" /></div>
-                  <div className="flex justify-end gap-3 pt-4 border-t"><button onClick={() => setIsEditingProfile(false)} className="px-5 py-2.5 rounded-xl border hover:bg-gray-50 font-medium">Cancel</button><button onClick={saveProfile} disabled={uploadLoading} className="px-6 py-2.5 rounded-xl text-white shadow-lg font-medium" style={{ backgroundColor: currentTheme.primary }}>Save Changes</button></div>
+            {/* Address & Accreditation */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 border-t border-gray-100 pt-6">
+               <div className="md:col-span-3"><h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400"/> Location & Details</h4></div>
+               
+               <div className="md:col-span-3">
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Street Address</label>
+                  <textarea 
+                    rows={2}
+                    value={editForm.address} 
+                    onChange={e => setEditForm({...editForm, address: e.target.value})} 
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none"
+                    placeholder="Enter full address..."
+                  />
                </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-6 border-t border-gray-100">
-                <ProfileDetail label="Official Email" value={institute?.email} icon={Send} />
-                <ProfileDetail label="Institute Code" value={institute?.code} icon={Hash} />
-                <ProfileDetail label="AISHE Code" value={institute?.aisheCode || "Not Assigned"} icon={FileText} />
-                <ProfileDetail label="Internal ID (IID)" value={institute?.IID} icon={Shield} />
-                <ProfileDetail label="College Number" value={institute?.collegeNumber ? `#${institute.collegeNumber}` : "N/A"} icon={Building2} />
-                <ProfileDetail label="Registered On" value={institute?.createdAt ? new Date(institute.createdAt).toLocaleDateString() : "N/A"} icon={CalendarDays} />
-              </div>
-            )}
+               <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">State</label>
+                  <input 
+                    value={editForm.state} 
+                    onChange={e => setEditForm({...editForm, state: e.target.value})} 
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                  />
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pincode</label>
+                  <input 
+                    value={editForm.pincode} 
+                    onChange={e => setEditForm({...editForm, pincode: e.target.value})} 
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                  />
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Shield className="w-3 h-3"/> NAAC Grade</label>
+                  <input 
+                    value={editForm.naacGrade} 
+                    onChange={e => setEditForm({...editForm, naacGrade: e.target.value})} 
+                    placeholder="e.g. A++"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                  />
+               </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-gray-100">
+               <button 
+                 onClick={saveProfileFull}
+                 disabled={isPageLoading}
+                 className="flex items-center gap-2 px-6 py-2.5 text-white rounded-xl shadow-md transition-transform hover:scale-105 active:scale-95"
+                 style={{ backgroundColor: currentTheme.primary }}
+               >
+                 {isPageLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
+                 Save Profile Changes
+               </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* --- 2. SECURITY TAB --- */}
+        {settingsTab === 'security' && (
+          <div className="max-w-md mx-auto py-4 animate-in fade-in">
+             <div className="text-center mb-8">
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4 border border-red-100">
+                   <Lock className="w-8 h-8" />
+                </div>
+                <h3 className="font-bold text-xl text-gray-800">Change Password</h3>
+                <p className="text-sm text-gray-500 mt-1">Keep your institute account secure.</p>
+             </div>
+             <div className="space-y-4">
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
+                   <input 
+                     type="password" 
+                     value={passForm.current} 
+                     onChange={e => setPassForm({...passForm, current: e.target.value})} 
+                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
+                     placeholder="••••••••"
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
+                   <input 
+                     type="password" 
+                     value={passForm.new} 
+                     onChange={e => setPassForm({...passForm, new: e.target.value})} 
+                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
+                     placeholder="••••••••"
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New Password</label>
+                   <input 
+                     type="password" 
+                     value={passForm.confirm} 
+                     onChange={e => setPassForm({...passForm, confirm: e.target.value})} 
+                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
+                     placeholder="••••••••"
+                   />
+                </div>
+                <button 
+                  onClick={handlePasswordChange} 
+                  disabled={isPageLoading}
+                  className="w-full py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold shadow-md shadow-red-200 transition-all flex justify-center items-center gap-2 mt-4"
+                >
+                   {isPageLoading ? <Loader2 className="w-5 h-5 animate-spin"/> : "Update Password"}
+                </button>
+             </div>
+          </div>
+        )}
+
+        {/* --- 3. TEAM ACCESS TAB (UPDATED) --- */}
+        {settingsTab === 'access' && (
+          <div className="space-y-8 animate-in fade-in">
+             {/* Info Box */}
+             <div className="bg-blue-50 p-4 rounded-xl flex items-start gap-3 text-blue-800 text-sm border border-blue-100">
+                <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
+                <p>Manage access to the Institute Dashboard. Granting access allows faculty members to manage students, notices, and view departmental metrics.</p>
+             </div>
+
+             {/* 1. Authorized Admins Section */}
+             <div>
+                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    Authorized Administrators <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">{accessUsers.length}</span>
+                </h4>
+                
+                {accessUsers.length === 0 ? (
+                   <div className="flex items-center justify-center p-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400 text-sm">
+                      <UserCheck className="w-4 h-4 mr-2"/> No additional faculty members authorized yet.
+                   </div>
+                ) : (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {accessUsers.map(user => (
+                         <div key={user._id} className="flex items-center justify-between p-4 bg-white border border-green-100 rounded-xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500"></div>
+                            <div className="flex items-center gap-4">
+                               <div className="w-10 h-10 rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-sm border border-green-100">
+                                 {user.name ? user.name[0] : "U"}
+                               </div>
+                               <div>
+                                  <h5 className="font-bold text-gray-800 text-sm">{user.name}</h5>
+                                  <p className="text-xs text-gray-500">{user.designation || "Faculty"} • {user.email}</p>
+                               </div>
+                            </div>
+                            <button 
+                              onClick={() => revokeAccess(user._id)} 
+                              className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="Revoke Access"
+                            >
+                               <UserMinus className="w-5 h-5" />
+                            </button>
+                         </div>
+                      ))}
+                   </div>
+                )}
+             </div>
+
+             <div className="h-px bg-gray-100"></div>
+
+             {/* 2. Available Faculty Section */}
+             <div>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                        Faculty Directory <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{filteredAvailableFaculty.length}</span>
+                    </h4>
+                    
+                    {/* Search Bar */}
+                    <div className="relative w-full md:w-64">
+                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                        <input 
+                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+                            placeholder="Search faculty..."
+                            value={facultySearch}
+                            onChange={e => setFacultySearch(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                {filteredAvailableFaculty.length === 0 ? (
+                   <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                      <p className="text-gray-500 text-sm">No faculty members found.</p>
+                      <p className="text-xs text-gray-400 mt-1">Try adding faculty from the "Manage Faculty" tab first.</p>
+                   </div>
+                ) : (
+                   <div className="max-h-80 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                      {filteredAvailableFaculty.map(f => (
+                         <div key={f._id} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-white border border-transparent hover:border-blue-100 rounded-lg transition-all group">
+                            <div className="flex items-center gap-3">
+                               <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-xs font-bold">
+                                   {f.name ? f.name[0] : "?"}
+                               </div>
+                               <div>
+                                  <p className="font-semibold text-sm text-gray-800">{f.name}</p>
+                                  <p className="text-[10px] text-gray-500 uppercase tracking-wide">{f.department || "No Dept"} • {f.FID || "No ID"}</p>
+                               </div>
+                            </div>
+                            <button 
+                                onClick={() => grantAccess(f._id)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-600 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all"
+                            >
+                                <UserPlus className="w-3 h-3" /> Grant Access
+                            </button>
+                         </div>
+                      ))}
+                   </div>
+                )}
+             </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -572,7 +893,7 @@ const InstituteDashboard = () => {
             { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
             { id: "faculty", label: "Manage Faculty", icon: Users },
             { id: "dept-metrics", label: "Manage Department", icon: BarChart3 },
-              { id: "courses", label: "Manage Courses", icon: BookOpen },
+            { id: "courses", label: "Manage Courses", icon: BookOpen },
             { id: "data-tracking", label: "Manage Student", icon: ClipboardList },
             { id: "naac", label: "NAAC Monitoring", icon: CheckCircle },
             { id: "requests", label: "Requests to Admin", icon: Send },
@@ -584,7 +905,6 @@ const InstituteDashboard = () => {
               <item.icon className="w-5 h-5" /><span className="ml-3 text-sm">{item.label}</span>
             </button>
           ))}
-          {/* Logout button removed from here */}
         </div>
 
         {/* RIGHT CONTENT: Full Height, Internal Scroll Logic */}

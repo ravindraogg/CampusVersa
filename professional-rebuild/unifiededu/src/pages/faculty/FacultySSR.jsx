@@ -22,20 +22,32 @@ const SECTIONS = [
   { id: "extension", label: "Extension Activities", icon: Briefcase },
   { id: "mentoring", label: "Mentoring", icon: Users },
   { id: "documents", label: "Proof Uploads", icon: UploadCloud },
+  { id: "workload", label: "Workload", icon: Briefcase },
+{ id: "coattainment", label: "CO Attainment", icon: CheckCircle },
+{ id: "fdp", label: "FDP / Workshops", icon: Award },
+{ id: "recognitions", label: "Recognitions", icon: Award },
+
 ];
 
 const FacultySSR = ({ authFetch, theme, pushToast }) => {
   const [activeSection, setActiveSection] = useState("personal");
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState({
+const [data, setData] = useState({
     personal: {},
     teaching: [],
     evaluation: {},
     research: { publications: [], fdpAttended: [] },
     extension: [],
     mentoring: {},
-    documents: []
-  });
+    documents: [],
+    workload: {},
+coattainment: [],
+recognitions: [],
+professional: [],
+feedbackParticipation: {}
+
+});
+
 
   // Fetch Data on Load
   useEffect(() => {
@@ -264,6 +276,182 @@ const FacultySSR = ({ authFetch, theme, pushToast }) => {
         </button>
     </div>
   );
+  const renderWorkload = () => (
+  <div className="space-y-4">
+    <h3 className="font-bold text-gray-700">Faculty Weekly Workload</h3>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <input 
+        placeholder="Theory Hours" 
+        type="number"
+        className="p-2 border rounded-xl"
+        value={data.workload.theory || ""}
+        onChange={e => updateData("workload", "theory", e.target.value)}
+      />
+
+      <input 
+        placeholder="Lab Hours"
+        type="number"
+        className="p-2 border rounded-xl"
+        value={data.workload.lab || ""}
+        onChange={e => updateData("workload", "lab", e.target.value)}
+      />
+
+      <input 
+        placeholder="Tutorial Hours"
+        type="number"
+        className="p-2 border rounded-xl"
+        value={data.workload.tutorial || ""}
+        onChange={e => updateData("workload", "tutorial", e.target.value)}
+      />
+
+      <input 
+        placeholder="Other Duties"
+        type="text"
+        className="p-2 border rounded-xl"
+        value={data.workload.otherDuties || ""}
+        onChange={e => updateData("workload", "otherDuties", e.target.value)}
+      />
+    </div>
+
+    <button 
+      onClick={() => handleSave("workload")}
+      className="px-6 py-2 rounded-xl font-bold text-white"
+      style={{ backgroundColor: theme.primary }}
+    >
+      Save Workload
+    </button>
+  </div>
+);
+const renderCOAttainment = () => {
+  const addRow = () => setData(p => ({
+    ...p,
+    coattainment: [...p.coattainment, { courseName: "", co1: 0, co2: 0, co3: 0, actionTaken: "" }]
+  }));
+
+  const updateRow = (i, field, val) => {
+    const newRows = [...data.coattainment];
+    newRows[i][field] = val;
+    setData(p => ({ ...p, coattainment: newRows }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="font-bold text-gray-700">CO Attainment</h3>
+
+      {data.coattainment.map((row, i) => (
+        <div key={i} className="p-4 rounded-xl border">
+          <input 
+            placeholder="Course Name"
+            className="p-2 border rounded-xl w-full mb-2"
+            value={row.courseName}
+            onChange={e => updateRow(i, "courseName", e.target.value)}
+          />
+
+          <div className="grid grid-cols-3 gap-3 mb-2">
+            <input placeholder="CO1" type="number" className="p-2 border rounded-xl" value={row.co1} onChange={e => updateRow(i, "co1", e.target.value)} />
+            <input placeholder="CO2" type="number" className="p-2 border rounded-xl" value={row.co2} onChange={e => updateRow(i, "co2", e.target.value)} />
+            <input placeholder="CO3" type="number" className="p-2 border rounded-xl" value={row.co3} onChange={e => updateRow(i, "co3", e.target.value)} />
+          </div>
+
+          <textarea 
+            placeholder="Action taken for low attainment"
+            className="p-2 border rounded-xl w-full"
+            value={row.actionTaken}
+            onChange={e => updateRow(i, "actionTaken", e.target.value)}
+          />
+        </div>
+      ))}
+
+      <button 
+        onClick={addRow}
+        className="px-4 py-2 rounded-xl font-bold"
+        style={{ backgroundColor: theme.primary, color: "#fff" }}
+      >
+        Add Course CO
+      </button>
+
+      <button 
+        onClick={() => handleSave("coattainment")}
+        className="px-6 py-2 rounded-xl font-bold text-white"
+        style={{ backgroundColor: theme.primary }}
+      >
+        Save CO Attainment
+      </button>
+    </div>
+  );
+};
+const renderFDP = () => {
+  const addFDP = () => setData(p => ({
+    ...p,
+    research: { 
+      ...p.research, 
+      fdpAttended: [...p.research.fdpAttended, { title: "", organizer: "", duration: "" }]
+    }
+  }));
+
+  const updateFDP = (i, field, val) => {
+    const newFDP = [...data.research.fdpAttended];
+    newFDP[i][field] = val;
+    setData(p => ({ ...p, research: { ...p.research, fdpAttended: newFDP } }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="font-bold text-gray-700">Faculty Development Programs</h3>
+
+      {data.research.fdpAttended.map((fdp, i) => (
+        <div key={i} className="p-4 border rounded-xl">
+          <input placeholder="FDP Title" className="p-2 border rounded-xl w-full mb-2" value={fdp.title} onChange={e => updateFDP(i, "title", e.target.value)} />
+          <input placeholder="Organizer" className="p-2 border rounded-xl w-full mb-2" value={fdp.organizer} onChange={e => updateFDP(i, "organizer", e.target.value)} />
+          <input placeholder="Duration" className="p-2 border rounded-xl w-full" value={fdp.duration} onChange={e => updateFDP(i, "duration", e.target.value)} />
+        </div>
+      ))}
+
+      <button onClick={addFDP} className="px-4 py-2 rounded-xl font-bold" style={{ backgroundColor: theme.primary, color: "#fff" }}>
+        Add FDP
+      </button>
+
+      <button onClick={() => handleSave("research")} className="px-6 py-2 rounded-xl font-bold text-white" style={{ backgroundColor: theme.primary }}>
+        Save FDP
+      </button>
+    </div>
+  );
+};
+const renderRecognitions = () => {
+  const addRec = () => setData(p => ({
+    ...p,
+    recognitions: [...p.recognitions, { title: "", by: "", year: "" }]
+  }));
+
+  const updateRec = (i, field, val) => {
+    const list = [...data.recognitions];
+    list[i][field] = val;
+    setData(p => ({ ...p, recognitions: list }));
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="font-bold text-gray-700">Awards / Recognitions</h3>
+
+      {data.recognitions.map((rec, i) => (
+        <div key={i} className="p-4 border rounded-xl">
+          <input placeholder="Title" className="p-2 border rounded-xl w-full mb-2" value={rec.title} onChange={e => updateRec(i, "title", e.target.value)} />
+          <input placeholder="Awarded By" className="p-2 border rounded-xl w-full mb-2" value={rec.by} onChange={e => updateRec(i, "by", e.target.value)} />
+          <input placeholder="Year" className="p-2 border rounded-xl w-full" value={rec.year} onChange={e => updateRec(i, "year", e.target.value)} />
+        </div>
+      ))}
+
+      <button onClick={addRec} className="px-4 py-2 rounded-xl font-bold" style={{ backgroundColor: theme.primary, color: "#fff" }}>
+        Add Recognition
+      </button>
+
+      <button onClick={() => handleSave("recognitions")} className="px-6 py-2 rounded-xl font-bold text-white" style={{ backgroundColor: theme.primary }}>
+        Save Recognitions
+      </button>
+    </div>
+  );
+};
 
   const renderResearch = () => {
     const addPub = () => setData(p => ({ ...p, research: { ...p.research, publications: [...p.research.publications, { title: "", journal: "", year: "" }] } }));
@@ -489,9 +677,16 @@ const FacultySSR = ({ authFetch, theme, pushToast }) => {
          )}
          {activeSection === "mentoring" && renderMentoring()}
          {activeSection === "documents" && renderDocuments()}
+         {activeSection === "workload" && renderWorkload()}
+  {activeSection === "coattainment" && renderCOAttainment()}
+{activeSection === "fdp" && renderFDP()}
+{activeSection === "recognitions" && renderRecognitions()}
       </div>
     </div>
   );
 };
 
 export default FacultySSR;
+
+
+

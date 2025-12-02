@@ -1,15 +1,15 @@
 const mongoose = require('mongoose');
 
 const InstituteSchema = new mongoose.Schema({
-  IID: {                              // NEW FIELD
+  IID: {
     type: String,
     required: true,
-    unique: true                      // PRIMARY UNIQUE IDENTIFIER
+    unique: true
   },
 
   name: { type: String, required: true },
-  code: { type: String, required: true, unique: true },  // Login Option 2
-  email: { type: String, required: true, unique: true }, // Login Option 3
+  code: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
 
   aisheCode: { type: String },
@@ -23,15 +23,26 @@ const InstituteSchema = new mongoose.Schema({
   address: String,
   state: String,
   pincode: String,
-  accreditation: String,
 
+  accreditation: [
+    {
+      type: { type: String, required: true }, 
+      status: { type: Boolean, default: false },
+      grade: { type: String },
+      score: { type: Number }
+    }
+  ],
+  authorizedFaculty: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Faculty' 
+  }],
   status: {
     type: String,
     enum: ['Active', 'Pending', 'Suspended', 'Rejected'],
     default: 'Pending'
   },
 
-  accreditationScore: Number,
+  accreditationScore: Number, // Optional now
   createdAt: { type: Date, default: Date.now }
 });
 

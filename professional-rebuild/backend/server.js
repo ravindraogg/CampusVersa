@@ -384,12 +384,20 @@ app.put('/admin/grievance/:id', verifyToken, async (req, res) => {
 // -------------------
 // 2. INSTITUTE AUTH (Login + Register Request)
 // -------------------
+// ... existing imports ...
+
+// ==========================================
+// UPDATED INSTITUTE LOGIN (Supports Auth Faculty)
+// ==========================================
 app.post('/institute/login', async (req, res) => {
   try {
-    const { identifier, password } = req.body;  
-    // identifier can be IID OR email OR code
+    const { identifier, password } = req.body;
+    // identifier can be: Institute Code, Institute Email, Institute IID, Faculty Email, Faculty FID
 
-    const inst = await Institute.findOne({
+    // ------------------------------------------
+    // STRATEGY 1: Check Direct Institute Login
+    // ------------------------------------------
+    let institute = await Institute.findOne({
       $or: [
         { IID: identifier },
         { email: identifier },
@@ -397,25 +405,83 @@ app.post('/institute/login', async (req, res) => {
       ]
     });
 
-    if (!inst) return res.status(401).json({ message: 'Institute not found' });
-    if (inst.status !== 'Active') return res.status(403).json({ message: `Account is ${inst.status}` });
-    if (inst.password !== password) return res.status(401).json({ message: 'Invalid password' });
+    if (institute) {
+      if (institute.password !== password) {
+        return res.status(401).json({ message: 'Invalid Institute password' });
+      }
+      if (institute.status !== 'Active') {
+        return res.status(403).json({ message: `Institute account is ${institute.status}` });
+      }
 
-    const token = jwt.sign(
-      { id: inst._id, role: 'institute', IID: inst.IID },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+      const token = jwt.sign(
+        { id: institute._id, role: 'institute', IID: institute.IID },
+        process.env.JWT_SECRET,
+        { expiresIn: '1d' }
+      );
 
-    res.json({
-      token,
-      role: 'institute',
-      name: inst.name,
-      IID: inst.IID,
-      code: inst.code,
-      email: inst.email,
-      message: 'Login successful'
+      return res.json({
+        token,
+        role: 'institute',
+        name: institute.name,
+        message: 'Login successful'
+      });
+    }
+
+    // ------------------------------------------
+    // STRATEGY 2: Check Authorized Faculty Login
+    // ------------------------------------------
+    const faculty = await Faculty.findOne({
+      $or: [
+        { FID: identifier },
+        { email: identifier }
+      ]
     });
+
+    if (faculty) {
+      // 1. Validate Faculty Password
+      if (faculty.password !== password) {
+        return res.status(401).json({ message: 'Invalid Faculty credentials' });
+      }
+
+      // 2. Check if Faculty is Authorized by their Institute
+      // We look for the institute that OWNS this faculty AND has this faculty's ID in 'authorizedFaculty'
+      const targetInstitute = await Institute.findOne({
+        _id: faculty.instituteId,
+        authorizedFaculty: faculty._id // Checks if faculty._id exists in the array
+      });
+
+      if (!targetInstitute) {
+        return res.status(403).json({ message: 'Access Denied: You are not authorized to access the Institute Dashboard.' });
+      }
+
+      if (targetInstitute.status !== 'Active') {
+        return res.status(403).json({ message: `Institute account is ${targetInstitute.status}` });
+      }
+
+      // 3. Issue "Proxy" Token
+      // We set 'id' to the INSTITUTE'S ID so all dashboard routes work automatically.
+      // We add 'realUser' to track who actually logged in.
+      const token = jwt.sign(
+        { 
+          id: targetInstitute._id, 
+          role: 'institute', 
+          IID: targetInstitute.IID,
+          realUser: { id: faculty._id, name: faculty.name, role: 'faculty' }
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '1d' }
+      );
+
+      return res.json({
+        token,
+        role: 'institute',
+        name: targetInstitute.name, // Dashboard expects Institute Name
+        message: `Welcome ${faculty.name} (Admin Access)`
+      });
+    }
+
+    // If neither found
+    return res.status(401).json({ message: 'Account not found' });
 
   } catch (err) {
     console.error('/institute/login error:', err);
@@ -501,6 +567,102 @@ app.post('/faculty/course/opt-in', verifyToken, async (req, res) => {
   } catch (err) {
     console.error("Opt-In Error:", err);
     res.status(500).json({ error: "Operation failed" });
+  }
+});
+app.post('/institute/update-profile', verifyToken, async (req, res) => {
+  try {
+    const { 
+      name, logoBase64, website, phone, address, 
+      state, pincode, themeColorPrimary, themeColorSecondary,
+      accreditation 
+    } = req.body;
+
+    const updateData = {};
+
+    // Map fields
+    if (name) updateData.name = name;
+    if (logoBase64) updateData.logo = logoBase64;
+    if (website) updateData.website = website;
+    if (phone) updateData.phone = phone;
+    if (address) updateData.address = address;
+    if (state) updateData.state = state;
+    if (pincode) updateData.pincode = pincode;
+    if (themeColorPrimary) updateData.themeColorPrimary = themeColorPrimary;
+    if (themeColorSecondary) updateData.themeColorSecondary = themeColorSecondary;
+    if (accreditation) updateData.accreditation = accreditation;
+
+    const updated = await Institute.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateData },
+      { new: true }
+    ).select('-password');
+
+    res.json({ success: true, data: updated, message: "Profile updated successfully" });
+  } catch (err) {
+    console.error('/institute/update-profile error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+// 2. CHANGE PASSWORD
+app.post('/institute/change-password', verifyToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const inst = await Institute.findById(req.user.id);
+
+    if (inst.password !== currentPassword) {
+      return res.status(401).json({ message: "Incorrect current password" });
+    }
+
+    inst.password = newPassword;
+    await inst.save();
+
+    res.json({ success: true, message: "Password changed successfully" });
+  } catch (err) {
+    console.error('/institute/change-password error:', err);
+    res.status(500).json({ error: "Failed to change password" });
+  }
+});
+
+// 3. GET AUTHORIZED FACULTY & SEARCH
+app.get('/institute/access-control/users', verifyToken, async (req, res) => {
+  try {
+    const inst = await Institute.findById(req.user.id).populate('authorizedFaculty', 'name email FID profilePic designation');
+    res.json(inst.authorizedFaculty || []);
+  } catch (err) {
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// 4. GRANT ACCESS TO FACULTY
+app.post('/institute/access-control/grant', verifyToken, async (req, res) => {
+  try {
+    const { facultyId } = req.body;
+    
+    // Check if faculty exists in this institute
+    const faculty = await Faculty.findOne({ _id: facultyId, instituteId: req.user.id });
+    if (!faculty) return res.status(404).json({ message: "Faculty not found in this institute" });
+
+    await Institute.findByIdAndUpdate(req.user.id, {
+      $addToSet: { authorizedFaculty: facultyId } // addToSet prevents duplicates
+    });
+
+    res.json({ success: true, message: `${faculty.name} granted admin access` });
+  } catch (err) {
+    res.status(500).json({ error: "Grant access failed" });
+  }
+});
+
+// 5. REVOKE ACCESS
+app.post('/institute/access-control/revoke', verifyToken, async (req, res) => {
+  try {
+    const { facultyId } = req.body;
+    await Institute.findByIdAndUpdate(req.user.id, {
+      $pull: { authorizedFaculty: facultyId }
+    });
+    res.json({ success: true, message: "Access revoked" });
+  } catch (err) {
+    res.status(500).json({ error: "Revoke access failed" });
   }
 });
 app.post('/faculty/update-profile', verifyToken, async (req, res) => {

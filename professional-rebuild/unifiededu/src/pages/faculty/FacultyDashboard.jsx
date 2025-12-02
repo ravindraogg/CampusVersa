@@ -251,6 +251,23 @@ const FacultyDashboard = () => {
       setLoading(false);
     }
   }, []);
+useEffect(() => {
+  if (!faculty) return;
+
+  // Set Title
+  document.title = `${faculty.name || "Institute"} | CampusVersa`;
+
+  // Set Favicon
+  if (faculty.instituteLogo) {
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = faculty.instituteLogo;
+  }
+}, [faculty]);
 
   useEffect(() => {
     loadData();

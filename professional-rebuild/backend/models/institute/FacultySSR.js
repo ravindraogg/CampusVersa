@@ -61,14 +61,56 @@ const FacultySSRSchema = new mongoose.Schema({
     remedialClassesTaken: { type: Number, default: 0 }
   },
 
-  // 7. Uploaded Documents (Centralized Proofs)
-  documents: [{
-    category: String, // "Lesson Plan", "Certificate", "Question Paper"
-    title: String,
-    url: String, // Base64 or Link
-    uploadedAt: { type: Date, default: Date.now }
+workload: {
+    theory: Number,
+    lab: Number,
+    tutorial: Number,
+    otherDuties: Number
+  },
+
+  coAttainment: [{
+    courseName: String,
+    co1: Number,
+    co2: Number,
+    co3: Number,
+    avgAttainment: Number,
+    actionTaken: String
   }],
 
+  fdpAttended: [{
+    title: String,
+    organizer: String,
+    duration: String,
+    certificateUrl: String
+  }],
+
+  recognitions: [{
+    title: String,
+    by: String,
+    year: String
+  }],
+
+  professional: [{
+    activity: String,
+    type: String,
+    year: String
+  }],
+
+  feedbackParticipation: {
+    curriculumFeedback: Boolean,
+    syllabusRevision: Boolean,
+    bosParticipation: Boolean
+  },
+
+  documents: [{
+    category: String,
+    title: String,
+    url: String,
+    academicYear: String,
+    criterion: String,
+    uploadedAt: { type: Date, default: Date.now }
+  }]
+,
   lastUpdated: { type: Date, default: Date.now }
 });
 

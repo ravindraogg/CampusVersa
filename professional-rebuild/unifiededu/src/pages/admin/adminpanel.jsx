@@ -129,10 +129,23 @@ const AdminPanel = () => {
   const handleCreateInstitute = async () => {
     try {
       await api.post('/createInstitute', newInst);
+      await api.post('/createInstitute', {
+  ...newInst,
+  accreditation: [
+    {
+      type: newInst.accreditationType || "",
+      status: newInst.accreditationStatus || false,
+      grade: newInst.accreditationGrade || "",
+      score: newInst.accreditationScore || null
+    }
+  ]
+});
+
       showToast('Institute registered & credentials created', 'success');
       setModals({ ...modals, addInstitute: false });
       setNewInst({ name: '', code: '', email: '', address: '', aisheCode: '', password: '', requestId: null });
       fetchInstitutes();
+      
     } catch (err) {
       showToast(err.response?.data?.message || 'Error creating institute', 'error');
     }
@@ -711,21 +724,119 @@ const AdminPanel = () => {
       {/* --- MODALS --- */}
       <Modal isOpen={modals.addInstitute} title={newInst.requestId ? "Approve Request & Create" : "Register New Institute"} onClose={() => setModals({...modals, addInstitute: false})}>
         <div className="space-y-4">
-          <input placeholder="Institute Name" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.name} onChange={e => setNewInst({...newInst, name: e.target.value})}/>
-          <div className="grid grid-cols-2 gap-4">
-            <input placeholder="Code (Login ID)" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.code} onChange={e => setNewInst({...newInst, code: e.target.value})}/>
-            <input placeholder="AISHE Code" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.aisheCode} onChange={e => setNewInst({...newInst, aisheCode: e.target.value})}/>
-          </div>
-          <input placeholder="Official Email" className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white" value={newInst.email} onChange={e => setNewInst({...newInst, email: e.target.value})}/>
-          <div className="relative">
-             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="w-4 h-4 text-slate-500" /></div>
-             <input type="text" placeholder="Set Initial Password" className="w-full bg-slate-800 border border-indigo-500/30 p-3 pl-10 rounded-lg text-white focus:border-indigo-500 outline-none" value={newInst.password} onChange={e => setNewInst({...newInst, password: e.target.value})}/>
-          </div>
-          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-white/5">
-            <button onClick={() => setModals({...modals, addInstitute: false})} className="px-4 py-2 text-slate-400 hover:text-white">Cancel</button>
-            <button onClick={handleCreateInstitute} className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-white">{newInst.requestId ? 'Approve & Create' : 'Create Account'}</button>
-          </div>
-        </div>
+
+  {/* Mandatory Basics */}
+  <input 
+    placeholder="Institute Name *"
+    className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white"
+    value={newInst.name}
+    onChange={e => setNewInst({...newInst, name: e.target.value})}
+    required
+  />
+
+  <div className="grid grid-cols-2 gap-4">
+    <input 
+      placeholder="Institute Code (Login ID) *"
+      className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white"
+      value={newInst.code}
+      onChange={e => setNewInst({...newInst, code: e.target.value})}
+      required
+    />
+
+    <input 
+      placeholder="AISHE Code *"
+      className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white"
+      value={newInst.aisheCode}
+      onChange={e => setNewInst({...newInst, aisheCode: e.target.value})}
+      required
+    />
+  </div>
+
+  <input 
+    placeholder="Official Email *"
+    className="w-full bg-slate-800 border border-white/10 p-3 rounded-lg text-white"
+    value={newInst.email}
+    onChange={e => setNewInst({...newInst, email: e.target.value})}
+    required
+  />
+
+  {/* Password */}
+  <div className="relative">
+    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+      <Lock className="w-4 h-4 text-slate-500" />
+    </div>
+    <input 
+      type="text"
+      placeholder="Set Initial Password *"
+      className="w-full bg-slate-800 border border-indigo-500/30 p-3 pl-10 rounded-lg text-white focus:border-indigo-500 outline-none"
+      value={newInst.password}
+      onChange={e => setNewInst({...newInst, password: e.target.value})}
+      required
+    />
+  </div>
+
+  {/* Accreditation Section */}
+  <div className="bg-slate-800 border border-white/10 p-4 rounded-lg space-y-3">
+    <p className="text-slate-300 text-sm font-semibold">Accreditation Details (Optional now, can be edited later)</p>
+
+    <select 
+      className="w-full bg-slate-900 border border-white/10 text-white p-3 rounded-lg"
+      value={newInst.accreditationType || ""}
+      onChange={e => setNewInst({...newInst, accreditationType: e.target.value})}
+    >
+      <option value="">Select Accreditation Type</option>
+      <option value="NAAC">NAAC</option>
+      <option value="NBA">NBA</option>
+      <option value="ISO">ISO</option>
+    </select>
+
+    <div className="grid grid-cols-2 gap-4">
+      <select 
+        className="w-full bg-slate-900 border border-white/10 text-white p-3 rounded-lg"
+        value={newInst.accreditationStatus || false}
+        onChange={e => setNewInst({...newInst, accreditationStatus: e.target.value === "true"})}
+      >
+        <option value={false}>Not Accredited</option>
+        <option value={true}>Accredited</option>
+      </select>
+
+      <input 
+        placeholder="Grade (A++, A+, A, B++...)"
+        className="w-full bg-slate-900 border border-white/10 text-white p-3 rounded-lg"
+        value={newInst.accreditationGrade || ""}
+        onChange={e => setNewInst({...newInst, accreditationGrade: e.target.value})}
+      />
+    </div>
+
+    <input 
+      placeholder="Score (eg: 3.51)"
+      type="number"
+      step="0.01"
+      className="w-full bg-slate-900 border border-white/10 text-white p-3 rounded-lg"
+      value={newInst.accreditationScore || ""}
+      onChange={e => setNewInst({...newInst, accreditationScore: e.target.value})}
+    />
+  </div>
+
+  {/* Footer */}
+  <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-white/5">
+    <button 
+      onClick={() => setModals({...modals, addInstitute: false})}
+      className="px-4 py-2 text-slate-400 hover:text-white"
+    >
+      Cancel
+    </button>
+
+    <button 
+      onClick={handleCreateInstitute}
+      className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-white font-bold"
+    >
+      {newInst.requestId ? "Approve & Create" : "Create Account"}
+    </button>
+  </div>
+
+</div>
+
       </Modal>
 
       <Modal isOpen={modals.instituteDetail} title="Institute Profile" onClose={() => setModals({...modals, instituteDetail: false})}>
