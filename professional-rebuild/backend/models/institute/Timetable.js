@@ -7,16 +7,19 @@ const TimetableSchema = new mongoose.Schema({
     ref: 'Institute', 
     required: true 
   },
+  // --- ADDED DEPARTMENT FIELD ---
+  department: {
+    type: String,
+    required: true
+  },
   semester: { 
     type: String, 
     required: true 
   },
-  // We store the specific constraints used to generate this for reference
   constraints: {
     subjects: String,
     workingDays: [String]
   },
-  // The actual AI-generated JSON schedule
   schedule: { 
     type: Object, 
     required: true 

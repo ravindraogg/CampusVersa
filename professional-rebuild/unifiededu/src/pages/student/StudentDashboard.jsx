@@ -9,7 +9,6 @@ import {
   Bell,
   LogOut,
   Loader2,
-  CheckCircle,
   AlertCircle,
   GraduationCap,
   Sparkles,
@@ -20,21 +19,24 @@ import {
   Clock,
   Calendar,
   ChevronRight,
-  ListTodo
+  ListTodo,
+  History,
+  Table as TableIcon 
 } from "lucide-react";
 
 // --- IMPORT YOUR SUB-COMPONENTS ---
 import StudentAttendanceSection from "./StudentAttendanceSection";
 import StudentPerformanceSection from "./StudentPerformanceSection";
-import StudentExamCalendarSection from "./StudentExamCalendarSection";
 import StudentCareerSection from "./StudentCareerSection";
 import StudentProfileSection from "./StudentProfileSection";
+import StudentTimetableSection from "./StudentTimetableSection";
+import StudentCoursesSection from "./StudentCoursesSection"; // <--- MAKE SURE THIS IS IMPORTED
+
 // Placeholder imports for files you may have:
 import ResumeBuilder from "./resume"; 
 import MockInterview from "./mockinterview";
 import FreelanceHub from "./freelance";
 import ProjectCollab from "./projectcolab";
-import Roadmap from "./roadmap"; 
 
 const API_URL = import.meta.env.VITE_BACK_URI;
 
@@ -48,19 +50,44 @@ const DEFAULT_THEME = {
   textOnPrimary: "#FFFFFF",
 };
 
-// --- FINAL 6-ITEM NAVIGATION CONFIGURATION ---
+// --- NAVIGATION CONFIGURATION ---
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "attendance", label: "Attendance", icon: CalendarDays },
-  { id: "performance", label: "Performance", icon: TrendingUp },
+  { id: "timetable", label: "Timetable", icon: TableIcon }, 
   { id: "courses", label: "Courses", icon: BookOpen },
+  { id: "performance", label: "Performance", icon: TrendingUp },
   { id: "career", label: "Career & Achievements", icon: Briefcase }, 
   { id: "freelance", label: "Freelancing Hub", icon: Send },
 ];
 
-// --- HELPER COMPONENTS ---
+// --- HELPER: Random Color Generator for Subjects ---
+const getSubjectColor = (subjectName) => {
+  const colors = [
+    "bg-red-50 text-red-700 border-red-100",
+    "bg-orange-50 text-orange-700 border-orange-100",
+    "bg-amber-50 text-amber-700 border-amber-100",
+    "bg-emerald-50 text-emerald-700 border-emerald-100",
+    "bg-teal-50 text-teal-700 border-teal-100",
+    "bg-cyan-50 text-cyan-700 border-cyan-100",
+    "bg-blue-50 text-blue-700 border-blue-100",
+    "bg-indigo-50 text-indigo-700 border-indigo-100",
+    "bg-violet-50 text-violet-700 border-violet-100",
+    "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100",
+    "bg-pink-50 text-pink-700 border-pink-100",
+    "bg-rose-50 text-rose-700 border-rose-100",
+  ];
+  if (!subjectName) return "bg-gray-50 text-gray-700 border-gray-100";
+  
+  let hash = 0;
+  for (let i = 0; i < subjectName.length; i++) {
+    hash = subjectName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+};
 
-// 1. Simple CSS Bar Chart (Matches Faculty Dashboard Style)
+// --- CHART COMPONENT ---
 const SimpleBarChart = ({ data, color, height = "h-32" }) => (
   <div className={`flex items-end justify-between ${height} w-full gap-2 mt-4`}>
     {data.length === 0 ? (
@@ -71,11 +98,9 @@ const SimpleBarChart = ({ data, color, height = "h-32" }) => (
       data.map((item, index) => (
         <div key={index} className="flex flex-col items-center w-full group cursor-pointer">
           <div className="relative w-full flex items-end justify-center h-full">
-            {/* Tooltip */}
-            <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-[10px] px-2 py-1 rounded z-10 pointer-events-none">
+            <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-[10px] px-2 py-1 rounded z-10 pointer-events-none whitespace-nowrap">
               {item.tooltip || `${item.value}%`}
             </div>
-            {/* Bar */}
             <div
               className="w-full mx-1 rounded-t-lg transition-all duration-500 hover:opacity-80 relative"
               style={{ height: `${item.value}%`, backgroundColor: color }}
@@ -105,14 +130,14 @@ const authFetch = async (path, opts = {}) => {
   return res;
 };
 
-// --- STUDENT NAV COMPONENT ---
+// --- NAVIGATION COMPONENT ---
 const StudentNav = ({ activeTab, setActiveTab, theme }) => {
   return (
     <div
-      className="h-full rounded-[2rem] shadow-sm flex items-center px-4 overflow-x-auto no-scrollbar w-fit transition-all duration-300 max-w-[60vw]"
+      className="h-full rounded-[2rem] shadow-sm flex items-center px-2 transition-all duration-300 w-auto"
       style={{ backgroundColor: theme.primary }}
     >
-      <div className="flex items-center gap-2 p-2">
+      <div className="flex items-center gap-1 p-1">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
@@ -144,11 +169,12 @@ const StudentDashboard = () => {
   const [student, setStudent] = useState(null);
   const [institute, setInstitute] = useState(null);
   const [theme, setTheme] = useState(DEFAULT_THEME);
-  const [notification, setNotification] = useState(null);
-
-  // Chart Data States
-  const [attendanceChartData, setAttendanceChartData] = useState([]);
+  
+  // Data States
   const [performanceChartData, setPerformanceChartData] = useState([]);
+  const [recentAttendance, setRecentAttendance] = useState([]); 
+  const [subjectWiseData, setSubjectWiseData] = useState([]); 
+  const [availableTimetables, setAvailableTimetables] = useState([]); 
 
   // --- DATA LOADING ---
   const loadData = useCallback(async () => {
@@ -168,18 +194,10 @@ const StudentDashboard = () => {
         }));
       }
 
-      // --- PROCESS CHART DATA ---
-      // 1. Attendance Data
       if (data.student?.attendance?.subjectWise) {
-        const attData = data.student.attendance.subjectWise.map(subj => ({
-          label: subj.subjectName.substring(0, 8),
-          value: subj.percentage,
-          tooltip: `${subj.subjectName}: ${subj.percentage}%`
-        }));
-        setAttendanceChartData(attData);
+        setSubjectWiseData(data.student.attendance.subjectWise);
       }
 
-      // 2. Performance Data
       if (data.student?.academic?.semesterResults) {
         const perfData = data.student.academic.semesterResults.map(sem => ({
           label: `Sem ${sem.semester}`,
@@ -189,26 +207,52 @@ const StudentDashboard = () => {
         setPerformanceChartData(perfData);
       }
 
+      try {
+        const attRes = await authFetch("/student/attendance/full");
+        if (attRes.ok) {
+          const attFullData = await attRes.json();
+          const allHistory = attFullData.flatMap(record => 
+            (record.history || []).map(h => ({
+              ...h,
+              courseName: record.courseId?.name || "Unknown Course",
+              courseCode: record.courseId?.code || ""
+            }))
+          );
+          allHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+          setRecentAttendance(allHistory.slice(0, 3));
+        }
+      } catch (e) { console.warn("Recent attendance fetch error", e); }
+
+      try {
+        const ttRes = await authFetch("/student/timetable");
+        if (ttRes.ok) {
+          const ttList = await ttRes.json();
+          setAvailableTimetables(Array.isArray(ttList) ? ttList : []);
+        }
+      } catch (e) { console.warn("Timetable fetch error", e); }
+
     } catch (err) {
       console.error("Profile Load Error", err);
     } finally {
       setLoading(false);
     }
   }, []);
-     useEffect(() => {
-      if (institute) {
-        document.title = `${student.name || "Institute"} | CampusVersa`;
-        if (institute.logo) {
-          let link = document.querySelector("link[rel~='icon']");
-          if (!link) {
+
+  useEffect(() => {
+    if (institute) {
+      document.title = `${student.name || "Institute"} | CampusVersa`;
+      if (institute.logo) {
+        let link = document.querySelector("link[rel~='icon']");
+        if (!link) {
             link = document.createElement("link");
             link.rel = "icon";
             document.getElementsByTagName("head")[0].appendChild(link);
-          }
-          link.href = institute.logo;
         }
+        link.href = institute.logo;
       }
-    }, [student]);
+    }
+  }, [student, institute]);
+
   useEffect(() => { loadData(); }, [loadData]);
   
   const handleLogout = () => {
@@ -216,11 +260,11 @@ const StudentDashboard = () => {
     window.location.href = "/student/auth";
   };
 
-  // --- RENDER DASHBOARD OVERVIEW (Faculty Style) ---
+  // --- RENDER DASHBOARD OVERVIEW ---
   const renderDashboardOverview = () => (
     <div className="animate-in fade-in duration-500 grid grid-cols-1 lg:grid-cols-4 gap-6 pb-10">
       
-      {/* 1. Welcome Header (Full Width) */}
+      {/* 1. Welcome Header */}
       <div className="lg:col-span-4 bg-gradient-to-r from-gray-50 to-white p-6 rounded-[2rem] border border-gray-100 flex items-center justify-between shadow-sm relative overflow-hidden">
         <div className="relative z-10">
           <h2 className="text-2xl font-bold text-gray-800">
@@ -228,11 +272,9 @@ const StudentDashboard = () => {
           </h2>
           <p className="text-gray-500 text-sm mt-1 flex items-center gap-2">
              <Sparkles className="w-4 h-4 text-yellow-500" />
-             AI Prediction: <span className="font-bold text-green-600">Stable Growth</span>. Keep up the good work in Sem {student?.semester}.
+             AI Prediction: <span className="font-bold text-green-600">Stable Growth</span>.
           </p>
         </div>
-        
-        {/* Early Warning Badge */}
         {student?.attendance?.overallPercentage < 75 && (
           <div className="hidden md:flex flex-col gap-2 relative z-10">
              <div className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl border border-red-100 text-xs font-bold shadow-sm">
@@ -258,6 +300,7 @@ const StudentDashboard = () => {
                    <p className="text-[10px] text-green-600 font-bold">Academic Score</p>
                 </div>
             </div>
+
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                    <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-5 h-5"/></div>
@@ -268,6 +311,7 @@ const StudentDashboard = () => {
                    <p className="text-[10px] text-gray-400">Overall Avg</p>
                 </div>
             </div>
+
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                    <div className="p-2 bg-orange-50 rounded-full text-orange-600"><ListTodo className="w-5 h-5"/></div>
@@ -278,6 +322,7 @@ const StudentDashboard = () => {
                    <p className="text-[10px] text-orange-500 font-bold">Earned so far</p>
                 </div>
             </div>
+
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                    <div className="p-2 bg-purple-50 rounded-full text-purple-600"><Send className="w-5 h-5"/></div>
@@ -289,37 +334,63 @@ const StudentDashboard = () => {
                 </div>
             </div>
          </div>
-
+         
          {/* Charts Section */}
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Subject Attendance Chart */}
-            <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
-               <div className="flex justify-between items-center mb-2">
+            
+            {/* SUBJECT ATTENDANCE CARD */}
+            <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px]">
+               <div className="flex justify-between items-center mb-4">
                   <h4 className="font-bold text-gray-700 flex items-center gap-2">
                      <CalendarDays className="w-4 h-4 text-gray-400" /> Subject Attendance
                   </h4>
                   <span className={`text-xs px-2 py-1 rounded font-bold ${
-                    student?.attendance?.overallPercentage >= 75 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
+                    student?.attendance?.overallPercentage  >= 75 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
                   }`}>
                     {student?.attendance?.overallPercentage >= 75 ? "Good" : "Low"}
                   </span>
                </div>
-               <SimpleBarChart data={attendanceChartData} color={theme.primary} />
+               
+               {/* List View */}
+               <div className="space-y-4 overflow-y-auto flex-1 custom-scrollbar pr-2">
+                  {subjectWiseData.length > 0 ? (
+                    subjectWiseData.map((subj, idx) => (
+                      <div key={idx} className="flex flex-col gap-1 group">
+                        <div className="flex justify-between items-center">
+                           <p className="text-xs font-bold text-gray-700 truncate w-3/4" title={subj.subjectName}>
+                              {subj.subjectName}
+                           </p>
+                           <span className={`text-xs font-bold ${subj.percentage >= 75 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {subj.percentage}%
+                           </span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                           <div 
+                             className={`h-1.5 rounded-full transition-all duration-500 ${subj.percentage >= 75 ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                             style={{ width: `${subj.percentage}%` }}
+                           ></div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 text-xs">No subjects found</div>
+                  )}
+               </div>
             </div>
 
             {/* Performance Trend Chart */}
-            <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+            <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full">
                <div className="flex justify-between items-center mb-2">
                   <h4 className="font-bold text-gray-700 flex items-center gap-2">
                      <TrendingUp className="w-4 h-4 text-gray-400" /> Academic Trend
                   </h4>
-                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">GPA</span>
+                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">CGPA</span>
                </div>
-               <SimpleBarChart data={performanceChartData} color="#6366f1" />
+               <SimpleBarChart data={performanceChartData} color="#6366f1" height="h-40" />
             </div>
          </div>
 
-         {/* Upcoming Tasks List */}
+         {/* Upcoming Tasks */}
          <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -330,20 +401,12 @@ const StudentDashboard = () => {
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Placeholder Data */}
               <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-orange-200 transition-colors">
                  <div className="flex justify-between items-start mb-1">
                     <span className="text-[10px] uppercase font-bold text-gray-400">Assignment</span>
                     <span className="text-[10px] font-bold text-orange-600">Tomorrow</span>
                  </div>
                  <h4 className="font-bold text-sm text-gray-800 line-clamp-1">Data Structures Lab</h4>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-orange-200 transition-colors">
-                 <div className="flex justify-between items-start mb-1">
-                    <span className="text-[10px] uppercase font-bold text-gray-400">Exam</span>
-                    <span className="text-[10px] font-bold text-orange-600">12 Oct</span>
-                 </div>
-                 <h4 className="font-bold text-sm text-gray-800 line-clamp-1">Internal Assessment 2</h4>
               </div>
             </div>
          </div>
@@ -352,7 +415,7 @@ const StudentDashboard = () => {
       {/* 3. Right Column (Sidebar) - Span 1 */}
       <div className="lg:col-span-1 flex flex-col gap-4">
          
-         {/* Profile Snippet */}
+         {/* Profile */}
          <div 
             className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors"
             onClick={() => setActiveTab("settings")}
@@ -368,12 +431,9 @@ const StudentDashboard = () => {
                <h3 className="font-bold text-gray-800 truncate text-sm">{student?.name}</h3>
                <p className="text-xs text-gray-500 truncate">{student?.SID || "Student"}</p>
             </div>
-            <div className="ml-auto">
-               <ChevronRight className="w-5 h-5 text-gray-400" />
-            </div>
          </div>
 
-         {/* "Today's Status" Widget */}
+         {/* Schedule */}
          <div className="bg-orange-50 p-5 rounded-[2rem] border border-orange-100 relative overflow-hidden">
             <div className="absolute right-[-20px] top-[-20px] opacity-10">
                <Calendar className="w-24 h-24 text-orange-600" />
@@ -382,100 +442,64 @@ const StudentDashboard = () => {
             <h3 className="text-4xl font-extrabold text-orange-900 relative z-10">
                {student?.todayClasses || 0} <span className="text-lg ml-1 font-bold opacity-60">Classes</span>
             </h3>
-            <p className="text-xs text-orange-700 mt-2 relative z-10 font-medium">Check Timetable tab for details</p>
+            <p className="text-xs text-orange-700 mt-2 relative z-10 font-medium cursor-pointer hover:underline" onClick={() => setActiveTab('timetable')}>
+               Check Timetable tab
+            </p>
          </div>
 
-         {/* Quick Links */}
+         {/* Recent Activity */}
          <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm">
-            <h4 className="font-bold text-gray-800 text-sm mb-3">Quick Actions</h4>
-            <div className="space-y-2">
-               <button className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-blue-50 text-xs font-bold text-gray-600 hover:text-blue-600 transition-colors flex items-center gap-2">
-                  <ExternalLink className="w-4 h-4"/> Upload Certificate
-               </button>
-               <button className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-green-50 text-xs font-bold text-gray-600 hover:text-green-600 transition-colors flex items-center gap-2">
-                  <Cpu className="w-4 h-4"/> Ask AI Assistant
-               </button>
-               <button onClick={() => setActiveTab('performance')} className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-purple-50 text-xs font-bold text-gray-600 hover:text-purple-600 transition-colors flex items-center gap-2">
-                  <Award className="w-4 h-4"/> View Results
-               </button>
+            <h4 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2">
+               <History className="w-4 h-4 text-gray-400" /> Recent Attendance
+            </h4>
+            <div className="space-y-3">
+               {recentAttendance.length > 0 ? (
+                  recentAttendance.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                       <div className="overflow-hidden">
+                          <p className="text-xs font-bold text-gray-700 truncate w-32">{item.courseName}</p>
+                          <p className="text-[10px] text-gray-400">
+                             {new Date(item.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                          </p>
+                       </div>
+                       <div className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-bold ${
+                          item.value === 1 ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"
+                       }`}>
+                          {item.value === 1 ? "P" : "A"}
+                       </div>
+                    </div>
+                  ))
+               ) : (
+                  <p className="text-xs text-gray-400 text-center py-2">No recent records found.</p>
+               )}
             </div>
          </div>
-
       </div>
     </div>
   );
 
-  // --- RENDER CONTENT SWITCHER ---
+  // --- CONTENT SWITCHER ---
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard": return renderDashboardOverview();
       case "attendance": return <StudentAttendanceSection student={student} />;
-      case "performance": 
-         return (
-             <div className="space-y-6 animate-in fade-in">
-                <StudentPerformanceSection student={student} />
-                <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100 relative overflow-hidden">
-                   <div className="relative z-10">
-                      <h3 className="font-bold text-indigo-900 flex items-center gap-2 mb-2">
-                         <Sparkles className="w-5 h-5" /> AI Performance Predictor
-                      </h3>
-                      <p className="text-sm text-indigo-700 max-w-2xl">
-                         Based on your current trajectory, our AI predicts a <strong>9.4 SGPA</strong>.
-                      </p>
-                   </div>
-                </div>
-             </div>
-         );
-      case "courses": return (
-        <div className="animate-in fade-in space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-gray-800">Enrolled Courses</h2>
-            <span className="bg-gray-100 text-gray-600 text-xs font-bold px-3 py-1 rounded-full">Semester {student?.semester}</span>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             {student?.courseEnrollments?.flatMap(sem => sem.subjects).map((sub, i) => (
-                <div key={i} className="p-5 bg-white border border-gray-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><BookOpen className="w-6 h-6" /></div>
-                    <span className="text-xs font-bold text-gray-400">Enrolled</span>
-                  </div>
-                  <h3 className="font-bold text-lg text-gray-800">{sub.courseName}</h3>
-                  <p className="text-xs text-gray-500 mt-1">{sub.courseCode}</p>
-                </div>
-             )) || (
-                <p className="text-gray-400 col-span-2 text-center py-10">No courses found.</p>
-             )}
-          </div>
-        </div>
-      );
-      case "career": return (
-         <div className="space-y-8 animate-in fade-in">
-             <div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2"><Briefcase className="w-6 h-6"/> Career & Placements</h2>
-                <StudentCareerSection />
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                   <ResumeBuilder theme={theme} />
-                   <MockInterview theme={theme} />
-                </div>
-             </div>
-         </div>
-      );
-      case "freelance": return <div className="space-y-6 animate-in fade-in"><FreelanceHub theme={theme} /><ProjectCollab /></div>;
-      
-      // NEW: Pass institute prop
-      case "settings": 
+      case "timetable": 
         return (
-          <div className="animate-in fade-in max-w-4xl mx-auto space-y-6">
-             <StudentProfileSection 
-                student={student} 
-                institute={institute} // PASS THIS
-                theme={theme} 
-                refreshProfile={loadData} 
-             />
-          </div>
+          <StudentTimetableSection 
+             timetables={availableTimetables} 
+             student={student} 
+             theme={theme} 
+          />
         );
-        
+      
+      // --- UPDATED: USE THE NEW COMPONENT ---
+      case "courses": 
+         return <StudentCoursesSection />;
+
+      case "performance": return <StudentPerformanceSection student={student} />;
+      case "career": return <div className="space-y-8 animate-in fade-in"><StudentCareerSection /><div className="grid lg:grid-cols-2 gap-6"><ResumeBuilder theme={theme} /><MockInterview theme={theme} /></div></div>;
+      case "freelance": return <div className="space-y-6 animate-in fade-in"><FreelanceHub theme={theme} /><ProjectCollab /></div>;
+      case "settings": return <div className="animate-in fade-in max-w-4xl mx-auto"><StudentProfileSection student={student} institute={institute} theme={theme} refreshProfile={loadData} /></div>;
       default: return null;
     }
   };
@@ -484,50 +508,25 @@ const StudentDashboard = () => {
 
   return (
     <div className="h-screen w-screen bg-[#F8F9FC] p-4 lg:p-6 flex flex-col gap-6 overflow-hidden font-sans antialiased relative">
-      
-      {/* HEADER ROW */}
       <div className="shrink-0 flex items-center justify-between gap-4 h-18">
-        {/* Logo */}
-        <div className="h-full px-6 rounded-[2rem] flex items-center gap-4 shadow-lg shadow-gray-200/50 min-w-[200px] transition-transform hover:scale-[1.02]" style={{ backgroundColor: theme.primary, color: theme.white }}>
-          <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center p-1 border-2 border-white/30">
+        <div className="h-full px-6 rounded-[2rem] flex items-center gap-4 shadow-lg shadow-gray-200/50 min-w-[200px]" style={{ backgroundColor: theme.primary, color: theme.white }}>
+          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center p-1 border-2 border-white/30">
             {institute?.logo ? <img src={institute.logo} alt="Logo" className="w-full h-full object-contain p-1" /> : <GraduationCap className="w-6 h-6 text-white" />}
           </div>
           <div>
-            <h1 className="font-extrabold text-lg leading-none tracking-tight">{institute?.code || "CAMPUS"}</h1>
-            <p className="text-[10px] opacity-90 uppercase tracking-widest font-bold mt-1">Student Portal</p>
+            <h1 className="font-extrabold text-lg leading-none">{institute?.code || "CAMPUS"}</h1>
+            <p className="text-[10px] uppercase font-bold mt-1">Student Portal</p>
           </div>
         </div>
-
-        {/* Navigation Pills (6 Items) */}
         <StudentNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
-
-        {/* Action Buttons */}
         <div className="h-full flex gap-3">
-          <button className="h-full aspect-square rounded-[2rem] shadow-sm flex items-center justify-center relative transition-all hover:bg-gray-50 border border-gray-100 bg-white">
-             <Bell className="w-6 h-6 text-gray-600" />
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('settings')}
-            className={`h-full aspect-square rounded-[2rem] shadow-sm flex items-center justify-center transition-all border border-gray-100 ${
-              activeTab === 'settings' ? 'bg-gray-100 text-black' : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-            title="Settings"
-          >
-             <Settings className="w-6 h-6" />
-          </button>
-
-          <button onClick={handleLogout} className="h-full px-6 rounded-[2rem] shadow-sm flex items-center justify-center gap-2 transition-all font-bold text-sm bg-white border border-gray-100 hover:bg-red-50 hover:text-red-500 hover:border-red-100 text-gray-700">
-             <LogOut className="w-5 h-5" /> <span className="hidden md:inline">Logout</span>
-          </button>
+          <button className="h-full aspect-square rounded-[2rem] shadow-sm flex items-center justify-center bg-white border border-gray-100"><Bell className="w-6 h-6 text-gray-600" /></button>
+          <button onClick={handleLogout} className="h-full px-6 rounded-[2rem] shadow-sm flex items-center justify-center gap-2 bg-white border border-gray-100 hover:bg-red-50 text-gray-700 font-bold text-sm"><LogOut className="w-5 h-5" /> Logout</button>
         </div>
       </div>
-
-      {/* MAIN CONTENT */}
       <div className="flex-1 bg-white rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.08)] p-8 overflow-y-auto relative custom-scrollbar border border-gray-100">
         {renderContent()}
       </div>
-
     </div>
   );
 };

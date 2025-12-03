@@ -1590,12 +1590,28 @@ app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
 // 2. Save New Timetable (Called when user clicks "Save" on draft)
 app.post('/institute/timetable/save', verifyToken, async (req, res) => {
   try {
-    const { semester, subjects, workingDays, schedule } = req.body;
+    // Extract department from body
+    const { semester, subjects, workingDays, schedule, department } = req.body;
+
+    if (!department) {
+      return res.status(400).json({ message: "Department is required to save timetable" });
+    }
 
     const subjectsStr = Array.isArray(subjects) ? subjects.join(", ") : subjects;
 
+    // Check if a timetable already exists for this Inst + Dept + Sem (Optional: overwrite logic)
+    // For now, we just create a new one or you can use findOneAndUpdate logic
+    
+    // We remove old one to prevent duplicates for specific Sem+Dept
+    await Timetable.findOneAndDelete({ 
+        instituteId: req.user.id, 
+        department: department, 
+        semester: semester 
+    });
+
     const newTimetable = new Timetable({
       instituteId: req.user.id,
+      department: department, // <--- SAVE DEPARTMENT
       semester: semester || "General",
       constraints: {
         subjects: subjectsStr || "N/A",
@@ -1896,12 +1912,23 @@ app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
 // -------------------
 
 // 1. Get All Courses
+// Replace the existing '/institute/courses' route in server.js
 app.get('/institute/courses', verifyToken, async (req, res) => {
   try {
-    // Fetch courses and optionally populate Faculty name if assigned
-    const courses = await Course.find({ instituteId: req.user.id })
-      .populate('facultyId', 'name')
-      .sort({ department: 1, year: 1, name: 1 });
+    // 1. Allow filtering by Department and Semester via Query Params
+    const { department, semester } = req.query;
+    
+    const query = { instituteId: req.user.id };
+    
+    // 2. Apply filters if provided
+    if (department) query.department = department;
+    if (semester) query.semester = semester;
+
+    // 3. Fetch
+    const courses = await Course.find(query)
+      .populate('facultyId', 'name') // This line caused the crash previously
+      .sort({ department: 1, name: 1 });
+      
     res.json(courses);
   } catch (err) {
     console.error('/institute/courses error:', err);
@@ -2400,6 +2427,10 @@ app.get('/faculty/my-department', verifyToken, async (req, res) => {
   }
 });
 
+// server.js
+
+// ... (existing imports)
+
 app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
   try {
     const { courseId, type, date, records, examType } = req.body; 
@@ -2415,12 +2446,12 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
       await Promise.all(records.map(async (record) => {
         const { studentId, value } = record; 
         
-        // Validation: If value is missing, skip or default to Absent
         if (!value) return; 
 
         const isPresent = value === "Present";
         const numericValue = isPresent ? 1 : 0;
 
+        // 1. Update the 'Attendance' Collection (Detailed History)
         let attDoc = await Attendance.findOne({ studentId, courseId });
         if (!attDoc) {
           attDoc = new Attendance({ studentId, courseId, history: [] });
@@ -2434,7 +2465,7 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
           attDoc.history.push({ date, status: value, value: numericValue });
         }
 
-        // Update Aggregates
+        // Update Aggregates for this specific course
         const totalClasses = attDoc.history.length;
         const totalPresent = attDoc.history.filter(h => h.value === 1).length;
         
@@ -2443,28 +2474,55 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
         attDoc.percentage = totalClasses === 0 ? 0 : (totalPresent / totalClasses) * 100;
 
         await attDoc.save();
+
+        // ---------------------------------------------------------
+        // 2. SYNC WITH STUDENT MODEL (Fixes the Dashboard Discrepancy)
+        // ---------------------------------------------------------
+        
+        // A. Fetch ALL attendance records for this student across ALL courses
+        const allStudentAttendance = await Attendance.find({ studentId });
+        
+        let grandTotalClasses = 0;
+        let grandTotalPresent = 0;
+
+        // B. Sum up stats from all courses (e.g., Math, Physics, Lab)
+        allStudentAttendance.forEach(doc => {
+          grandTotalClasses += doc.totalClasses;
+          grandTotalPresent += doc.totalPresent;
+        });
+
+        // C. Calculate the TRUE overall percentage
+        const newOverallPercentage = grandTotalClasses === 0 
+          ? 0 
+          : (grandTotalPresent / grandTotalClasses) * 100;
+
+        const newAlertLevel = newOverallPercentage < 75 ? 'Critical' : 'Safe';
+
+        // D. Update the Student Document (Dashboard reads this)
+        // Note: We use 'attendance.overallPercentage' to match your frontend expectations
+        await Student.findByIdAndUpdate(studentId, {
+          $set: {
+            "attendance.overallPercentage": parseFloat(newOverallPercentage.toFixed(1)),
+            "attendance.alertLevel": newAlertLevel
+          }
+        });
+
       }));
     } 
     
-    // --- MARKS LOGIC ---
+    // --- MARKS LOGIC (Unchanged) ---
     else if (type === 'marks') {
       if (!examType) return res.status(400).json({ message: "Exam Type is required" });
 
       await Promise.all(records.map(async (record) => {
         const { studentId, value } = record;
-        
-        // --- FIX: SANITIZE INPUT TO PREVENT NaN ---
         let numericVal = Number(value);
-        if (isNaN(numericVal) || value === "") {
-            numericVal = 0; // Default to 0 if invalid
-        }
+        if (isNaN(numericVal) || value === "") numericVal = 0;
 
-        // Use updateOne for atomic update
         await Student.updateOne(
             { _id: studentId, "courseEnrollments.subjects.courseId": courseId },
             { 
               $set: { 
-                // Dynamic path to the specific exam (e.g., marksDetails.test1)
                 [`courseEnrollments.$[outer].subjects.$[inner].marksDetails.${examType}`]: numericVal
               }
             },
@@ -2483,6 +2541,29 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('/faculty/evaluation/bulk-update error:', err);
     res.status(500).json({ error: 'Update failed', details: err.message });
+  }
+});
+
+// server.js - Add this route for Student Timetable
+app.get('/student/timetable', verifyToken, async (req, res) => {
+  try {
+    // 1. Get Logged in Student
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    // 2. Find ALL Timetables matching: Institute + Department
+    // We REMOVE the 'semester' filter here so we get all sems (e.g., Sem 3, Sem 5)
+    // This allows the student to switch views if needed, or ensures we at least find something.
+    const timetables = await Timetable.find({ 
+      instituteId: student.instituteId,
+      department: student.department 
+    }).sort({ semester: 1 }); // Sort by semester ascending
+
+    // Return the array directly
+    res.json(timetables);
+  } catch (err) {
+    console.error("Fetch Student Timetable Error:", err);
+    res.status(500).json({ error: "Fetch failed" });
   }
 });
 // 1. GET Faculty SSR Data
@@ -2754,6 +2835,237 @@ app.post('/student/update-profile', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('/student/update-profile error:', err);
     res.status(500).json({ error: 'Profile update failed' });
+  }
+});
+// Add this in server.js inside the Student routes section
+app.get('/student/attendance/full', verifyToken, async (req, res) => {
+  try {
+    // Find all attendance records for this student and populate course details
+    const records = await Attendance.find({ studentId: req.user.id })
+      .populate('courseId', 'name code credits')
+      .sort({ updatedAt: -1 });
+    res.json(records);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+app.get('/student/courses/details', verifyToken, async (req, res) => {
+  try {
+    // 1. Fetch Student with Enrollment Data
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    const combinedData = [];
+
+    // 2. Iterate through all enrolled semesters and subjects
+    if (student.courseEnrollments) {
+      for (const semesterData of student.courseEnrollments) {
+        for (const subject of semesterData.subjects) {
+          
+          // 3. Fetch Attendance History for this specific course
+          const attRecord = await Attendance.findOne({
+            studentId: student._id,
+            courseId: subject.courseId
+          }).select('history percentage totalClasses totalPresent');
+
+          // 4. Construct the combined object
+          combinedData.push({
+            _id: subject.courseId,
+            courseName: subject.courseName,
+            courseCode: subject.courseCode,
+            semester: semesterData.semester,
+            facultyId: subject.facultyId,
+            
+            // Marks from Student Model
+            marks: subject.marksDetails || {
+              test1: 0,
+              test2: 0,
+              test3: 0,
+              assignment: 0,
+              external: 0
+            },
+            
+            // Attendance from Attendance Model
+            attendance: {
+              percentage: attRecord ? attRecord.percentage : 0,
+              total: attRecord ? attRecord.totalClasses : 0,
+              attended: attRecord ? attRecord.totalPresent : 0,
+              history: attRecord ? attRecord.history : [] // Date-wise array
+            }
+          });
+        }
+      }
+    }
+
+    res.json(combinedData);
+
+  } catch (err) {
+    console.error("Fetch Student Course Details Error:", err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// ==========================================
+// 1. GET Forms for a specific Course (Student View)
+// ==========================================
+app.get('/student/course/:courseId/forms', verifyToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const studentId = req.user.id;
+
+    // 1. Find all active forms for this course
+    const forms = await FacultyForm.find({ 
+      courseId: courseId, 
+      isActive: true 
+    }).sort({ createdAt: -1 });
+
+    // 2. Check which ones the student has already responded to
+    const formsWithStatus = await Promise.all(forms.map(async (form) => {
+      const response = await FacultyFormResponse.findOne({ 
+        formId: form._id, 
+        studentId: studentId 
+      });
+
+      return {
+        ...form.toObject(),
+        isResponded: !!response, // True if response exists
+        myResponse: response ? response.answers : null // Return answers if exists
+      };
+    }));
+
+    res.json(formsWithStatus);
+
+  } catch (err) {
+    console.error("Fetch Student Forms Error:", err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// ==========================================
+// 2. Submit Form Response
+// ==========================================
+app.post('/student/form/submit', verifyToken, async (req, res) => {
+  try {
+    const { formId, answers } = req.body;
+    const studentId = req.user.id;
+
+    // Check if already responded
+    const existing = await FacultyFormResponse.findOne({ formId, studentId });
+    if (existing) {
+      return res.status(400).json({ message: "You have already responded to this form." });
+    }
+
+    const newResponse = new FacultyFormResponse({
+      formId,
+      studentId,
+      answers, // Array of { questionId, questionLabel, answer }
+      submittedAt: Date.now()
+    });
+
+    await newResponse.save();
+    res.json({ success: true, message: "Response submitted successfully" });
+
+  } catch (err) {
+    console.error("Submit Form Error:", err);
+    res.status(500).json({ error: "Submission failed" });
+  }
+});
+// ==========================================
+// REAL AI PERFORMANCE ANALYSIS ROUTE
+// ==========================================
+app.post('/student/performance/analyze', verifyToken, async (req, res) => {
+  try {
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    // 1. Gather All Study Data
+    // We construct a detailed profile for the AI to analyze
+    const academicProfile = {
+      name: student.name,
+      department: student.department,
+      semester: student.semester,
+      currentCGPA: student.academic.cgpa,
+      attendance: student.attendance?.overallPercentage || 0,
+      history: student.academic.semesterResults || [], // Past Semesters
+      currentCourses: []
+    };
+
+    // Add detailed marks for current semester
+    if (student.courseEnrollments) {
+      student.courseEnrollments.forEach(sem => {
+        // Only include current semester for detailed breakdown
+        if (sem.semester === student.semester) {
+          sem.subjects.forEach(sub => {
+            academicProfile.currentCourses.push({
+              subject: sub.courseName,
+              code: sub.courseCode,
+              marks: sub.marksDetails, // { test1: 15, test2: 18... }
+              attendance: student.attendance?.subjectWise?.find(s => s.subjectName === sub.courseName)?.percentage || 0
+            });
+          });
+        }
+      });
+    }
+
+    // 2. Construct the Prompt for Gemini
+    const prompt = `
+      Act as an empathetic but data-driven Academic Performance Coach. Analyze this student's profile:
+      ${JSON.stringify(academicProfile)}
+
+      Task:
+      1. Analyze the correlation between their attendance and marks.
+      2. Identify specific subjects where they are struggling vs. excelling.
+      3. Predict their next semester performance based on current internal marks.
+
+      Output STRICT JSON format (no markdown):
+      {
+        "insight": "A 60-80 word narrative summary. Be direct. E.g., 'Your strong performance in Lab subjects is offset by low theory scores...'",
+        "improvementAreas": [
+          { "area": "Subject Name or Habit", "reason": "Specific data point (e.g., Low Test 1 score)", "action": "Concrete advice (e.g., Focus on Unit 2)" }
+        ],
+        "prediction": "Predicted SGPA: X.X (Short reasoning)",
+        "graphData": [
+           { "label": "Conceptual Grasp", "score": 0-100 },
+           { "label": "Consistency", "score": 0-100 },
+           { "label": "Practical Skill", "score": 0-100 },
+           { "label": "Exam Readiness", "score": 0-100 },
+           { "label": "Assignment Quality", "score": 0-100 }
+        ]
+      }
+    `;
+
+    // 3. Call Gemini AI
+    let aiResponse = null;
+
+    if (googleClient) {
+      try {
+        const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text().replace(/```json|```/g, '').trim(); // Clean markdown
+        aiResponse = JSON.parse(text);
+      } catch (aiError) {
+        console.error("Gemini Generation Error:", aiError.message);
+        // Fallback to OpenAI if Gemini fails (optional, based on your setup)
+      }
+    }
+
+    // 4. Fallback if AI fails or isn't configured
+    if (!aiResponse) {
+      return res.json({
+        insight: "AI Analysis unavailable. Based on your records, please focus on maintaining attendance above 75% and submitting all pending assignments.",
+        improvementAreas: [],
+        prediction: "N/A",
+        graphData: []
+      });
+    }
+
+    res.json(aiResponse);
+
+  } catch (err) {
+    console.error("Performance Analysis Error:", err);
+    res.status(500).json({ error: "Analysis failed" });
   }
 });
 // -------------------

@@ -49,14 +49,10 @@ const StudentSchema = new mongoose.Schema({
       marksObtained: { type: Number, default: 0 } 
     }]
   }],
-
-  // --- ATTENDANCE SUMMARY ONLY ---
-  // Detailed logs are now in the 'Attendance' collection.
-  // We keep this specific field for quick dashboard "Overall %" display.
-  attendanceOverview: {
+  attendance: {
     overallPercentage: { type: Number, default: 0 },
-    alertLevel: { type: String, enum: ['Safe', 'Warning', 'Critical'], default: 'Safe' }
-  },
+    alertLevel: { type: String, enum: ['Safe', 'Warning', 'Critical'], default: 'Safe' }},
+
   
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });

@@ -26,7 +26,7 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
   // Data State
   const [departments, setDepartments] = useState([]);
   const [availableCourses, setAvailableCourses] = useState([]);
-  const [facultyList, setFacultyList] = useState([]); // <--- NEW FACULTY STATE
+  const [facultyList, setFacultyList] = useState([]); 
   const [loadingData, setLoadingData] = useState(false);
 
   // Generation Configuration
@@ -40,7 +40,7 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
     slotDuration: "60",
     selectedCourseIds: [],
     selectedLabIds: [],
-    selectedFacultyIds: [], // <--- NEW SELECTED FACULTY
+    selectedFacultyIds: [], 
     remarks: ""
   });
 
@@ -66,7 +66,7 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
   useEffect(() => {
     if (config.department && config.semester) {
       loadCoursesForSelection();
-      loadFacultyForSelection(); // <--- LOAD FACULTY WHEN DEPT CHANGES
+      loadFacultyForSelection(); 
     }
   }, [config.department, config.semester]);
 
@@ -90,18 +90,18 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
     } catch (e) { console.error(e); }
   };
 
+  // --- UPDATED: Fetch courses using Query Params ---
   const loadCoursesForSelection = async () => {
     setLoadingData(true);
     try {
-      const res = await authFetch("/institute/courses");
+      // 1. Pass department and semester to backend to fix StrictPopulateError
+      const res = await authFetch(`/institute/courses?department=${config.department}&semester=${config.semester}`);
       const data = await res.json();
-      const targetYear = Math.ceil(parseInt(config.semester) / 2).toString();
       
-      const relevantCourses = data.filter(c => 
-        c.department === config.department && 
-        (c.year === targetYear || c.year.includes(targetYear))
-      );
-      setAvailableCourses(relevantCourses);
+      // 2. Data is already filtered by backend
+      setAvailableCourses(Array.isArray(data) ? data : []);
+      
+      // 3. Reset selections
       setConfig(prev => ({ ...prev, selectedCourseIds: [], selectedLabIds: [] }));
     } catch (e) {
       pushToast({ message: "Failed to load subjects", type: "error" });
@@ -110,17 +110,12 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
     }
   };
 
-  // --- NEW: Load Faculty filtered by Department ---
   const loadFacultyForSelection = async () => {
     try {
       const res = await authFetch("/institute/faculty");
       const data = await res.json();
-      // Filter Faculty by the selected Department
       const deptFaculty = data.filter(f => f.department === config.department);
       setFacultyList(deptFaculty);
-      
-      // Auto-select all by default (Optional UX choice)
-      // setConfig(prev => ({...prev, selectedFacultyIds: deptFaculty.map(f => f._id)}));
     } catch (e) {
       console.error("Faculty fetch error", e);
     }
@@ -145,7 +140,6 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
     }
   };
 
-  // --- NEW: Toggle Faculty Selection ---
   const toggleFaculty = (id) => {
     setConfig(prev => ({
       ...prev,
@@ -186,16 +180,24 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
     }
   };
 
+  // --- UPDATED: Save Draft with Department ID ---
   const handleSaveDraft = async () => {
     if (!generatedDraft) return;
     try {
+      // 1. Include 'department' in the payload so the backend saves it correctly
       const payload = {
-        semester: `${config.department} - Sem ${config.semester}`,
-        subjects: [],
+        department: config.department, // <--- ADDED THIS
+        semester: config.semester,
+        subjects: [], // Optional: You can populate this with course names if needed
         workingDays: config.workingDays,
         schedule: generatedDraft
       };
-      const res = await authFetch("/institute/timetable/save", { method: "POST", body: JSON.stringify(payload) });
+
+      const res = await authFetch("/institute/timetable/save", { 
+        method: "POST", 
+        body: JSON.stringify(payload) 
+      });
+
       if (res.ok) {
         pushToast({ message: "Timetable Saved!", type: "success" });
         setGeneratedDraft(null);
@@ -205,7 +207,6 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
     } catch (e) { pushToast({ message: "Save failed", type: "error" }); }
   };
 
-  // ... (handleSaveChanges, confirmDelete, handleRename, Drag&Drop - same as before) ...
   const handleSaveChanges = async () => {
     if (!selectedTimetable) return;
     try {
@@ -324,7 +325,7 @@ const TimetableManager = ({ authFetch, theme, pushToast }) => {
                   <textarea rows={2} className="w-full mt-1 p-3 bg-gray-50 border rounded-xl text-sm outline-none focus:border-blue-500 resize-none" placeholder="e.g. Dr. Smith unavailable Mondays, Labs in afternoon..." value={config.remarks} onChange={e => setConfig({...config, remarks: e.target.value})} />
                 </div>
 
-                {/* --- NEW FACULTY SELECTION --- */}
+                {/* Faculty Selection */}
                 <div>
                   <label className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2"><Briefcase className="w-3 h-3"/> Select Faculty (Availability)</label>
                   {facultyList.length === 0 ? <p className="text-xs text-gray-400 italic">No faculty found for this Dept.</p> : (
