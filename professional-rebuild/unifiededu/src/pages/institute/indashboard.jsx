@@ -145,8 +145,9 @@ const InstituteDashboard = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [notification, setNotification] = useState(null); 
   const [showNotificationsModal, setShowNotificationsModal] = useState(false); 
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  // Data State
+  // Data State 
   const [institute, setInstitute] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isPageLoading, setIsPageLoading] = useState(false);
@@ -408,8 +409,11 @@ const InstituteDashboard = () => {
     f.email.toLowerCase().includes(facultySearch.toLowerCase()) ||
     (f.department && f.department.toLowerCase().includes(facultySearch.toLowerCase()))
   );
+const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
 
-  const handleLogout = () => {
+  const confirmLogout = () => {
     localStorage.removeItem("instituteToken");
     window.location.href = "/in/auth";
   };
@@ -783,7 +787,37 @@ const InstituteDashboard = () => {
           <button onClick={() => setNotification(null)} className="ml-2 text-gray-500 hover:text-white">✕</button>
         </div>
       )}
-
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl p-6 max-w-sm w-full border border-gray-100">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-red-50 text-red-500 flex items-center justify-center border-4 border-white shadow-sm">
+                <LogOut className="w-6 h-6 ml-1" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Logging Out</h3>
+                <p className="text-sm text-gray-500 mt-2">
+                  You are about to sign out of the Institute Portal. Do you wish to continue?
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 w-full mt-2">
+                <button
+                  onClick={() => setShowLogoutModal(false)}
+                  className="px-4 py-3 rounded-xl bg-gray-50 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmLogout}
+                  className="px-4 py-3 rounded-xl bg-red-500 text-white font-bold text-sm hover:bg-red-600 transition-colors shadow-lg shadow-red-200"
+                >
+                  Confirm Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showNotificationsModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
