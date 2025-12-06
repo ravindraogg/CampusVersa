@@ -24,7 +24,7 @@ import {
   Table as TableIcon,
   Menu,
   X,
-  Settings // Imported Settings Icon
+  Settings
 } from "lucide-react";
 
 // --- SUB-COMPONENTS ---
@@ -242,10 +242,19 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Helper to determine active button styles based on theme
+  const getButtonStyle = (isActive) => ({
+    backgroundColor: isActive
+      ? (theme.textOnPrimary === "#FFFFFF" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)")
+      : "transparent",
+    color: theme.textOnPrimary,
+    opacity: isActive ? 1 : 0.8,
+  });
+
   return (
     <div className="flex items-center gap-3 h-full">
       
-      {/* --- DESKTOP VIEW: Standard Horizontal Bar + Separate Action Buttons --- */}
+      {/* --- DESKTOP VIEW --- */}
       <div className="hidden md:flex items-center gap-3 h-full">
         <div
           className="h-full rounded-[2rem] shadow-sm flex items-center px-2 transition-all duration-300"
@@ -256,16 +265,8 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`px-4 py-2.5 rounded-[2rem] flex items-center gap-2 transition-all duration-300 whitespace-nowrap text-sm font-medium ${
-                  activeTab === item.id ? "shadow-md scale-105" : "hover:bg-white/10"
-                }`}
-                style={{
-                  backgroundColor: activeTab === item.id
-                    ? (theme.textOnPrimary === "#FFFFFF" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)")
-                    : "transparent",
-                  color: theme.textOnPrimary,
-                  opacity: activeTab === item.id ? 1 : 0.8,
-                }}
+                className={`px-4 py-2.5 rounded-[2rem] flex items-center gap-2 transition-all duration-300 whitespace-nowrap text-sm font-medium hover:bg-white/10`}
+                style={getButtonStyle(activeTab === item.id)}
               >
                 <item.icon className="w-4 h-4" />
                 <span>{item.label}</span>
@@ -287,33 +288,36 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
         </button>
       </div>
 
-      {/* --- MOBILE VIEW: Merged Action Card --- */}
+      {/* --- MOBILE VIEW --- */}
       <div className="md:hidden flex items-center gap-2 relative" ref={menuRef}>
-         <div className="h-12 rounded-2xl flex items-center p-1.5 shadow-sm border border-gray-100 bg-white">
+         <div className="h-10 rounded-2xl flex items-center p-1 shadow-sm border border-gray-100 bg-white">
             {/* 1. Notification Icon */}
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500">
-               <Bell className="w-5 h-5" />
+            <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500">
+               <Bell className="w-4 h-4" />
             </button>
             
-            <div className="w-px h-5 bg-gray-200 mx-1"></div>
+            <div className="w-px h-4 bg-gray-200 mx-1"></div>
 
-            {/* 2. Hamburger (Nav + Settings) */}
+            {/* 2. Hamburger Trigger */}
             <button
                onClick={() => setOpenMobileMenu(!openMobileMenu)}
-               className="h-9 px-3 rounded-xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-sm transition-transform active:scale-95"
+               className="h-8 px-3 rounded-xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-sm transition-transform active:scale-95"
                style={{ backgroundColor: theme.primary }}
             >
                {openMobileMenu ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
             </button>
          </div>
 
-         {/* Mobile Dropdown Menu */}
+         {/* Mobile Dropdown Menu (Styled like Laptop Nav) */}
          {openMobileMenu && (
-          <div className="absolute top-14 right-0 z-50 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 animate-in fade-in slide-in-from-top-2 origin-top-right">
+          <div 
+            className="absolute top-12 right-0 z-50 w-64 rounded-2xl shadow-xl p-2 animate-in fade-in slide-in-from-top-2 origin-top-right backdrop-blur-sm"
+            style={{ backgroundColor: theme.primary }}
+          >
             <div className="flex flex-col gap-1">
-              <div className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-50 mb-1 flex items-center justify-between">
+              <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between opacity-80" style={{ color: theme.textOnPrimary }}>
                 <span>Navigation</span>
-                <span className="text-xs normal-case font-normal bg-gray-50 px-2 py-0.5 rounded text-gray-500">Tap to close</span>
+                <span className="text-[9px] normal-case font-normal border px-2 py-0.5 rounded opacity-60" style={{ borderColor: theme.textOnPrimary }}>Close</span>
               </div>
               
               {/* Main Nav Items */}
@@ -324,50 +328,36 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
                     setActiveTab(item.id);
                     setOpenMobileMenu(false);
                   }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                    activeTab === item.id 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10`}
+                  style={getButtonStyle(activeTab === item.id)}
                 >
-                  <div 
-                    className={`p-1.5 rounded-lg ${activeTab === item.id ? 'bg-white shadow-sm' : 'bg-gray-100'}`}
-                    style={{ color: activeTab === item.id ? theme.primary : 'inherit' }}
-                  >
-                    <item.icon className="w-4 h-4" />
-                  </div>
+                  <item.icon className="w-4 h-4" />
                   {item.label}
                 </button>
               ))}
 
-              <div className="h-px bg-gray-100 my-1"></div>
+              <div className="h-px opacity-20 my-1" style={{ backgroundColor: theme.textOnPrimary }}></div>
 
-              {/* Settings Item (Added to Mobile Menu) */}
+              {/* Settings Item */}
               <button
                   onClick={() => {
                     setActiveTab("settings");
                     setOpenMobileMenu(false);
                   }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                    activeTab === "settings" 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10`}
+                  style={getButtonStyle(activeTab === "settings")}
                 >
-                  <div className={`p-1.5 rounded-lg ${activeTab === "settings" ? 'bg-white shadow-sm' : 'bg-gray-100'}`}>
-                    <Settings className="w-4 h-4" />
-                  </div>
-                  Settings & Profile
+                  <Settings className="w-4 h-4" />
+                  Settings
               </button>
 
               {/* Logout Item */}
               <button
                   onClick={handleLogout}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-colors mt-1"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10 opacity-80 hover:opacity-100"
+                  style={{ color: theme.textOnPrimary }}
                 >
-                  <div className="p-1.5 rounded-lg bg-red-100">
-                    <LogOut className="w-4 h-4" />
-                  </div>
+                  <LogOut className="w-4 h-4" />
                   Logout
               </button>
             </div>
@@ -386,7 +376,7 @@ const StudentDashboard = () => {
   const [institute, setInstitute] = useState(null);
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // State lifted for header
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Data States
   const [performanceChartData, setPerformanceChartData] = useState([]);
@@ -554,7 +544,7 @@ const StudentDashboard = () => {
   useEffect(() => { loadData(); }, [loadData]);
   
   const handleLogout = () => {
-    setIsMobileMenuOpen(false); // Close menu if open
+    setIsMobileMenuOpen(false); 
     setShowLogoutModal(true);
   };
   const confirmLogout = () => {
@@ -848,6 +838,8 @@ const StudentDashboard = () => {
             <p className="text-[8px] md:text-[10px] uppercase font-bold mt-0.5 md:mt-1 opacity-90" style={{color: theme.secondary}}>Student Portal</p>
           </div>
         </div>
+
+        {/* Center/Right: Merged Actions (Nav + Settings + Bell) */}
         <HeaderActions 
            activeTab={activeTab} 
            setActiveTab={setActiveTab} 
@@ -857,6 +849,8 @@ const StudentDashboard = () => {
            setOpenMobileMenu={setIsMobileMenuOpen}
         />
       </div>
+
+      {/* Main Content Area */}
       <div className="flex-1 bg-white rounded-2xl md:rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.08)] p-4 md:p-8 overflow-y-auto relative custom-scrollbar border border-gray-100">
         {renderContent()}
       </div>
