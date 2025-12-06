@@ -164,7 +164,7 @@ const FacultyDashboard = () => {
 
   // New State for handling direct navigation to specific settings tab
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
-
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   // Notice & Reminder State
   const [showNotices, setShowNotices] = useState(false);
   const [isPostingNotice, setIsPostingNotice] = useState(false);
@@ -303,9 +303,12 @@ useEffect(() => {
     fetchTodaysLoad();
   }, [activeTab, faculty, mySchedule]);
 
-  const handleLogout = () => {
+const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+  const confirmLogout = () => {
     localStorage.removeItem("facultyToken");
-    window.location.href = "/auth";
+    window.location.href = "/fc/auth";
   };
   const showToast = (msg, type = "success") => {
     setNotification({ message: msg, type });
@@ -895,6 +898,37 @@ useEffect(() => {
         )}
 
         {/* --- HOD MY FACULTY MODAL --- */}
+        {showLogoutModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl p-6 max-w-sm w-full border border-gray-100">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-red-50 text-red-500 flex items-center justify-center border-4 border-white shadow-sm">
+                <LogOut className="w-6 h-6 ml-1" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Logging Out</h3>
+                <p className="text-sm text-gray-500 mt-2">
+                  You are about to sign out of the Institute Portal. Do you wish to continue?
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 w-full mt-2">
+                <button
+                  onClick={() => setShowLogoutModal(false)}
+                  className="px-4 py-3 rounded-xl bg-gray-50 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmLogout}
+                  className="px-4 py-3 rounded-xl bg-red-500 text-white font-bold text-sm hover:bg-red-600 transition-colors shadow-lg shadow-red-200"
+                >
+                  Confirm Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
         {showMyFaculty && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             {/* Click outside to close */}
