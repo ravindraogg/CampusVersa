@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { 
   BookOpen, 
-  AlertTriangle, 
   CheckCircle2, 
   XCircle, 
   Calendar, 
   BarChart3, 
-  ChevronRight,
   RefreshCcw 
 } from "lucide-react";
 
@@ -159,7 +157,8 @@ const StudentAttendanceSection = ({ student }) => {
                       <span className={`text-xs font-bold ${
                         record.percentage < 75 ? "text-red-500" : "text-emerald-500"
                       }`}>
-                        {record.percentage?.toFixed(0)}%
+                        {/* FIXED: Changed to 2 decimal places */}
+                        {Number(record.percentage || 0).toFixed(2)}%
                       </span>
                     </div>
                     
@@ -186,7 +185,8 @@ const StudentAttendanceSection = ({ student }) => {
                   <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                     {selectedSubject.courseId?.name}
                     <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(selectedSubject.percentage)}`}>
-                      {selectedSubject.percentage}%
+                      {/* FIXED: Changed to 2 decimal places */}
+                      {Number(selectedSubject.percentage || 0).toFixed(2)}%
                     </span>
                   </h3>
                   <p className="text-xs text-gray-500 mt-1">

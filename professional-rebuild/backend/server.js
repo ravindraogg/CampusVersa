@@ -63,7 +63,17 @@ mongoose.connect(process.env.MONGO_URI)
     process.exit(1);
   });
 
-
+// Helper: Convert Marks to Grade Point based on VTU Scheme (2021/2022)
+const getGradePoint = (marks) => {
+  if (marks >= 90) return 10; // O (Outstanding)
+  if (marks >= 80) return 9;  // A+ (Excellent)
+  if (marks >= 70) return 8;  // A (Very Good)
+  if (marks >= 60) return 7;  // B+ (Good)
+  if (marks >= 55) return 6;  // B (Above Average)
+  if (marks >= 50) return 5;  // C (Average)
+  if (marks >= 40) return 4;  // P (Pass)
+  return 0;                   // F (Fail)
+};
 // -------------------
 // Hybrid AI Provider Setup
 // -------------------
@@ -857,55 +867,130 @@ app.get('/institute/students', verifyToken, async (req, res) => {
 
 app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) => {
   try {
-    const { semester, courses } = req.body;
-    const student = await Student.findById(req.params.id);
+    const { semester } = req.body; // e.g., "5"
+    const studentId = req.params.id;
+
+    // 1. Fetch Student and populate Course details to get 'credits'
+    const student = await Student.findById(studentId).populate({
+      path: 'courseEnrollments.subjects.courseId',
+      select: 'credits name code' // We strictly need credits from the Course model
+    });
+
     if (!student) return res.status(404).json({ message: "Student not found" });
 
-    // 1. Calculate SGPA: Σ(GradePoint × Credits) / Σ(Credits)
-    let totalSemesterCredits = 0; // Σ Credits
-    let totalSemesterPoints = 0;  // Σ (GradePoint * Credits)
+    // 2. Find the Enrollment Data for the requested Semester
+    const enrollment = student.courseEnrollments.find(e => e.semester === String(semester));
+    
+    if (!enrollment || !enrollment.subjects || enrollment.subjects.length === 0) {
+      return res.status(400).json({ message: "No subjects found for this semester" });
+    }
 
-    courses.forEach(c => {
-      totalSemesterCredits += Number(c.credits);
-      totalSemesterPoints += (Number(c.gradePoint) * Number(c.credits));
+    // --- STEP A: CALCULATE SGPA ---
+    // Formula: Σ(Ci * Gi) / ΣCi
+    
+    let totalSemesterCredits = 0; // ΣCi
+    let totalProductCiGi = 0;     // Σ(Ci * Gi)
+
+    enrollment.subjects.forEach(sub => {
+      // Get Credits from the populated Course model
+      const courseCredits = sub.courseId?.credits || 0;
+      
+      // Calculate Total Marks (Internal + External)
+      // Note: Adjust this logic if your 'marksObtained' is already stored correctly in bulk-update
+      // Current Logic: (Average of Internals) + (External/2) -> Standard VTU logic often varies, adjusting to typical
+      const m = sub.marksDetails;
+      // Example Calculation: 
+      // If internal is out of 50 and external out of 50 (Total 100)
+      // Or if internal 40 + external 60. 
+      // Using the stored 'marksObtained' if available, else calculating:
+      let finalMarks = sub.marksObtained || 0;
+      
+      // If marksObtained is 0, let's try to calc it from details (Safety fallback)
+      if (finalMarks === 0) {
+         const internal = (m.test1 + m.test2 + m.test3 + m.assignment) / 4; 
+         const external = m.external / 2; 
+         finalMarks = internal + external;
+      }
+
+      // Get Grade Point (Gi)
+      const gradePoint = getGradePoint(finalMarks);
+
+      // Accumulate
+      if (courseCredits > 0) {
+        totalSemesterCredits += courseCredits;
+        totalProductCiGi += (courseCredits * gradePoint);
+      }
     });
 
-    const sgpa = totalSemesterCredits === 0 ? 0 : (totalSemesterPoints / totalSemesterCredits);
+    // Compute SGPA
+    const sgpa = totalSemesterCredits === 0 ? 0 : (totalProductCiGi / totalSemesterCredits);
+    const sgpaRounded = parseFloat(sgpa.toFixed(2));
 
-    // 2. Update Student Academic History
-    // Remove existing entry for this semester if it exists (update logic)
-    student.academic.semesterResults = student.academic.semesterResults.filter(r => r.semester !== semester);
+    // --- STEP B: UPDATE ACADEMIC HISTORY ---
     
+    // Remove old result for this specific semester if exists
+    student.academic.semesterResults = student.academic.semesterResults.filter(r => r.semester !== String(semester));
+    
+    // Push new result
     student.academic.semesterResults.push({
       semester: String(semester),
-      totalCredits: totalSemesterCredits,
-      earnedPoints: totalSemesterPoints,
-      sgpa: parseFloat(sgpa.toFixed(2))
+      sgpa: sgpaRounded,
+      // We explicitly store credits for this semester to help with CGPA calculation later
+      // You might need to add 'credits' to semesterResults schema or calculate dynamically
+      credits: totalSemesterCredits 
     });
 
-    // 3. Calculate CGPA: Σ(SGPA_i × C_i) / Σ(C_i)
-    // Based on your formula: Sum of (SGPA of sem * Credits of sem) / Total Credits of all sems
-    let grandTotalPoints = 0;
-    let grandTotalCredits = 0;
+    // --- STEP C: CALCULATE CGPA ---
+    // Formula: Σ(Si * Ci) / ΣCi 
+    // Where Si = SGPA of ith sem, Ci = Credits of ith sem
 
-    student.academic.semesterResults.forEach(res => {
-      // Re-deriving Σ(SGPA * C) is basically the 'earnedPoints' we calculated earlier
-      grandTotalPoints += res.earnedPoints; 
-      grandTotalCredits += res.totalCredits;
-    });
+    let sumSiCi = 0; // Sum of (SGPA * Credits)
+    let sumCiTotal = 0; // Sum of All Credits across semesters
 
-    const cgpa = grandTotalCredits === 0 ? 0 : (grandTotalPoints / grandTotalCredits);
-
-    // Save
-    student.academic.cgpa = parseFloat(cgpa.toFixed(2));
-    student.academic.creditsEarned = grandTotalCredits;
+    // We need to iterate over ALL semester results stored in history
+    // Note: This requires fetching credits for past semesters. 
+    // Ideally, store 'totalCredits' inside 'semesterResults' in Student Schema.
+    // Assuming 'student.academic.semesterResults' now has { semester, sgpa, credits } based on logic above.
     
+    // If your schema doesn't have 'credits' in semesterResults, we must recalculate them or fetch them.
+    // For this implementation to work perfectly, ensure Schema allows storing credits in result.
+    
+    // *Self-Correction*: Since schema in Student.js only has { semester, sgpa }, 
+    // we must loop through `courseEnrollments` to find credits for every semester.
+
+    for (let res of student.academic.semesterResults) {
+      const semName = res.semester;
+      const semSGPA = res.sgpa;
+
+      // Find credits for this semester from enrollments
+      const semEnrollment = student.courseEnrollments.find(e => e.semester === semName);
+      let semCredits = 0;
+      
+      if (semEnrollment) {
+        semEnrollment.subjects.forEach(s => {
+           semCredits += (s.courseId?.credits || 0);
+        });
+      }
+
+      sumSiCi += (semSGPA * semCredits);
+      sumCiTotal += semCredits;
+    }
+
+    const cgpa = sumCiTotal === 0 ? 0 : (sumSiCi / sumCiTotal);
+    const cgpaRounded = parseFloat(cgpa.toFixed(2));
+
+    // --- STEP D: SAVE ---
+    student.academic.cgpa = cgpaRounded;
+    student.academic.creditsEarned = sumCiTotal;
+
     await student.save();
 
     res.json({ 
       success: true, 
-      sgpa: student.academic.semesterResults.find(r => r.semester === semester).sgpa,
-      cgpa: student.academic.cgpa 
+      semester: semester,
+      totalCredits: totalSemesterCredits,
+      sgpa: sgpaRounded, 
+      cgpa: cgpaRounded 
     });
 
   } catch (err) {

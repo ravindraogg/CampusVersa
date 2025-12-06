@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, DollarSign, Clock, MapPin, Building2, 
-  Search, Plus, CheckCircle2, UserCircle, BadgeCheck,
-  Globe, Code, PenTool, TrendingUp, X, ChevronRight,
-  Filter, Star
+  Search, CheckCircle2, BadgeCheck,
+  Code, PenTool, TrendingUp, X, ChevronRight,
+  Filter, ExternalLink
 } from 'lucide-react';
 
 // --- MOCK DATA ---
@@ -30,10 +30,10 @@ const INITIAL_JOBS = [
     budget: '$50',
     type: 'Contract',
     tags: ['Design', 'Figma', 'Branding'],
-    isAlumni: true, // Alumni post example
+    isAlumni: true, 
     verified: true,
     color: 'bg-blue-100 text-blue-600',
-    createdAt: new Date(Date.now() - 86400000).toISOString() // 1 day ago
+    createdAt: new Date(Date.now() - 86400000).toISOString() 
   },
   {
     id: '3',
@@ -46,7 +46,7 @@ const INITIAL_JOBS = [
     isAlumni: false,
     verified: false,
     color: 'bg-pink-100 text-pink-600',
-    createdAt: new Date(Date.now() - 172800000).toISOString() // 2 days ago
+    createdAt: new Date(Date.now() - 172800000).toISOString() 
   }
 ];
 
@@ -60,28 +60,45 @@ const CATEGORIES = [
 // --- COMPONENTS ---
 
 // 1. Job Card Component
-const JobCard = ({ job, onClick }) => (
+const JobCard = ({ job, onClick, theme }) => (
   <motion.div
     layout
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
-    whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(125, 90, 254, 0.2)" }}
+    whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(0, 0, 0, 0.1)" }}
     onClick={onClick}
-    className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 cursor-pointer relative overflow-hidden group"
+    className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 cursor-pointer relative overflow-hidden group transition-all"
+    style={{ borderColor: 'transparent' }} // reset default
   >
+    {/* Hover Border Effect using box-shadow inset or border color via JS if needed, keeping simple hover here */}
+    <div className="absolute inset-0 border-2 border-transparent group-hover:border-opacity-50 pointer-events-none rounded-2xl transition-colors"
+         style={{ borderColor: 'transparent' }} 
+         /* Note: Dynamic hover border color is tricky with inline styles, sticking to standard interaction */
+    />
+
     {job.isAlumni && (
-      <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl z-10 flex items-center gap-1">
+      <div 
+        className="absolute top-0 right-0 text-[10px] font-bold px-3 py-1 rounded-bl-xl z-10 flex items-center gap-1"
+        style={{ backgroundColor: theme.primary, color: theme.textOnPrimary }}
+      >
         <BadgeCheck size={12} /> ALUMNI POST
       </div>
     )}
     
     <div className="flex items-start justify-between mb-4">
       <div className="flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold ${job.color || 'bg-blue-100 text-blue-600'}`}>
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold ${job.color || 'bg-gray-100 text-gray-600'}`}>
           {job.company[0]}
         </div>
         <div>
-          <h3 className="font-bold text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">{job.title}</h3>
+          <h3 
+            className="font-bold text-gray-900 text-lg transition-colors group-hover:text-opacity-80"
+            style={{ color: 'inherit' }} // Let hover handle specific color if needed, or stick to gray-900
+          >
+             <span className="group-hover:text-[color:var(--hover-color)]" style={{ '--hover-color': theme.primary }}>
+               {job.title}
+             </span>
+          </h3>
           <p className="text-sm text-gray-500 flex items-center gap-1">
             {job.company} 
             {job.verified && <CheckCircle2 size={14} className="text-blue-500" />}
@@ -103,7 +120,10 @@ const JobCard = ({ job, onClick }) => (
         <span className="flex items-center gap-1"><DollarSign size={14} className="text-green-600"/> {job.budget}</span>
         <span className="flex items-center gap-1"><Clock size={14} /> {job.type}</span>
       </div>
-      <span className="text-xs font-medium text-indigo-600 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <span 
+        className="text-xs font-medium flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ color: theme.primary }}
+      >
         View Details <ChevronRight size={14} />
       </span>
     </div>
@@ -111,7 +131,7 @@ const JobCard = ({ job, onClick }) => (
 );
 
 // 2. Post Job Modal
-const PostJobModal = ({ onClose, onSubmit, isSubmitting }) => {
+const PostJobModal = ({ onClose, onSubmit, isSubmitting, theme }) => {
   const [formData, setFormData] = useState({
     title: '',
     company: '',
@@ -124,7 +144,7 @@ const PostJobModal = ({ onClose, onSubmit, isSubmitting }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const colors = ['bg-blue-100 text-blue-600', 'bg-purple-100 text-purple-600', 'bg-indigo-100 text-indigo-600', 'bg-pink-100 text-pink-600'];
+    const colors = ['bg-blue-100 text-blue-600', 'bg-purple-100 text-purple-600', 'bg-emerald-100 text-emerald-600', 'bg-orange-100 text-orange-600'];
     
     onSubmit({
       ...formData,
@@ -152,42 +172,50 @@ const PostJobModal = ({ onClose, onSubmit, isSubmitting }) => {
           <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={20} /></button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
-            <input required type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. React Developer" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+            <input required type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 outline-none" placeholder="e.g. React Developer" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
           </div>
           
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Company/Client</label>
-              <input required type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. TechCorp" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} />
+              <input required type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 outline-none" placeholder="e.g. TechCorp" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Budget/Stipend</label>
-              <input required type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. $500 or $20/hr" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} />
+              <input required type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 outline-none" placeholder="e.g. $500 or $20/hr" value={formData.budget} onChange={e => setFormData({...formData, budget: e.target.value})} />
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea required rows={4} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Describe the project requirements..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+            <textarea required rows={4} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 outline-none resize-none" placeholder="Describe the project requirements..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
-            <input type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="React, Design, Figma..." value={formData.tags} onChange={e => setFormData({...formData, tags: e.target.value})} />
+            <input type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-400 outline-none" placeholder="React, Design, Figma..." value={formData.tags} onChange={e => setFormData({...formData, tags: e.target.value})} />
           </div>
 
-          <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
-            <input type="checkbox" id="alumni" className="w-5 h-5 text-indigo-600 rounded" checked={formData.isAlumni} onChange={e => setFormData({...formData, isAlumni: e.target.checked})} />
-            <label htmlFor="alumni" className="text-sm font-medium text-indigo-900 cursor-pointer">
+          <div 
+            className="flex items-center gap-3 p-3 rounded-xl border"
+            style={{ backgroundColor: theme.secondary, borderColor: theme.primary + '30' }}
+          >
+            <input type="checkbox" id="alumni" className="w-5 h-5 rounded text-current" style={{ color: theme.primary }} checked={formData.isAlumni} onChange={e => setFormData({...formData, isAlumni: e.target.checked})} />
+            <label htmlFor="alumni" className="text-sm font-medium cursor-pointer" style={{ color: theme.textMain }}>
               I am a College Alumni / Staff Member
-              <span className="block text-xs text-indigo-600 font-normal">Your post will get a verified badge.</span>
+              <span className="block text-xs font-normal" style={{ color: theme.primary }}>Your post will get a verified badge.</span>
             </label>
           </div>
 
-          <button disabled={isSubmitting} type="submit" className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
+          <button 
+            disabled={isSubmitting} 
+            type="submit" 
+            className="w-full py-4 font-bold rounded-xl shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed text-white"
+            style={{ backgroundColor: theme.primary, color: theme.textOnPrimary }}
+          >
             {isSubmitting ? 'Publishing...' : 'Publish Opportunity'}
           </button>
         </form>
@@ -197,13 +225,13 @@ const PostJobModal = ({ onClose, onSubmit, isSubmitting }) => {
 };
 
 // 3. Job Detail View
-const JobDetail = ({ job, onClose }) => (
+const JobDetail = ({ job, onClose, theme }) => (
   <motion.div 
     initial={{ x: '100%' }}
     animate={{ x: 0 }}
     exit={{ x: '100%' }}
     transition={{ type: "spring", damping: 25, stiffness: 200 }}
-    className="fixed inset-y-0 right-0 w-full md:w-[600px] bg-white shadow-2xl z-40 overflow-y-auto border-l border-gray-100"
+    className="fixed inset-y-0 right-0 w-full md:w-[600px] bg-white shadow-2xl z-50 overflow-y-auto border-l border-gray-100"
   >
     <div className="p-8">
       <button onClick={onClose} className="mb-6 flex items-center text-gray-500 hover:text-gray-800 transition-colors font-medium">
@@ -215,7 +243,10 @@ const JobDetail = ({ job, onClose }) => (
           {job.company[0]}
         </div>
         {job.isAlumni && (
-          <span className="bg-indigo-100 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1">
+          <span 
+            className="px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1"
+            style={{ backgroundColor: theme.secondary, color: theme.primary }}
+          >
             <BadgeCheck size={14} /> Alumni Verified
           </span>
         )}
@@ -241,13 +272,13 @@ const JobDetail = ({ job, onClose }) => (
         </div>
       </div>
 
-      <div className="prose prose-indigo max-w-none mb-8 text-gray-600 leading-relaxed">
-        <h3 className="text-gray-900 font-bold text-lg mb-3">About the Role</h3>
+      <div className="prose max-w-none mb-8 text-gray-600 leading-relaxed">
+        <h3 className="font-bold text-lg mb-3" style={{ color: theme.primary }}>About the Role</h3>
         <p className="whitespace-pre-wrap">{job.description}</p>
       </div>
 
       <div className="mb-8">
-        <h3 className="text-gray-900 font-bold text-lg mb-3">Skills Required</h3>
+        <h3 className="font-bold text-lg mb-3" style={{ color: theme.primary }}>Skills Required</h3>
         <div className="flex flex-wrap gap-2">
           {job.tags?.map((tag, i) => (
             <span key={i} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium">
@@ -259,7 +290,10 @@ const JobDetail = ({ job, onClose }) => (
     </div>
 
     <div className="sticky bottom-0 p-6 bg-white border-t border-gray-100 flex gap-4 backdrop-blur-xl bg-white/90">
-      <button className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2">
+      <button 
+        className="flex-1 py-4 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 hover:opacity-90"
+        style={{ backgroundColor: theme.primary, color: theme.textOnPrimary }}
+      >
         Apply Now <ExternalLink size={18} />
       </button>
       <button className="px-6 py-4 bg-white border-2 border-gray-200 hover:border-gray-300 text-gray-700 font-bold rounded-xl transition-all">
@@ -269,33 +303,25 @@ const JobDetail = ({ job, onClose }) => (
   </motion.div>
 );
 
-// --- MAIN PAGE ---
-const Freelance = () => {
-  // Mock User State - We simulate a logged in user so features work
+// --- MAIN COMPONENT ---
+const FreelanceHub = ({ theme }) => {
   const [user] = useState({ uid: 'mock-user-123', displayName: 'Student User' });
-  
   const [activeTab, setActiveTab] = useState('all');
-  const [isRecruiterMode, setIsRecruiterMode] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
   const [jobs, setJobs] = useState(INITIAL_JOBS);
   const [selectedJob, setSelectedJob] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 3. Add Job (Local State Only)
   const handlePostJob = (jobData) => {
     setIsSubmitting(true);
-    
-    // Simulate network delay
     setTimeout(() => {
       const newJob = {
         id: Date.now().toString(),
         ...jobData,
         postedBy: user.uid
       };
-      
       setJobs(prevJobs => [newJob, ...prevJobs]);
       setShowPostModal(false);
-      setIsRecruiterMode(false); // Switch back to see the post
       setIsSubmitting(false);
     }, 800);
   };
@@ -304,148 +330,80 @@ const Freelance = () => {
     ? jobs 
     : jobs.filter(j => j.tags?.some(t => t.toLowerCase().includes(activeTab)));
 
+  // Fallback if theme prop isn't passed for some reason
+  const activeTheme = theme || { primary: '#4F46E5', secondary: '#E0E7FF', textOnPrimary: '#FFFFFF' };
+
   return (
-    <div className="min-h-screen bg-gray-50 font-sans relative overflow-x-hidden">
+    <div className="w-full bg-transparent font-sans relative">
       
-      {/* Sidebar Navigation */}
-      <div className="fixed left-0 top-0 h-full w-20 md:w-64 bg-white border-r border-gray-200 hidden md:flex flex-col z-10">
-        <div className="p-6">
-          <h1 className="text-2xl font-extrabold text-indigo-600 flex items-center gap-2">
-            <Globe className="fill-indigo-600 text-white" />
-            <span className="hidden md:block">Freelance</span>
-          </h1>
-          <p className="text-xs text-gray-500 mt-2 hidden md:block">Student Job Market</p>
+      {/* 1. Header Area */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Freelance Hub</h2>
+          <p className="text-gray-500 mt-1">
+            {jobs.length} open positions • <span className="font-medium" style={{ color: activeTheme.primary }}>Verified Client Network</span>
+          </p>
+        </div>
+      </header>
+
+      {/* 2. Filters Section */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        {/* Categories as horizontal scrollable pills */}
+        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveTab(cat.id)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl border whitespace-nowrap transition-all font-bold text-sm`}
+                style={{
+                  backgroundColor: activeTab === cat.id ? activeTheme.primary : '#FFFFFF',
+                  color: activeTab === cat.id ? activeTheme.textOnPrimary : '#4B5563',
+                  borderColor: activeTab === cat.id ? activeTheme.primary : '#E5E7EB',
+                }}
+              >
+                <cat.icon size={18} />
+                <span>{cat.name}</span>
+              </button>
+            ))}
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveTab(cat.id)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
-                activeTab === cat.id 
-                  ? 'bg-indigo-50 text-indigo-600 font-bold' 
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <cat.icon size={20} />
-              <span className="hidden md:block">{cat.name}</span>
+        {/* Search & Filter Button */}
+        <div className="flex-1 flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none shadow-sm"
+                style={{ caretColor: activeTheme.primary }}
+              />
+            </div>
+            <button className="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-600 font-medium flex items-center gap-2 hover:border-gray-300">
+              <Filter size={18} />
             </button>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-gray-100">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-4 text-white hidden md:block">
-            <p className="text-sm font-bold mb-1">Recruiting?</p>
-            <p className="text-xs opacity-90 mb-3">Post jobs for students and alumni.</p>
-            <button 
-              onClick={() => { setIsRecruiterMode(true); setShowPostModal(true); }}
-              className="w-full py-2 bg-white text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors"
-            >
-              Post a Job
-            </button>
-          </div>
-          {/* Mobile Icon Only */}
-          <button 
-            onClick={() => { setIsRecruiterMode(true); setShowPostModal(true); }}
-            className="md:hidden w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white"
-          >
-            <Plus size={20} />
-          </button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="md:ml-64 p-4 md:p-8 max-w-7xl mx-auto">
-        
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900">Explore Opportunities</h2>
-            <p className="text-gray-500 mt-1">
-              {jobs.length} open positions • <span className="text-indigo-600 font-medium">Verified Client Network</span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-             <button 
-               onClick={() => setIsRecruiterMode(false)}
-               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${!isRecruiterMode ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
-             >
-               Find Work
-             </button>
-             <button 
-               onClick={() => setIsRecruiterMode(true)}
-               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${isRecruiterMode ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
-             >
-               Recruiter View
-             </button>
-          </div>
-        </header>
-
-        {/* Recruiter CTA if empty or just extra visibility */}
-        {isRecruiterMode && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }} 
-            animate={{ height: 'auto', opacity: 1 }}
-            className="mb-8 bg-indigo-900 text-white rounded-3xl p-8 flex items-center justify-between shadow-xl relative overflow-hidden"
-          >
-            <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-500 rounded-full blur-3xl opacity-20 -mr-16 -mt-16"></div>
-            <div className="relative z-10">
-              <h3 className="text-2xl font-bold mb-2">Hire Top Student Talent</h3>
-              <p className="text-indigo-200 max-w-xl">Post internships, freelance gigs, or full-time roles directly to the college network. Alumni posts get a verified badge.</p>
-            </div>
-            <button 
-              onClick={() => setShowPostModal(true)}
-              className="relative z-10 px-6 py-3 bg-white text-indigo-900 font-bold rounded-xl hover:bg-indigo-50 transition-colors flex items-center gap-2"
+      {/* 3. Jobs Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <AnimatePresence>
+          {filteredJobs.length > 0 ? (
+            filteredJobs.map(job => (
+              <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} theme={activeTheme} />
+            ))
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="col-span-full py-20 text-center"
             >
-              <Plus size={18} /> Create Post
-            </button>
-          </motion.div>
-        )}
-
-        {/* Filters & Search */}
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input 
-              type="text" 
-              placeholder="Search by title, skill, or company..." 
-              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
-            />
-          </div>
-          <button className="px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-600 font-medium flex items-center gap-2 hover:border-gray-300">
-            <Filter size={18} /> Filters
-          </button>
-        </div>
-
-        {/* Jobs Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <AnimatePresence>
-            {filteredJobs.length > 0 ? (
-              filteredJobs.map(job => (
-                <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
-              ))
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="col-span-full py-20 text-center"
-              >
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Briefcase className="text-gray-400" size={32} />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900">No opportunities found</h3>
-                <p className="text-gray-500 mt-2">Try adjusting your filters or be the first to post!</p>
-                <button 
-                  onClick={() => setShowPostModal(true)}
-                  className="mt-6 text-indigo-600 font-bold hover:underline"
-                >
-                  Post an Opportunity
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Briefcase className="text-gray-400" size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">No opportunities found</h3>
+              <p className="text-gray-500 mt-2">Try adjusting your filters.</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Modals */}
@@ -455,12 +413,14 @@ const Freelance = () => {
             onClose={() => setShowPostModal(false)} 
             onSubmit={handlePostJob} 
             isSubmitting={isSubmitting}
+            theme={activeTheme}
           />
         )}
         {selectedJob && (
           <JobDetail 
             job={selectedJob} 
             onClose={() => setSelectedJob(null)} 
+            theme={activeTheme}
           />
         )}
       </AnimatePresence>
@@ -468,4 +428,4 @@ const Freelance = () => {
   );
 };
 
-export default Freelance;
+export default FreelanceHub;

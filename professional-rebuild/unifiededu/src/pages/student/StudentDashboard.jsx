@@ -5,44 +5,45 @@ import {
   TrendingUp,
   BookOpen,
   Briefcase,
-  Send,
   Bell,
   LogOut,
   Loader2,
   AlertCircle,
   GraduationCap,
   Sparkles,
-  ExternalLink,
-  Award,
-  Settings,
-  Cpu,
-  Clock,
-  Calendar,
   ChevronRight,
   ListTodo,
   History,
-  Table as TableIcon 
+  ArrowLeft,
+  FileText,
+  Map,
+  Mic,
+  Code2,
+  Users,
+  Send, 
+  Table as TableIcon
 } from "lucide-react";
 
-// --- IMPORT YOUR SUB-COMPONENTS ---
+// --- SUB-COMPONENTS ---
 import StudentAttendanceSection from "./StudentAttendanceSection";
 import StudentPerformanceSection from "./StudentPerformanceSection";
-import StudentCareerSection from "./StudentCareerSection";
 import StudentProfileSection from "./StudentProfileSection";
 import StudentTimetableSection from "./StudentTimetableSection";
-import StudentCoursesSection from "./StudentCoursesSection"; // <--- MAKE SURE THIS IS IMPORTED
+import StudentCoursesSection from "./StudentCoursesSection"; 
 
-// Placeholder imports for files you may have:
+// --- FEATURE COMPONENTS ---
 import ResumeBuilder from "./resume"; 
 import MockInterview from "./mockinterview";
-import FreelanceHub from "./freelance";
-import ProjectCollab from "./projectcolab";
+import ProjectCollab from "./projectcolab"; 
+import FreelanceHub from "./freelance"; 
+import ProblemSolvingArena from "./problemsolve"; 
+import Roadmap from "./roadmap"; 
 
 const API_URL = import.meta.env.VITE_BACK_URI;
 
 // --- DEFAULT THEME ---
 const DEFAULT_THEME = {
-  primary: "#2E5843", // Institute Green
+  primary: "#2E5843",
   secondary: "#D4E7DD",
   bg: "#F2F5F3",
   textMain: "#1F2937",
@@ -57,49 +58,142 @@ const NAV_ITEMS = [
   { id: "timetable", label: "Timetable", icon: TableIcon }, 
   { id: "courses", label: "Courses", icon: BookOpen },
   { id: "performance", label: "Performance", icon: TrendingUp },
-  { id: "career", label: "Career & Achievements", icon: Briefcase }, 
-  { id: "freelance", label: "Freelancing Hub", icon: Send },
+  { id: "career", label: "Career & Skills", icon: Briefcase }, 
+  { id: "freelance", label: "Freelance Hub", icon: Send }, 
 ];
 
-// --- HELPER: Random Color Generator for Subjects ---
-const getSubjectColor = (subjectName) => {
-  const colors = [
-    "bg-red-50 text-red-700 border-red-100",
-    "bg-orange-50 text-orange-700 border-orange-100",
-    "bg-amber-50 text-amber-700 border-amber-100",
-    "bg-emerald-50 text-emerald-700 border-emerald-100",
-    "bg-teal-50 text-teal-700 border-teal-100",
-    "bg-cyan-50 text-cyan-700 border-cyan-100",
-    "bg-blue-50 text-blue-700 border-blue-100",
-    "bg-indigo-50 text-indigo-700 border-indigo-100",
-    "bg-violet-50 text-violet-700 border-violet-100",
-    "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100",
-    "bg-pink-50 text-pink-700 border-pink-100",
-    "bg-rose-50 text-rose-700 border-rose-100",
-  ];
-  if (!subjectName) return "bg-gray-50 text-gray-700 border-gray-100";
-  
-  let hash = 0;
-  for (let i = 0; i < subjectName.length; i++) {
-    hash = subjectName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
+// --- HELPER: VTU Grading Logic (Client Side) ---
+const getGradePoint = (marks) => {
+  if (marks >= 90) return 10;
+  if (marks >= 80) return 9;
+  if (marks >= 70) return 8;
+  if (marks >= 60) return 7;
+  if (marks >= 55) return 6;
+  if (marks >= 50) return 5;
+  if (marks >= 40) return 4;
+  return 0;
 };
 
-// --- CHART COMPONENT ---
+// --- CAREER HUB COMPONENT ---
+const CareerHub = ({ theme }) => {
+  const [activeFeature, setActiveFeature] = useState(null);
+
+  const FEATURES = [
+    {
+      id: "resume",
+      title: "AI Resume Builder",
+      description: "Create & improve resume automatically. Dedicated builder page.",
+      buttonText: "Open Builder",
+      icon: FileText,
+      color: "bg-blue-50 text-blue-600",
+      component: ResumeBuilder
+    },
+    {
+      id: "roadmap",
+      title: "Personalized Roadmap",
+      description: "Plan your path. Roadmaps for DSA, Web Dev, AI & more.",
+      buttonText: "View Roadmap",
+      icon: Map,
+      color: "bg-emerald-50 text-emerald-600",
+      component: Roadmap
+    },
+    {
+      id: "interview",
+      title: "Mock Interview Suite",
+      description: "Practice HR & technical interviews with AI feedback.",
+      buttonText: "Start Interview",
+      icon: Mic,
+      color: "bg-purple-50 text-purple-600",
+      component: MockInterview
+    },
+    {
+      id: "problems",
+      title: "Problem Solving Arena",
+      description: "100+ curated DSA & logic problems with hints.",
+      buttonText: "Start Solving",
+      icon: Code2,
+      color: "bg-orange-50 text-orange-600",
+      component: ProblemSolvingArena
+    },
+    {
+      id: "projects",
+      title: "Project Collaboration",
+      description: "Find peers, join teams & build real projects together.",
+      buttonText: "Find Projects",
+      icon: Users,
+      color: "bg-pink-50 text-pink-600",
+      component: ProjectCollab
+    }
+  ];
+
+  if (activeFeature) {
+    const feature = FEATURES.find(f => f.id === activeFeature);
+    const Component = feature?.component || (() => <div>Component Not Found</div>);
+
+    return (
+      <div className="animate-in fade-in slide-in-from-right-4 duration-300 h-full flex flex-col">
+        <button 
+          onClick={() => setActiveFeature(null)}
+          className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors w-fit"
+        >
+          <ArrowLeft size={18} /> Back to Career Hub
+        </button>
+        <div className="flex-1">
+          <Component theme={theme} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-in fade-in duration-500">
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900">Career & Skills Hub</h2>
+        <p className="text-gray-500">Select a tool to boost your professional journey.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {FEATURES.map((feature) => (
+          <div 
+            key={feature.id}
+            onClick={() => setActiveFeature(feature.id)}
+            className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all cursor-pointer flex flex-col justify-between h-full"
+          >
+            <div>
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 text-xl ${feature.color}`}>
+                <feature.icon size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
+                {feature.title}
+              </h3>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                {feature.description}
+              </p>
+            </div>
+            
+            <div className="mt-6 pt-4 border-t border-gray-50 flex items-center text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+              {feature.buttonText} <ChevronRight size={16} className="ml-1" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- HELPER: Simple Chart ---
 const SimpleBarChart = ({ data, color, height = "h-32" }) => (
   <div className={`flex items-end justify-between ${height} w-full gap-2 mt-4`}>
     {data.length === 0 ? (
       <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 italic">
-        No data available
+        No academic history yet
       </div>
     ) : (
       data.map((item, index) => (
         <div key={index} className="flex flex-col items-center w-full group cursor-pointer">
           <div className="relative w-full flex items-end justify-center h-full">
             <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-[10px] px-2 py-1 rounded z-10 pointer-events-none whitespace-nowrap">
-              {item.tooltip || `${item.value}%`}
+              {item.tooltip || `${item.value.toFixed(1)}`}
             </div>
             <div
               className="w-full mx-1 rounded-t-lg transition-all duration-500 hover:opacity-80 relative"
@@ -130,7 +224,7 @@ const authFetch = async (path, opts = {}) => {
   return res;
 };
 
-// --- NAVIGATION COMPONENT ---
+// --- COMPONENT: Navigation ---
 const StudentNav = ({ activeTab, setActiveTab, theme }) => {
   return (
     <div
@@ -180,9 +274,10 @@ const StudentDashboard = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      // 1. Fetch Basic Profile
       const res = await authFetch("/student/me");
       const data = await res.json();
-      setStudent(data.student);
+      let currentStudent = data.student;
       setInstitute(data.institute);
 
       if (data.institute?.themeColorPrimary) {
@@ -194,23 +289,109 @@ const StudentDashboard = () => {
         }));
       }
 
-      if (data.student?.attendance?.subjectWise) {
-        setSubjectWiseData(data.student.attendance.subjectWise);
-      }
-
-      if (data.student?.academic?.semesterResults) {
-        const perfData = data.student.academic.semesterResults.map(sem => ({
-          label: `Sem ${sem.semester}`,
-          value: (sem.sgpa / 10) * 100, 
-          tooltip: `SGPA: ${sem.sgpa}`
-        }));
-        setPerformanceChartData(perfData);
-      }
-
+      // 2. Fetch LIVE Attendance & Use it to Calculate GPA
       try {
         const attRes = await authFetch("/student/attendance/full");
         if (attRes.ok) {
           const attFullData = await attRes.json();
+          
+          // A. Attendance Logic
+          let totalClasses = 0;
+          let totalPresent = 0;
+          const liveSubjects = attFullData.map(record => {
+            totalClasses += (record.totalClasses || 0);
+            totalPresent += (record.totalPresent || 0);
+            return {
+              subjectName: record.courseId?.name || "Unknown Course",
+              percentage: record.percentage || 0
+            };
+          });
+          setSubjectWiseData(liveSubjects);
+
+          const liveOverall = totalClasses > 0 ? (totalPresent / totalClasses) * 100 : 0;
+          
+          // B. CLIENT-SIDE GPA CALCULATION (Fallback)
+          // We need course credits from 'attFullData' (since it populates courseId)
+          // and marks from 'currentStudent.courseEnrollments'
+          
+          let calculatedResults = [];
+          let sumSiCi = 0;
+          let sumCiTotal = 0;
+
+          // Create a map of CourseID -> Credits from attendance data
+          const creditMap = {};
+          attFullData.forEach(r => {
+            if(r.courseId && r.courseId._id) {
+                creditMap[r.courseId._id] = r.courseId.credits || 3; // Default 3
+            }
+          });
+
+          if (currentStudent.courseEnrollments) {
+            currentStudent.courseEnrollments.forEach(semData => {
+                let semCreditsTotal = 0;
+                let semProduct = 0;
+
+                semData.subjects.forEach(sub => {
+                    const credits = creditMap[sub.courseId] || 3; 
+                    
+                    // Calc Marks
+                    let finalMarks = sub.marksObtained || 0;
+                    if(finalMarks === 0 && sub.marksDetails) {
+                        const m = sub.marksDetails;
+                        const internal = (m.test1 + m.test2 + m.test3 + m.assignment) / 4;
+                        const external = m.external / 2; 
+                        finalMarks = internal + external;
+                    }
+
+                    const gp = getGradePoint(finalMarks);
+                    if(gp > 0 || finalMarks >= 0) { // consider all valid attempts
+                        semCreditsTotal += credits;
+                        semProduct += (credits * gp);
+                    }
+                });
+
+                if (semCreditsTotal > 0) {
+                    const sgpa = semProduct / semCreditsTotal;
+                    calculatedResults.push({
+                        semester: semData.semester,
+                        sgpa: parseFloat(sgpa.toFixed(2))
+                    });
+                    
+                    sumSiCi += (sgpa * semCreditsTotal);
+                    sumCiTotal += semCreditsTotal;
+                }
+            });
+          }
+
+          const calculatedCGPA = sumCiTotal > 0 ? (sumSiCi / sumCiTotal).toFixed(2) : "0.00";
+
+          // Update Student State with LIVE calculated data
+          currentStudent = {
+            ...currentStudent,
+            attendance: {
+                ...currentStudent.attendance,
+                overallPercentage: liveOverall
+            },
+            academic: {
+                ...currentStudent.academic,
+                cgpa: calculatedCGPA,
+                creditsEarned: sumCiTotal,
+                semesterResults: calculatedResults // Use live calculated SGPAs
+            }
+          };
+
+          setStudent(currentStudent);
+
+          // C. Update Charts with New SGPA Data
+          const sortedResults = [...calculatedResults].sort((a, b) => Number(a.semester) - Number(b.semester));
+          const perfData = sortedResults.map(sem => ({
+            label: `Sem ${sem.semester}`,
+            value: (sem.sgpa / 10) * 100, // Scale 0-10 SGPA to 0-100% height
+            tooltip: `SGPA: ${sem.sgpa}`
+          }));
+          setPerformanceChartData(perfData);
+
+          // D. Recent Activity
           const allHistory = attFullData.flatMap(record => 
             (record.history || []).map(h => ({
               ...h,
@@ -221,8 +402,9 @@ const StudentDashboard = () => {
           allHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
           setRecentAttendance(allHistory.slice(0, 3));
         }
-      } catch (e) { console.warn("Recent attendance fetch error", e); }
+      } catch (e) { console.warn("Attendance/GPA fetch error", e); }
 
+      // 4. Timetables
       try {
         const ttRes = await authFetch("/student/timetable");
         if (ttRes.ok) {
@@ -240,7 +422,7 @@ const StudentDashboard = () => {
 
   useEffect(() => {
     if (institute) {
-      document.title = `${student.name || "Institute"} | CampusVersa`;
+      document.title = `${student?.name || "Institute"} | CampusVersa`;
       if (institute.logo) {
         let link = document.querySelector("link[rel~='icon']");
         if (!link) {
@@ -279,7 +461,7 @@ const StudentDashboard = () => {
           <div className="hidden md:flex flex-col gap-2 relative z-10">
              <div className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl border border-red-100 text-xs font-bold shadow-sm">
                 <AlertCircle className="w-4 h-4" /> 
-                <span>Overall Attendance Low ({student.attendance.overallPercentage}%)</span>
+                <span>Overall Attendance Low ({Number(student.attendance.overallPercentage || 0).toFixed(2)}%)</span>
              </div>
           </div>
         )}
@@ -290,28 +472,32 @@ const StudentDashboard = () => {
          
          {/* Quick Stats Row */}
          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            
+            {/* CGPA CARD - Uses Live Calculated Data */}
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                    <div className="p-2 bg-green-50 rounded-full text-green-600"><GraduationCap className="w-5 h-5"/></div>
                    <span className="text-[10px] text-gray-400 font-bold uppercase">CGPA</span>
                 </div>
                 <div className="mt-2">
-                   <h3 className="text-2xl font-black text-gray-800">{student?.academic?.cgpa || "N/A"}</h3>
-                   <p className="text-[10px] text-green-600 font-bold">Academic Score</p>
+                   <h3 className="text-2xl font-black text-gray-800">{student?.academic?.cgpa || "0.00"}</h3>
+                   <p className="text-[10px] text-green-600 font-bold">Cumulative</p>
                 </div>
             </div>
 
+            {/* Attendance Card */}
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                    <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-5 h-5"/></div>
                    <span className="text-[10px] text-gray-400 font-bold uppercase">Attendance</span>
                 </div>
                 <div className="mt-2">
-                   <h3 className="text-2xl font-black text-gray-800">{student?.attendance?.overallPercentage || 0}%</h3>
+                   <h3 className="text-2xl font-black text-gray-800">{Number(student?.attendance?.overallPercentage || 0).toFixed(2)}%</h3>
                    <p className="text-[10px] text-gray-400">Overall Avg</p>
                 </div>
             </div>
 
+            {/* Credits Card */}
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                    <div className="p-2 bg-orange-50 rounded-full text-orange-600"><ListTodo className="w-5 h-5"/></div>
@@ -323,14 +509,17 @@ const StudentDashboard = () => {
                 </div>
             </div>
 
+            {/* Courses Card */}
             <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
-                   <div className="p-2 bg-purple-50 rounded-full text-purple-600"><Send className="w-5 h-5"/></div>
-                   <span className="text-[10px] text-gray-400 font-bold uppercase">Gigs</span>
+                   <div className="p-2 bg-purple-50 rounded-full text-purple-600"><BookOpen className="w-5 h-5"/></div>
+                   <span className="text-[10px] text-gray-400 font-bold uppercase">Courses</span>
                 </div>
                 <div className="mt-2">
-                   <h3 className="text-2xl font-black text-gray-800">0</h3>
-                   <p className="text-[10px] text-gray-400">Active Applications</p>
+                   <h3 className="text-2xl font-black text-gray-800">
+                     {student?.courseEnrollments?.find(s => s.semester === student.semester)?.subjects?.length || 0}
+                   </h3>
+                   <p className="text-[10px] text-gray-400">Active Subjects</p>
                 </div>
             </div>
          </div>
@@ -361,7 +550,7 @@ const StudentDashboard = () => {
                               {subj.subjectName}
                            </p>
                            <span className={`text-xs font-bold ${subj.percentage >= 75 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {subj.percentage}%
+                              {Number(subj.percentage || 0).toFixed(2)}%
                            </span>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
@@ -378,36 +567,15 @@ const StudentDashboard = () => {
                </div>
             </div>
 
-            {/* Performance Trend Chart */}
+            {/* Performance Trend Chart (Uses Live SGPA Data) */}
             <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full">
                <div className="flex justify-between items-center mb-2">
                   <h4 className="font-bold text-gray-700 flex items-center gap-2">
                      <TrendingUp className="w-4 h-4 text-gray-400" /> Academic Trend
                   </h4>
-                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">CGPA</span>
+                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">SGPA/Sem</span>
                </div>
                <SimpleBarChart data={performanceChartData} color="#6366f1" height="h-40" />
-            </div>
-         </div>
-
-         {/* Upcoming Tasks */}
-         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-orange-500" /> Upcoming Deadlines
-              </h3>
-              <button onClick={() => setActiveTab("courses")} className="text-xs font-bold text-blue-600 hover:underline">
-                View All
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-orange-200 transition-colors">
-                 <div className="flex justify-between items-start mb-1">
-                    <span className="text-[10px] uppercase font-bold text-gray-400">Assignment</span>
-                    <span className="text-[10px] font-bold text-orange-600">Tomorrow</span>
-                 </div>
-                 <h4 className="font-bold text-sm text-gray-800 line-clamp-1">Data Structures Lab</h4>
-              </div>
             </div>
          </div>
       </div>
@@ -436,7 +604,7 @@ const StudentDashboard = () => {
          {/* Schedule */}
          <div className="bg-orange-50 p-5 rounded-[2rem] border border-orange-100 relative overflow-hidden">
             <div className="absolute right-[-20px] top-[-20px] opacity-10">
-               <Calendar className="w-24 h-24 text-orange-600" />
+               <CalendarDays className="w-24 h-24 text-orange-600" />
             </div>
             <p className="text-orange-600 text-xs font-bold uppercase mb-1 relative z-10">Today's Schedule</p>
             <h3 className="text-4xl font-extrabold text-orange-900 relative z-10">
@@ -491,14 +659,21 @@ const StudentDashboard = () => {
              theme={theme} 
           />
         );
-      
-      // --- UPDATED: USE THE NEW COMPONENT ---
       case "courses": 
-         return <StudentCoursesSection />;
-
+        return <StudentCoursesSection student={student} theme={theme} />;
       case "performance": return <StudentPerformanceSection student={student} />;
-      case "career": return <div className="space-y-8 animate-in fade-in"><StudentCareerSection /><div className="grid lg:grid-cols-2 gap-6"><ResumeBuilder theme={theme} /><MockInterview theme={theme} /></div></div>;
-      case "freelance": return <div className="space-y-6 animate-in fade-in"><FreelanceHub theme={theme} /><ProjectCollab /></div>;
+      
+      // CAREER & SKILLS (5 Cards)
+      case "career": return <CareerHub theme={theme} />;
+
+      // FREELANCE HUB (Separate Tab)
+      case "freelance": 
+        return (
+          <div className="animate-in fade-in h-full">
+             <FreelanceHub theme={theme} />
+          </div>
+        );
+
       case "settings": return <div className="animate-in fade-in max-w-4xl mx-auto"><StudentProfileSection student={student} institute={institute} theme={theme} refreshProfile={loadData} /></div>;
       default: return null;
     }
@@ -515,7 +690,7 @@ const StudentDashboard = () => {
           </div>
           <div>
             <h1 className="font-extrabold text-lg leading-none">{institute?.code || "CAMPUS"}</h1>
-            <p className="text-[10px] uppercase font-bold mt-1">Student Portal</p>
+            <p className="text-[10px] uppercase font-bold mt-1"style={{color: theme.secondary}}>Student Portal</p>
           </div>
         </div>
         <StudentNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
