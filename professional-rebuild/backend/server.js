@@ -263,32 +263,47 @@ app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
   }
 });
 
-// Create institute (admin)
+// --- server.js ---
+
 // --- Admin: Create Institute (assign collegeNumber) ---
 app.post('/admin/createInstitute', verifyToken, async (req, res) => {
   try {
-    const { name, code, email, aisheCode, password, requestId } = req.body;
+    // 1. Destructure ALL necessary fields, including details and accreditation
+    const { 
+      name, code, email, aisheCode, password, requestId,
+      address, state, pincode, phone, website, accreditation // <--- ADDED THESE
+    } = req.body;
+
     if (!password) return res.status(400).json({ message: 'Initial password required' });
+    
     // avoid duplicates
     const exists = await Institute.findOne({ $or: [{ code }, { email }] });
     if (exists) return res.status(400).json({ message: 'Institute already exists' });
 
-    // Determine collegeNumber: count existing institutes with same short code
-    // NOTE: We assign newNumber = (countExistingWithSameCode) + 1
+    // Determine collegeNumber
     const sameCodeCount = await Institute.countDocuments({ code });
     const collegeNumber = sameCodeCount + 1;
 
     // Generate IID
     const generatedIID = `IID-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
 
+    // 2. Create the Institute with ALL fields
     const inst = new Institute({
       IID: generatedIID,
       name,
       code,
-      collegeNumber,          // save it
+      collegeNumber,
       email,
       aisheCode,
       password,
+      // --- MAP NEW FIELDS ---
+      address,
+      state,
+      pincode,
+      phone,
+      website,
+      accreditation: accreditation || [], // Save the accreditation array
+      // ----------------------
       status: 'Active',
       createdAt: Date.now()
     });

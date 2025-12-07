@@ -131,12 +131,14 @@ const AdminPanel = () => {
     try { const res = await api.get('/logs'); setLogs(res.data); } catch (err) { console.error(err); }
   };
 
+// --- adminpanel.jsx ---
+
   const handleCreateInstitute = async () => {
     setIsLoading(true);
     try {
       // Merge accreditation into the payload
       const payload = {
-        ...newInst,
+        ...newInst, // This spreads name, code, email, address, state, pincode, phone, website
         accreditation: [{
           type: newInst.accreditationType || "NAAC",
           status: newInst.accreditationStatus === "true",
@@ -145,13 +147,19 @@ const AdminPanel = () => {
         }]
       };
 
+      // The payload now contains all the address/state info because we spread ...newInst
       await api.post('/createInstitute', payload);
 
       showToast(newInst.requestId ? 'Request Approved & Account Created' : 'Institute Created', 'success');
       setModals({ ...modals, addInstitute: false });
 
-      // Reset form
-      setNewInst({ name: '', code: '', email: '', address: '', aisheCode: '', password: '', requestId: null, accreditationType: 'NAAC', accreditationStatus: 'false', accreditationGrade: '', accreditationScore: '' });
+      // Reset form including new fields
+      setNewInst({ 
+        name: '', code: '', email: '', 
+        address: '', state: '', pincode: '', phone: '', website: '', // Reset these too
+        aisheCode: '', password: '', requestId: null, 
+        accreditationType: 'NAAC', accreditationStatus: 'false', accreditationGrade: '', accreditationScore: '' 
+      });
 
       fetchInstitutes();
     } catch (err) {
@@ -223,15 +231,28 @@ const AdminPanel = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+// --- adminpanel.jsx ---
+
   const openPromoteModal = (request) => {
+    // We map the data from the Request object to the New Institute Form state
     setNewInst({
       name: request.name,
-      code: request.code, // Mapped from requests list view
+      code: request.code, // In your fetchInstitutes logic, requestedCode is mapped to code
       email: request.email,
       aisheCode: request.aisheCode || '',
-      address: request.state || '',
+      
+      // --- UPDATED MAPPING START ---
+      address: request.address || '', 
+      state: request.state || '',
+      pincode: request.pincode || '',
+      phone: request.phone || '',
+      website: request.website || '',
+      // --- UPDATED MAPPING END ---
+
       password: '', // Admin sets initial password
       requestId: request._id,
+      
+      // Attempt to pre-fill accreditation if it exists in the request text (optional logic)
       accreditationType: 'NAAC',
       accreditationStatus: 'false'
     });
@@ -718,7 +739,7 @@ const AdminPanel = () => {
       <aside className="w-64 border-r border-white/5 bg-slate-900/50 flex flex-col h-screen fixed z-10 backdrop-blur-sm">
         <div className="p-6 border-b border-white/5 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-600/50">CV</div>
-          <span className="font-bold text-white tracking-tight">CampusVersa</span>
+          <span className="font-bold text-white tracking-tight">CampusVersa | Admin</span>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {[

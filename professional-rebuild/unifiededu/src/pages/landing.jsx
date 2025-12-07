@@ -365,7 +365,7 @@ const CampusVersaLanding = () => {
       </section>
 
       <footer className={`relative py-12 px-4 border-t transition-colors duration-500 ${isDarkMode ? 'border-blue-500/10' : 'border-gray-200 bg-white/50'}`}>
-        <p className={`text-center ${isDarkMode ? 'text-gray-600' : 'text-slate-400'}`}>© 2024 CampusVersa.</p>
+        <p className={`text-center ${isDarkMode ? 'text-gray-600' : 'text-slate-400'}`}>© 2025 CampusVersa.</p>
       </footer>
     </div>
   );
