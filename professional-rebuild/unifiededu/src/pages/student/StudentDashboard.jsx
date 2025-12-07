@@ -184,33 +184,91 @@ const CareerHub = ({ theme }) => {
   );
 };
 
-// --- HELPER: Simple Chart ---
-const SimpleBarChart = ({ data, color, height = "h-32" }) => (
-  <div className={`flex items-end justify-between ${height} w-full gap-2 mt-4`}>
-    {data.length === 0 ? (
-      <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 italic">
+// --- HELPER: Dashboard Line Chart (REPLACES BAR CHART) ---
+// This uses SVG to draw connected lines for a better "Trend" visual
+const DashboardLineChart = ({ data, color = "#6366f1" }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="w-full h-32 flex items-center justify-center text-xs text-gray-400 italic">
         No academic history
       </div>
-    ) : (
-      data.map((item, index) => (
-        <div key={index} className="flex flex-col items-center w-full group cursor-pointer">
-          <div className="relative w-full flex items-end justify-center h-full">
-            <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-[10px] px-2 py-1 rounded z-10 pointer-events-none whitespace-nowrap hidden md:block">
-              {item.tooltip || `${item.value.toFixed(1)}`}
-            </div>
-            <div
-              className="w-full mx-0.5 md:mx-1 rounded-t-lg transition-all duration-500 hover:opacity-80 relative min-w-[8px]"
-              style={{ height: `${item.value}%`, backgroundColor: color }}
-            ></div>
+    );
+  }
+
+  // Configuration
+  const width = 300;
+  const height = 100;
+  const padding = 10;
+  const maxValue = 100; // Assuming SGPA is converted to percentage
+
+  // Calculate coordinates
+  const points = data.map((item, index) => {
+    const x = (index / (data.length - 1 || 1)) * (width - 2 * padding) + padding;
+    const y = height - ((item.value || 0) / maxValue) * (height - 2 * padding) - padding;
+    return { x, y, ...item };
+  });
+
+  // Create SVG Path 'd' attribute
+  const pathD = points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ");
+
+  // Create Area fill path (closes the loop at the bottom)
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
+
+  return (
+    <div className="w-full h-40 md:h-48 flex flex-col justify-end mt-4">
+      <div className="relative w-full h-full">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+          {/* Defs for Gradient */}
+          <defs>
+            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+              <stop offset="100%" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid Lines */}
+          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#f3f4f6" strokeWidth="1" />
+          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
+
+          {/* Area Fill */}
+          <path d={areaD} fill="url(#chartGradient)" />
+
+          {/* Connect Line */}
+          <path d={pathD} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Data Points */}
+          {points.map((p, i) => (
+            <g key={i} className="group">
+              {/* Invisible large circle for easier hovering */}
+              <circle cx={p.x} cy={p.y} r="8" fill="transparent" className="cursor-pointer" />
+
+              {/* Visible Circle */}
+              <circle cx={p.x} cy={p.y} r="3" fill="#fff" stroke={color} strokeWidth="2" className="pointer-events-none" />
+
+              {/* Tooltip */}
+              <foreignObject x={p.x - 30} y={p.y - 35} width="60" height="30" className="overflow-visible opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <div className="flex justify-center">
+                  <span className="bg-gray-800 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap">
+                    {p.tooltip || p.value.toFixed(1)}
+                  </span>
+                </div>
+              </foreignObject>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* X-Axis Labels */}
+      <div className="flex justify-between px-1 mt-1">
+        {points.map((p, i) => (
+          <div key={i} className="text-[9px] text-gray-400 font-medium text-center" style={{ width: '40px' }}>
+            {p.label}
           </div>
-          <span className="text-[9px] md:text-[10px] text-gray-400 mt-2 font-medium truncate w-full text-center">
-            {item.label}
-          </span>
-        </div>
-      ))
-    )}
-  </div>
-);
+        ))}
+      </div>
+    </div>
+  );
+};
 
 // --- AUTH FETCH ---
 const authFetch = async (path, opts = {}) => {
@@ -500,7 +558,7 @@ const StudentDashboard = () => {
           const sortedResults = [...calculatedResults].sort((a, b) => Number(a.semester) - Number(b.semester));
           const perfData = sortedResults.map(sem => ({
             label: `Sem ${sem.semester}`,
-            value: (sem.sgpa / 10) * 100,
+            value: (sem.sgpa / 10) * 100, // Converting 10-point scale to 100 for graph
             tooltip: `SGPA: ${sem.sgpa}`
           }));
           setPerformanceChartData(perfData);
@@ -717,7 +775,8 @@ const StudentDashboard = () => {
               </h4>
               <span className="text-[10px] md:text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">SGPA/Sem</span>
             </div>
-            <SimpleBarChart data={performanceChartData} color="#6366f1" height="h-40 md:h-48" />
+            {/* UPDATED: Uses Line Chart for better connectedness */}
+            <DashboardLineChart data={performanceChartData} color="#6366f1" />
           </div>
         </div>
       </div>
@@ -853,3 +912,11 @@ const StudentDashboard = () => {
 };
 
 export default StudentDashboard;
+
+
+
+
+
+
+
+

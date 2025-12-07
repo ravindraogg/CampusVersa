@@ -4,7 +4,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-
+const axios = require("axios");
+const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID;
+const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY;
 // Optional AI SDKs (only if keys present)
 let GoogleGenerativeAI;
 let OpenAI;
@@ -17,6 +19,7 @@ try {
 } catch (e) { /* optional */ }
 
 const { Configuration } = require('openai'); // for init if present
+
 
 // Models (adjust paths to your project structure)
 const AdminUser = require('./models/admin/AdminUser');
@@ -222,7 +225,7 @@ app.post('/admin/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
-    await Log.create({ action: 'ADMIN_LOGIN', adminId: user._id, details: 'Admin logged in' }).catch(()=>{});
+    await Log.create({ action: 'ADMIN_LOGIN', adminId: user._id, details: 'Admin logged in' }).catch(() => { });
     res.json({ token, role: user.role });
   } catch (err) {
     console.error('admin/login error:', err);
@@ -235,7 +238,7 @@ app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
   try {
     // 1. Fetch created institutes
     const realInstitutes = await Institute.find().lean();
-    
+
     // 2. Fetch requests (User submitted)
     const pendingRequests = await RequestsInstitute.find().lean();
 
@@ -255,7 +258,7 @@ app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
 
     // 4. Combine and Sort by date
     const combined = [...formattedInstitutes, ...formattedRequests].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
+
     res.json(combined);
   } catch (err) {
     console.error('/admin/getAllInstitutes error:', err);
@@ -263,47 +266,32 @@ app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
   }
 });
 
-// --- server.js ---
-
+// Create institute (admin)
 // --- Admin: Create Institute (assign collegeNumber) ---
 app.post('/admin/createInstitute', verifyToken, async (req, res) => {
   try {
-    // 1. Destructure ALL necessary fields, including details and accreditation
-    const { 
-      name, code, email, aisheCode, password, requestId,
-      address, state, pincode, phone, website, accreditation // <--- ADDED THESE
-    } = req.body;
-
+    const { name, code, email, aisheCode, password, requestId } = req.body;
     if (!password) return res.status(400).json({ message: 'Initial password required' });
-    
     // avoid duplicates
     const exists = await Institute.findOne({ $or: [{ code }, { email }] });
     if (exists) return res.status(400).json({ message: 'Institute already exists' });
 
-    // Determine collegeNumber
+    // Determine collegeNumber: count existing institutes with same short code
+    // NOTE: We assign newNumber = (countExistingWithSameCode) + 1
     const sameCodeCount = await Institute.countDocuments({ code });
     const collegeNumber = sameCodeCount + 1;
 
     // Generate IID
     const generatedIID = `IID-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
 
-    // 2. Create the Institute with ALL fields
     const inst = new Institute({
       IID: generatedIID,
       name,
       code,
-      collegeNumber,
+      collegeNumber,          // save it
       email,
       aisheCode,
       password,
-      // --- MAP NEW FIELDS ---
-      address,
-      state,
-      pincode,
-      phone,
-      website,
-      accreditation: accreditation || [], // Save the accreditation array
-      // ----------------------
       status: 'Active',
       createdAt: Date.now()
     });
@@ -311,7 +299,7 @@ app.post('/admin/createInstitute', verifyToken, async (req, res) => {
     await inst.save();
 
     if (requestId) {
-      await RequestsInstitute.findByIdAndUpdate(requestId, { status: 'Approved' }).catch(()=>{});
+      await RequestsInstitute.findByIdAndUpdate(requestId, { status: 'Approved' }).catch(() => { });
     }
 
     res.status(201).json({ message: 'Created', data: inst });
@@ -322,28 +310,33 @@ app.post('/admin/createInstitute', verifyToken, async (req, res) => {
 });
 
 
+// UPDATE Faculty (Institute Side)
 app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
 
     // Only update if faculty belongs to this institute
-    const faculty = await Faculty.findOne({ 
-      _id: req.params.id, 
-      instituteId: instId 
+    const faculty = await Faculty.findOne({
+      _id: req.params.id,
+      instituteId: instId
     });
 
     if (!faculty) {
       return res.status(404).json({ message: 'Faculty not found or access denied' });
     }
 
-    // EXPANDED Allowed Fields List (This was causing the save issue)
     const allowed = [
-      'name', 'email', 'phone', 'department', 
-      'qualification', 'experience', 'research', 
-      'profilePic', 'password', 'joinedAt', 'status',
-      // Added missing fields below so they save correctly:
-      'designation', 'position', 'workingHours', 
-      'ssrStatus', 'naacFollowing', 'loginId'
+      'name',
+      'email',
+      'phone',
+      'department',
+      'qualification',
+      'experience',
+      'research',
+      'profilePic',
+      'password',
+      'joinedAt',
+      'status'
     ];
 
     const updateData = {};
@@ -355,7 +348,7 @@ app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
 
     updateData.updatedAt = Date.now();
 
-    // Handle department change logic (Faculty count update)
+    // department change? update dept counts
     if (req.body.department && req.body.department !== faculty.department) {
       await Department.findOneAndUpdate(
         { instituteId: instId, code: faculty.department },
@@ -380,6 +373,7 @@ app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Update failed' });
   }
 });
+
 app.get('/admin/grievances', verifyToken, async (req, res) => {
   try {
     const list = await AllGrievance.find().sort({ createdAt: -1 });
@@ -391,8 +385,8 @@ app.put('/admin/grievance/:id', verifyToken, async (req, res) => {
   try {
     const { status } = req.body;
     const updated = await AllGrievance.findByIdAndUpdate(
-      req.params.id, 
-      { status, updatedAt: Date.now() }, 
+      req.params.id,
+      { status, updatedAt: Date.now() },
       { new: true }
     );
     await Log.create({ action: 'UPDATE_GRIEVANCE', adminId: req.user.id, target: updated.ticketId, details: `Status: ${status}` });
@@ -481,9 +475,9 @@ app.post('/institute/login', async (req, res) => {
       // We set 'id' to the INSTITUTE'S ID so all dashboard routes work automatically.
       // We add 'realUser' to track who actually logged in.
       const token = jwt.sign(
-        { 
-          id: targetInstitute._id, 
-          role: 'institute', 
+        {
+          id: targetInstitute._id,
+          role: 'institute',
           IID: targetInstitute.IID,
           realUser: { id: faculty._id, name: faculty.name, role: 'faculty' }
         },
@@ -518,7 +512,7 @@ app.post('/institute/register', async (req, res) => {
     if (conflict || exists) return res.status(400).json({ message: 'Institute code or email already registered/requested' });
     const r = new RequestsInstitute({ name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes, status: 'Pending' });
     await r.save();
-    await Log.create({ action: 'REQUEST_INSTITUTE', details: `Request for ${requestedCode} created` }).catch(()=>{});
+    await Log.create({ action: 'REQUEST_INSTITUTE', details: `Request for ${requestedCode} created` }).catch(() => { });
     res.status(201).json({ message: 'Request submitted' });
   } catch (err) {
     console.error('/institute/register error:', err);
@@ -556,8 +550,8 @@ app.post('/faculty/course/opt-in', verifyToken, async (req, res) => {
       // --- OPT IN ---
       // Add course ID to the faculty's 'courses' array if not already present
       // We use $addToSet to avoid duplicates
-      await Faculty.findByIdAndUpdate(facultyId, { 
-        $addToSet: { courses: courseId } 
+      await Faculty.findByIdAndUpdate(facultyId, {
+        $addToSet: { courses: courseId }
       });
 
       // OPTIONAL: If you want to update the Course to say "Taught by X", do it here.
@@ -570,8 +564,8 @@ app.post('/faculty/course/opt-in', verifyToken, async (req, res) => {
     } else {
       // --- OPT OUT ---
       // Remove course ID from the faculty's 'courses' array
-      await Faculty.findByIdAndUpdate(facultyId, { 
-        $pull: { courses: courseId } 
+      await Faculty.findByIdAndUpdate(facultyId, {
+        $pull: { courses: courseId }
       });
 
       // OPTIONAL: If this faculty was the primary instructor, clear the field
@@ -588,84 +582,28 @@ app.post('/faculty/course/opt-in', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Operation failed" });
   }
 });
-// --- server.js ---
-
 app.post('/institute/update-profile', verifyToken, async (req, res) => {
   try {
-    const { 
-      name, logoBase64, website, phone, address, 
+    const {
+      name, logoBase64, website, phone, address,
       state, pincode, themeColorPrimary, themeColorSecondary,
-      accreditation 
+      accreditation
     } = req.body;
 
     const updateData = {};
 
-    // 1. Map Basic Fields
+    // Map fields
     if (name) updateData.name = name;
+    if (logoBase64) updateData.logo = logoBase64;
     if (website) updateData.website = website;
     if (phone) updateData.phone = phone;
     if (address) updateData.address = address;
     if (state) updateData.state = state;
     if (pincode) updateData.pincode = pincode;
-    if (accreditation) updateData.accreditation = accreditation;
-
-    // 2. Map Manual Colors (Fallback)
     if (themeColorPrimary) updateData.themeColorPrimary = themeColorPrimary;
     if (themeColorSecondary) updateData.themeColorSecondary = themeColorSecondary;
+    if (accreditation) updateData.accreditation = accreditation;
 
-    // 3. Handle Logo Upload & AI Analysis
-    if (logoBase64 && logoBase64.startsWith("data:image")) {
-      updateData.logo = logoBase64;
-
-      // Only run AI if Google Client is initialized
-      if (googleClient && aiProvider === "google") {
-        try {
-          console.log("🎨 Triggering AI Color Analysis...");
-          const base64Data = logoBase64.split(",")[1];
-          const mimeType = logoBase64.split(";")[0].split(":")[1];
-          const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
-
-          const prompt = `
-            Analyze this logo and extract two HEX colors in strict JSON format:
-            1. "primary": a dark, rich color from the logo (for sidebar background).
-            2. "secondary": a light, high-contrast color (for text on the sidebar).
-            Return ONLY valid JSON like: { "primary": "#xxxxxx", "secondary": "#xxxxxx" }
-          `;
-
-          const result = await model.generateContent([
-            prompt,
-            { inlineData: { data: base64Data, mimeType } }
-          ]);
-
-          const text = result.response.text();
-          
-          // --- ROBUST JSON PARSING ---
-          // Find the first '{' and the last '}' to extract only the JSON object
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          
-          if (jsonMatch) {
-            const colors = JSON.parse(jsonMatch[0]);
-            
-            if (colors.primary && colors.secondary) {
-              updateData.themeColorPrimary = colors.primary;
-              updateData.themeColorSecondary = colors.secondary;
-              console.log("✅ AI Colors Applied:", colors);
-            }
-          } else {
-            console.warn("⚠️ AI returned text but no JSON found:", text);
-          }
-
-        } catch (err) {
-          console.error("⚠️ AI Analysis Failed:", err.message);
-          // We continue saving even if AI fails
-        }
-      } else {
-         console.log("ℹ️ AI Provider not configured or not Google. Skipping color analysis.");
-      }
-    }
-
-    // 4. Save to MongoDB
-    // 'new: true' ensures we get the document *after* updates are applied
     const updated = await Institute.findByIdAndUpdate(
       req.user.id,
       { $set: updateData },
@@ -673,12 +611,12 @@ app.post('/institute/update-profile', verifyToken, async (req, res) => {
     ).select('-password');
 
     res.json({ success: true, data: updated, message: "Profile updated successfully" });
-
   } catch (err) {
     console.error('/institute/update-profile error:', err);
     res.status(500).json({ error: 'Update failed' });
   }
 });
+
 // 2. CHANGE PASSWORD
 app.post('/institute/change-password', verifyToken, async (req, res) => {
   try {
@@ -713,7 +651,7 @@ app.get('/institute/access-control/users', verifyToken, async (req, res) => {
 app.post('/institute/access-control/grant', verifyToken, async (req, res) => {
   try {
     const { facultyId } = req.body;
-    
+
     // Check if faculty exists in this institute
     const faculty = await Faculty.findOne({ _id: facultyId, instituteId: req.user.id });
     if (!faculty) return res.status(404).json({ message: "Faculty not found in this institute" });
@@ -743,18 +681,18 @@ app.post('/institute/access-control/revoke', verifyToken, async (req, res) => {
 app.post('/faculty/update-profile', verifyToken, async (req, res) => {
   try {
     // Extract all fields sent from the frontend form
-    const { 
-      profilePic, 
-      phone, 
-      qualification, 
-      experience, 
-      research 
+    const {
+      profilePic,
+      phone,
+      qualification,
+      experience,
+      research
     } = req.body;
-    
+
     const updateData = {};
-    
+
     // 1. Basic Fields
-    if (profilePic) updateData.profilePic = profilePic; 
+    if (profilePic) updateData.profilePic = profilePic;
     if (phone) updateData.phone = phone;
     if (qualification) updateData.qualification = qualification;
     if (experience) updateData.experience = experience;
@@ -799,13 +737,18 @@ app.get('/institute/dashboard-stats', verifyToken, async (req, res) => {
       studentCount,
       notices,
       recentFaculty,
-      naacScore: naacData ? (naacData.overallScore || 'NOT AFFILIATED' ) : 'Pending'
+      naacScore: naacData ? (naacData.overallScore || 'N/A') : 'Pending'
     });
   } catch (err) {
     console.error('/institute/dashboard-stats error:', err);
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
+
+// -------------------
+// Faculty CRUD
+// -------------------
+// --- server.js ---
 
 app.post('/institute/faculty/add', verifyToken, async (req, res) => {
   try {
@@ -824,9 +767,9 @@ app.post('/institute/faculty/add', verifyToken, async (req, res) => {
 
     // --- NEW ID GENERATION LOGIC (Max + 1) ---
     // 1. Find all existing faculty in this institute & department
-    const existingFaculty = await Faculty.find({ 
-      instituteId: instId, 
-      department: deptCode 
+    const existingFaculty = await Faculty.find({
+      instituteId: instId,
+      department: deptCode
     }).select('FID');
 
     // 2. Extract the numeric sequence from existing FIDs (last 3 digits)
@@ -841,7 +784,7 @@ app.post('/institute/faculty/add', verifyToken, async (req, res) => {
     // 3. Find the highest number and add 1
     const maxSeq = seqNumbers.length > 0 ? Math.max(...seqNumbers) : 0;
     const nextSeq = maxSeq + 1;
-    
+
     // 4. Pad with zeros (e.g., 1 -> "001")
     const seqStr = String(nextSeq).padStart(3, '0');
 
@@ -851,11 +794,11 @@ app.post('/institute/faculty/add', verifyToken, async (req, res) => {
     // ----------------------------------------
 
     if (!payload.research) payload.research = {};
-    
+
     const f = new Faculty(payload);
     await f.save();
 
-    await Department.findOneAndUpdate({ instituteId: instId, code: deptCode }, { $inc: { facultyCount: 1 } }).catch(()=>{});
+    await Department.findOneAndUpdate({ instituteId: instId, code: deptCode }, { $inc: { facultyCount: 1 } }).catch(() => { });
 
     res.status(201).json(f);
   } catch (err) {
@@ -893,20 +836,20 @@ app.get('/institute/students', verifyToken, async (req, res) => {
     // 1. Get query params for lazy loading
     const limit = parseInt(req.query.limit) || 0; // 0 means all
     const skip = parseInt(req.query.skip) || 0;
-    
+
     // 2. Identify Institute ID (Works for both Admin/Faculty logins)
     let instituteId = req.user.id;
-    
+
     // If logged in as Faculty, we need to use the instituteId stored in their profile
     if (req.user.role === 'faculty') {
-       const faculty = await Faculty.findById(req.user.id).select('instituteId');
-       if(!faculty) return res.status(404).json({message: "Faculty profile not found"});
-       instituteId = faculty.instituteId;
+      const faculty = await Faculty.findById(req.user.id).select('instituteId');
+      if (!faculty) return res.status(404).json({ message: "Faculty profile not found" });
+      instituteId = faculty.instituteId;
     }
 
     // 3. Fetch with Pagination
     const query = { instituteId: instituteId };
-    
+
     const total = await Student.countDocuments(query);
     const list = await Student.find(query)
       .sort({ createdAt: -1 })
@@ -940,21 +883,21 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
 
     // 2. Find the Enrollment Data for the requested Semester
     const enrollment = student.courseEnrollments.find(e => e.semester === String(semester));
-    
+
     if (!enrollment || !enrollment.subjects || enrollment.subjects.length === 0) {
       return res.status(400).json({ message: "No subjects found for this semester" });
     }
 
     // --- STEP A: CALCULATE SGPA ---
     // Formula: Σ(Ci * Gi) / ΣCi
-    
+
     let totalSemesterCredits = 0; // ΣCi
     let totalProductCiGi = 0;     // Σ(Ci * Gi)
 
     enrollment.subjects.forEach(sub => {
       // Get Credits from the populated Course model
       const courseCredits = sub.courseId?.credits || 0;
-      
+
       // Calculate Total Marks (Internal + External)
       // Note: Adjust this logic if your 'marksObtained' is already stored correctly in bulk-update
       // Current Logic: (Average of Internals) + (External/2) -> Standard VTU logic often varies, adjusting to typical
@@ -964,12 +907,12 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
       // Or if internal 40 + external 60. 
       // Using the stored 'marksObtained' if available, else calculating:
       let finalMarks = sub.marksObtained || 0;
-      
+
       // If marksObtained is 0, let's try to calc it from details (Safety fallback)
       if (finalMarks === 0) {
-         const internal = (m.test1 + m.test2 + m.test3 + m.assignment) / 4; 
-         const external = m.external / 2; 
-         finalMarks = internal + external;
+        const internal = (m.test1 + m.test2 + m.test3 + m.assignment) / 4;
+        const external = m.external / 2;
+        finalMarks = internal + external;
       }
 
       // Get Grade Point (Gi)
@@ -987,17 +930,17 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
     const sgpaRounded = parseFloat(sgpa.toFixed(2));
 
     // --- STEP B: UPDATE ACADEMIC HISTORY ---
-    
+
     // Remove old result for this specific semester if exists
     student.academic.semesterResults = student.academic.semesterResults.filter(r => r.semester !== String(semester));
-    
+
     // Push new result
     student.academic.semesterResults.push({
       semester: String(semester),
       sgpa: sgpaRounded,
       // We explicitly store credits for this semester to help with CGPA calculation later
       // You might need to add 'credits' to semesterResults schema or calculate dynamically
-      credits: totalSemesterCredits 
+      credits: totalSemesterCredits
     });
 
     // --- STEP C: CALCULATE CGPA ---
@@ -1011,10 +954,10 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
     // Note: This requires fetching credits for past semesters. 
     // Ideally, store 'totalCredits' inside 'semesterResults' in Student Schema.
     // Assuming 'student.academic.semesterResults' now has { semester, sgpa, credits } based on logic above.
-    
+
     // If your schema doesn't have 'credits' in semesterResults, we must recalculate them or fetch them.
     // For this implementation to work perfectly, ensure Schema allows storing credits in result.
-    
+
     // *Self-Correction*: Since schema in Student.js only has { semester, sgpa }, 
     // we must loop through `courseEnrollments` to find credits for every semester.
 
@@ -1025,10 +968,10 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
       // Find credits for this semester from enrollments
       const semEnrollment = student.courseEnrollments.find(e => e.semester === semName);
       let semCredits = 0;
-      
+
       if (semEnrollment) {
         semEnrollment.subjects.forEach(s => {
-           semCredits += (s.courseId?.credits || 0);
+          semCredits += (s.courseId?.credits || 0);
         });
       }
 
@@ -1045,12 +988,12 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
 
     await student.save();
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       semester: semester,
       totalCredits: totalSemesterCredits,
-      sgpa: sgpaRounded, 
-      cgpa: cgpaRounded 
+      sgpa: sgpaRounded,
+      cgpa: cgpaRounded
     });
 
   } catch (err) {
@@ -1058,7 +1001,6 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
     res.status(500).json({ error: "Calculation failed" });
   }
 });
-
 app.post('/institute/students/add', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
@@ -1076,7 +1018,7 @@ app.post('/institute/students/add', verifyToken, async (req, res) => {
     // alphabetically later. The SID field is required/unique in Schema.
     const timestamp = Date.now();
     const random = Math.floor(1000 + Math.random() * 9000);
-    const tempSID = `TEMP-${timestamp}-${random}`; 
+    const tempSID = `TEMP-${timestamp}-${random}`;
 
     // Initialize lifecycle
     const lifecycle = [{
@@ -1111,23 +1053,23 @@ app.post('/institute/students/add', verifyToken, async (req, res) => {
 // ==========================================
 app.post('/institute/students/generate-usn', verifyToken, async (req, res) => {
   try {
-    const { department, admissionYear } = req.body; 
+    const { department, admissionYear } = req.body;
     // admissionYear: e.g., "2023" or "23"
-    
+
     if (!department || !admissionYear) {
       return res.status(400).json({ message: "Department and Admission Year required" });
     }
 
     const instId = req.user.id;
-    
+
     // 1. Fetch Institute Details for USN codes
-    const inst = await Institute.findById(instId).select('code regionCode'); 
+    const inst = await Institute.findById(instId).select('code regionCode');
     // Assuming 'code' is the 2-letter College Code (e.g., 'RV')
     // Assuming you might add 'regionCode' to Institute model, defaulting to '1' if missing.
-    
-    const regionNum = inst.regionCode || "1"; 
+
+    const regionNum = inst.regionCode || "1";
     const collegeCode = inst.code ? inst.code.substring(0, 2).toUpperCase() : "XX";
-    
+
     // 2. Format Year (Last 2 digits, e.g., 2017 -> 17)
     const yearShort = String(admissionYear).slice(-2);
 
@@ -1144,9 +1086,9 @@ app.post('/institute/students/generate-usn', verifyToken, async (req, res) => {
     // Note: Assuming 'year' in Student model represents "1st Year", "2nd Year", etc. 
     // If you store Admission Year explicitly, use that. 
     // Here logic matches based on the department provided.
-    const students = await Student.find({ 
-      instituteId: instId, 
-      department: department 
+    const students = await Student.find({
+      instituteId: instId,
+      department: department
       // You might want to filter by 'year' (1, 2, 3, 4) if generating for a specific batch
     }).sort({ name: 1 }); // Sort Alphabetically A-Z
 
@@ -1158,7 +1100,7 @@ app.post('/institute/students/generate-usn', verifyToken, async (req, res) => {
     const bulkOps = students.map((student, index) => {
       // Serial Number: 001, 002, ..., 099, 100
       const serialNo = String(index + 1).padStart(3, '0');
-      
+
       // Logic: [Region][College][Year][Branch][Serial]
       // Example: 1RV17CS125
       const newUSN = `${regionNum}${collegeCode}${yearShort}${branchCode}${serialNo}`;
@@ -1166,12 +1108,12 @@ app.post('/institute/students/generate-usn', verifyToken, async (req, res) => {
       return {
         updateOne: {
           filter: { _id: student._id },
-          update: { 
-            $set: { 
+          update: {
+            $set: {
               SID: newUSN,       // Unique ID
               rollNumber: newUSN, // Usually Roll No is same as USN
               admissionNo: newUSN // Often mapped together
-            } 
+            }
           }
         }
       };
@@ -1182,8 +1124,8 @@ app.post('/institute/students/generate-usn', verifyToken, async (req, res) => {
       await Student.bulkWrite(bulkOps);
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: `Generated USNs for ${students.length} students.`,
       format: `${regionNum}-${collegeCode}-${yearShort}-${branchCode}-XXX`
     });
@@ -1410,13 +1352,13 @@ app.get('/admin/analytics', verifyToken, async (req, res) => {
     const pendingReqs = await RequestsInstitute.countDocuments({ status: 'Pending' });
     const grievances = await AllGrievance.countDocuments({ status: { $ne: 'Solved' } }); // Open grievances
     const recentActivity = await Log.find().sort({ createdAt: -1 }).limit(5);
-    
-    res.json({ 
-      totalInstitutes: total, 
-      activeInstitutes: active, 
-      pendingApprovals: pendingReqs, 
+
+    res.json({
+      totalInstitutes: total,
+      activeInstitutes: active,
+      pendingApprovals: pendingReqs,
       openGrievances: grievances,
-      recentActivity 
+      recentActivity
     });
   } catch (err) { res.status(500).json({ error: 'Analytics failed' }); }
 });
@@ -1464,13 +1406,13 @@ app.post('/institute/request/reply', verifyToken, async (req, res) => {
     // Verify this request belongs to the institute
     const inst = await Institute.findById(req.user.id);
     const reqDoc = await RequestsInstitute.findOne({ _id: requestId, email: inst.email });
-    
+
     if (!reqDoc) return res.status(403).json({ message: "Request not found or access denied" });
 
     reqDoc.replies.push({ sender: 'Institute', message, createdAt: Date.now() });
     // Re-open ticket if it was solved
     if (reqDoc.status === 'Solved') reqDoc.status = 'In Progress';
-    
+
     await reqDoc.save();
     res.json(reqDoc);
   } catch (err) {
@@ -1482,7 +1424,7 @@ app.post('/institute/request/reply', verifyToken, async (req, res) => {
 app.post('/institute/naac/submit', verifyToken, async (req, res) => {
   try {
     const { criteriaId, submissionText, evidenceFiles } = req.body; // Added evidenceFiles
-    
+
     // Find tracker
     const tracker = await NAACTracker.findOne({ instituteId: req.user.id });
     if (!tracker) return res.status(404).json({ message: "Tracker not found" });
@@ -1493,7 +1435,7 @@ app.post('/institute/naac/submit', verifyToken, async (req, res) => {
 
     // Update fields
     tracker.criteria[itemIndex].submissionText = submissionText;
-    
+
     // Process and append files if they exist
     if (evidenceFiles && Array.isArray(evidenceFiles)) {
       const formattedFiles = evidenceFiles.map(f => ({
@@ -1502,10 +1444,10 @@ app.post('/institute/naac/submit', verifyToken, async (req, res) => {
         type: f.type,
         uploadedAt: Date.now()
       }));
-      
+
       // Option A: Replace existing files
       // tracker.criteria[itemIndex].evidenceFiles = formattedFiles;
-      
+
       // Option B: Append to existing (Preferred)
       if (!tracker.criteria[itemIndex].evidenceFiles) {
         tracker.criteria[itemIndex].evidenceFiles = [];
@@ -1513,11 +1455,11 @@ app.post('/institute/naac/submit', verifyToken, async (req, res) => {
       tracker.criteria[itemIndex].evidenceFiles.push(...formattedFiles);
     }
 
-    tracker.criteria[itemIndex].status = "Submitted"; 
+    tracker.criteria[itemIndex].status = "Submitted";
     tracker.criteria[itemIndex].lastUpdated = Date.now();
-    tracker.criteria[itemIndex].adminComments = ""; 
+    tracker.criteria[itemIndex].adminComments = "";
 
-    tracker.markModified('criteria'); 
+    tracker.markModified('criteria');
     await tracker.save();
 
     res.json({ success: true, data: tracker });
@@ -1551,10 +1493,10 @@ app.post('/admin/naac/verify', verifyToken, async (req, res) => {
     await tracker.save();
 
     // Log it
-    await Log.create({ 
-        action: `NAAC_${action.toUpperCase()}`, 
-        adminId: req.user.id, 
-        details: `Updated criteria ${criteriaId} for institute ${instituteId}` 
+    await Log.create({
+      action: `NAAC_${action.toUpperCase()}`,
+      adminId: req.user.id,
+      details: `Updated criteria ${criteriaId} for institute ${instituteId}`
     });
 
     res.json({ success: true });
@@ -1563,34 +1505,13 @@ app.post('/admin/naac/verify', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Verification failed" });
   }
 });
-app.put('/institute/departments/:id', verifyToken, async (req, res) => {
-  try {
-    const { name, code, section, genre, facultyCount } = req.body;
-    
-    // Ensure department belongs to institute
-    const dept = await Department.findOne({ _id: req.params.id, instituteId: req.user.id });
-    if (!dept) return res.status(404).json({ message: 'Department not found' });
-
-    // Update fields
-    if (name) dept.name = name;
-    if (code) dept.code = code;
-    if (section) dept.section = section;
-    if (genre) dept.genre = genre;
-    if (facultyCount !== undefined) dept.facultyCount = facultyCount;
-
-    await dept.save();
-    res.json({ message: 'Department updated', data: dept });
-  } catch (err) {
-    console.error('/institute/departments/:id PUT error:', err);
-    res.status(500).json({ error: 'Update failed' });
-  }
-});
+// Delete department
 app.delete('/institute/departments/:id', verifyToken, async (req, res) => {
   try {
     // Ensure we only delete if it belongs to this institute
-    const deleted = await Department.findOneAndDelete({ 
-      _id: req.params.id, 
-      instituteId: req.user.id 
+    const deleted = await Department.findOneAndDelete({
+      _id: req.params.id,
+      instituteId: req.user.id
     });
 
     if (!deleted) {
@@ -1607,9 +1528,9 @@ app.delete('/institute/departments/:id', verifyToken, async (req, res) => {
 app.delete('/institute/students/:id', verifyToken, async (req, res) => {
   try {
     // Ensure we only delete if it belongs to this institute
-    const deleted = await Student.findOneAndDelete({ 
-      _id: req.params.id, 
-      instituteId: req.user.id 
+    const deleted = await Student.findOneAndDelete({
+      _id: req.params.id,
+      instituteId: req.user.id
     });
 
     if (!deleted) {
@@ -1626,9 +1547,9 @@ app.delete('/institute/students/:id', verifyToken, async (req, res) => {
 app.delete('/institute/notices/:id', verifyToken, async (req, res) => {
   try {
     // Ensure the notice belongs to the logged-in institute
-    const deleted = await Notice.findOneAndDelete({ 
-      _id: req.params.id, 
-      instituteId: req.user.id 
+    const deleted = await Notice.findOneAndDelete({
+      _id: req.params.id,
+      instituteId: req.user.id
     });
 
     if (!deleted) {
@@ -1648,7 +1569,7 @@ app.delete('/institute/notices/:id', verifyToken, async (req, res) => {
 app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
   try {
     const { config } = req.body;
-    
+
     if (!config || !config.selectedCourseIds) {
       return res.status(400).json({ message: "Invalid configuration" });
     }
@@ -1706,9 +1627,9 @@ app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
     courses.forEach(c => {
       const facultyName = c.facultyId ? c.facultyId.name : "TBD";
       const isLab = config.selectedLabIds.includes(c._id.toString());
-      
+
       prompt += `\n- ${c.name} (${isLab ? "LAB - Requires 2 consecutive slots" : "Theory"}). Faculty: ${facultyName}`;
-      
+
       if (busyMap[facultyName]) {
         prompt += ` [BUSY AT: ${busyMap[facultyName].join(", ")}]`;
       }
@@ -1768,12 +1689,12 @@ app.post('/institute/timetable/save', verifyToken, async (req, res) => {
 
     // Check if a timetable already exists for this Inst + Dept + Sem (Optional: overwrite logic)
     // For now, we just create a new one or you can use findOneAndUpdate logic
-    
+
     // We remove old one to prevent duplicates for specific Sem+Dept
-    await Timetable.findOneAndDelete({ 
-        instituteId: req.user.id, 
-        department: department, 
-        semester: semester 
+    await Timetable.findOneAndDelete({
+      instituteId: req.user.id,
+      department: department,
+      semester: semester
     });
 
     const newTimetable = new Timetable({
@@ -1800,11 +1721,11 @@ app.post('/institute/timetable/save', verifyToken, async (req, res) => {
 app.put('/institute/timetable/:id', verifyToken, async (req, res) => {
   try {
     const { schedule, semester } = req.body; // Accept semester for renaming
-    
+
     const updateData = {};
     if (schedule) updateData.schedule = schedule;
     if (semester) updateData.semester = semester;
-    
+
     // Update timestamp
     updateData.createdAt = Date.now(); // Optional: or add an updatedAt field
 
@@ -1813,7 +1734,7 @@ app.put('/institute/timetable/:id', verifyToken, async (req, res) => {
       { $set: updateData },
       { new: true }
     );
-    
+
     if (!updated) return res.status(404).json({ message: "Timetable not found" });
     res.json({ message: 'Timetable updated', data: updated });
   } catch (err) {
@@ -1856,7 +1777,7 @@ app.post('/faculty/login', async (req, res) => {
     });
 
     if (!faculty) return res.status(401).json({ message: 'Invalid Faculty ID or Email' });
-    
+
     if (faculty.password !== password) {
       return res.status(401).json({ message: 'Invalid password' });
     }
@@ -1878,13 +1799,13 @@ app.post('/faculty/login', async (req, res) => {
       FID: faculty.FID,
       department: faculty.department,
       isKycVerified: faculty.kyc?.verified || false,
-      
+
       // Colors (Stored on Faculty)
       themeColorPrimary: faculty.themeColorPrimary,
       themeColorSecondary: faculty.themeColorSecondary,
 
       // Logo (Fetched dynamically from Institute)
-      instituteLogo: institute ? institute.logo : null 
+      instituteLogo: institute ? institute.logo : null
     });
 
   } catch (err) {
@@ -1924,11 +1845,11 @@ app.post('/faculty/update-profile', verifyToken, async (req, res) => {
   try {
     // 👇 CHANGED: Extract 'profilePic' to match your schema
     const { profilePic, phone } = req.body;
-    
+
     const updateData = {};
-    
+
     // 👇 CHANGED: Check and assign to 'profilePic'
-    if (profilePic) updateData.profilePic = profilePic; 
+    if (profilePic) updateData.profilePic = profilePic;
     if (phone) updateData.phone = phone;
 
     updateData.updatedAt = Date.now();
@@ -1977,9 +1898,9 @@ app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
       { new: true }
     );
 
-    await Log.create({ 
-      action: 'FACULTY_KYC', 
-      details: `Faculty ${updatedFaculty.FID} completed Aadhaar verification.` 
+    await Log.create({
+      action: 'FACULTY_KYC',
+      details: `Faculty ${updatedFaculty.FID} completed Aadhaar verification.`
     });
 
     res.json({ success: true, message: 'KYC Verified Successfully' });
@@ -2013,7 +1934,7 @@ app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
     ]);
 
     const attendanceSeries = []; // monthly aggregation
-    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     for (let m = 0; m < 12; m++) {
       attendanceSeries.push({
         month: monthNames[m],
@@ -2031,7 +1952,7 @@ app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
     const topCourses = (await Institute.aggregate([
       { $match: { _id: require('mongoose').Types.ObjectId(instId) } },
       { $project: { _id: 1 } }
-    ])).slice(0,5).map(() => ({ title: 'Course placeholder', enrolled: Math.floor(Math.random() * 200), avgScore: Math.floor(60 + Math.random() * 30) }));
+    ])).slice(0, 5).map(() => ({ title: 'Course placeholder', enrolled: Math.floor(Math.random() * 200), avgScore: Math.floor(60 + Math.random() * 30) }));
 
     const research = {
       papers: deptMetrics.reduce((s, d) => s + (d.publications || 0), 0),
@@ -2046,13 +1967,13 @@ app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
       locationCounts[s.location] = (locationCounts[s.location] || 0) + 1;
     }
     for (const k of Object.keys(locationCounts)) studentLocations.push({ name: k, count: locationCounts[k] });
-    studentLocations.sort((a,b)=>b.count-a.count);
+    studentLocations.sort((a, b) => b.count - a.count);
 
     const stats = {
       facultyCount,
       studentCount,
-      avgAttendance: attendanceSeries.reduce((a,b)=>a+b.attendance,0)/attendanceSeries.length,
-      teachingIndex: Math.round((Math.random()*30)+70),
+      avgAttendance: attendanceSeries.reduce((a, b) => a + b.attendance, 0) / attendanceSeries.length,
+      teachingIndex: Math.round((Math.random() * 30) + 70),
       researchScore: research.papers + research.projects,
       naacOverall: naacDoc ? (naacDoc.overallScore || 'N/A') : 'Pending'
     };
@@ -2066,7 +1987,7 @@ app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
       naac: { overall: stats.naacOverall, criteria: naacDoc ? naacDoc.criteria : [] },
       studentLocations,
       notices,
-      recentFaculties: faculties.slice(0,5),
+      recentFaculties: faculties.slice(0, 5),
       timetables
     });
   } catch (err) {
@@ -2084,9 +2005,9 @@ app.get('/institute/courses', verifyToken, async (req, res) => {
   try {
     // 1. Allow filtering by Department and Semester via Query Params
     const { department, semester } = req.query;
-    
+
     const query = { instituteId: req.user.id };
-    
+
     // 2. Apply filters if provided
     if (department) query.department = department;
     if (semester) query.semester = semester;
@@ -2095,7 +2016,7 @@ app.get('/institute/courses', verifyToken, async (req, res) => {
     const courses = await Course.find(query)
       .populate('facultyId', 'name') // This line caused the crash previously
       .sort({ department: 1, name: 1 });
-      
+
     res.json(courses);
   } catch (err) {
     console.error('/institute/courses error:', err);
@@ -2113,12 +2034,12 @@ app.post('/institute/courses/add', verifyToken, async (req, res) => {
     }
 
     // Check for duplicates (Same Code in Same Dept)
-    const existing = await Course.findOne({ 
-      instituteId: req.user.id, 
-      code: code, 
-      department: department 
+    const existing = await Course.findOne({
+      instituteId: req.user.id,
+      code: code,
+      department: department
     });
-    
+
     if (existing) {
       return res.status(400).json({ message: "Course code already exists in this department" });
     }
@@ -2144,9 +2065,9 @@ app.post('/institute/courses/add', verifyToken, async (req, res) => {
 // 3. Delete Course
 app.delete('/institute/courses/:id', verifyToken, async (req, res) => {
   try {
-    const deleted = await Course.findOneAndDelete({ 
-      _id: req.params.id, 
-      instituteId: req.user.id 
+    const deleted = await Course.findOneAndDelete({
+      _id: req.params.id,
+      instituteId: req.user.id
     });
 
     if (!deleted) return res.status(404).json({ message: "Course not found" });
@@ -2160,7 +2081,7 @@ app.post('/faculty/course/:id/resource', verifyToken, async (req, res) => {
   try {
     const { title, type, url } = req.body;
     const course = await Course.findById(req.params.id);
-    
+
     if (!course) return res.status(404).json({ message: "Course not found" });
 
     course.resources.push({ title, type, url });
@@ -2179,16 +2100,16 @@ app.get('/faculty/course/:id/eligible-students', verifyToken, async (req, res) =
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-// Normalize year and sem (remove "rd", "th", "nd")
-const normalizedYear = String(course.year).replace(/\D/g, "");
-const normalizedSem  = String(course.semester).replace(/\D/g, "");
+    // Normalize year and sem (remove "rd", "th", "nd")
+    const normalizedYear = String(course.year).replace(/\D/g, "");
+    const normalizedSem = String(course.semester).replace(/\D/g, "");
 
-const students = await Student.find({
-  instituteId: course.instituteId,
-  department: course.department,
-  year: normalizedYear,
-  semester: normalizedSem
-}).select('name SID profilePic rollNumber section');
+    const students = await Student.find({
+      instituteId: course.instituteId,
+      department: course.department,
+      year: normalizedYear,
+      semester: normalizedSem
+    }).select('name SID profilePic rollNumber section');
 
 
     res.json({ students, enrolled: course.enrolledStudents });
@@ -2221,7 +2142,7 @@ app.get('/faculty/notices', verifyToken, async (req, res) => {
 app.post('/faculty/notices/add', verifyToken, async (req, res) => {
   try {
     const { title, description, type } = req.body; // type e.g., 'Student', 'General'
-    
+
     const faculty = await Faculty.findById(req.user.id);
     if (!faculty) return res.status(404).json({ message: "Faculty not found" });
 
@@ -2284,7 +2205,7 @@ app.post('/faculty/course/:id/enroll', verifyToken, async (req, res) => {
     await course.save();
 
     // 3. Update Student Models (Detailed Mapping)
-    
+
     // A. Add/Update logic for selected students
     await Promise.all(studentIds.map(async (studentId) => {
       const student = await Student.findById(studentId);
@@ -2293,11 +2214,11 @@ app.post('/faculty/course/:id/enroll', verifyToken, async (req, res) => {
       // Ensure the semester entry exists
       // We use the STUDENT'S current semester or the COURSE'S semester. 
       // Usually, mapping implies the course's semester.
-      const targetSem = course.semester.toString(); 
+      const targetSem = course.semester.toString();
 
       // Find if an entry for this semester exists
       let semEntry = student.courseEnrollments.find(s => s.semester === targetSem);
-      
+
       if (!semEntry) {
         // Create new semester entry
         student.courseEnrollments.push({
@@ -2346,7 +2267,7 @@ app.get('/faculty/courses', verifyToken, async (req, res) => {
     if (!faculty) return res.status(404).json({ message: "Faculty not found" });
     const courses = await Course.find({ instituteId: faculty.instituteId })
       .sort({ createdAt: -1 }); // Newest first
-      
+
     res.json(courses);
   } catch (err) {
     console.error('/faculty/courses error:', err);
@@ -2447,8 +2368,8 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
 
     const student = await Student.findById(studentId);
     if (!student) {
-        console.log("❌ Student not found");
-        return res.status(404).json({ message: "Student not found" });
+      console.log("❌ Student not found");
+      return res.status(404).json({ message: "Student not found" });
     }
 
     let courseName = "";
@@ -2458,7 +2379,7 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
     if (student.courseEnrollments) {
       student.courseEnrollments.forEach(sem => {
         const subIndex = sem.subjects.findIndex(s => s.courseId.toString() === courseId);
-        
+
         if (subIndex > -1) {
           semFound = true;
           const subject = sem.subjects[subIndex];
@@ -2496,9 +2417,9 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
     // 2. UPDATE ATTENDANCE MEMORY
     if (attendance && semFound) {
       const attIndex = student.attendance.subjectWise.findIndex(s => s.subjectName === courseName);
-      
-      const newPct = Number(attendance.total) > 0 
-        ? (Number(attendance.attended) / Number(attendance.total)) * 100 
+
+      const newPct = Number(attendance.total) > 0
+        ? (Number(attendance.attended) / Number(attendance.total)) * 100
         : 0;
 
       const rec = {
@@ -2515,7 +2436,7 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
       let att = 0, tot = 0;
       student.attendance.subjectWise.forEach(s => { att += s.attended; tot += s.total; });
       const overall = tot > 0 ? (att / tot) * 100 : 0;
-      
+
       student.attendance.overallPercentage = parseFloat(overall.toFixed(1));
       student.attendance.alertLevel = overall < 75 ? "Critical" : (overall < 85 ? "Warning" : "Safe");
     }
@@ -2527,11 +2448,11 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
 
     await Student.updateOne(
       { _id: studentId },
-      { 
-        $set: { 
+      {
+        $set: {
           courseEnrollments: enrollmentsPlain,
           attendance: attendancePlain
-        } 
+        }
       },
       { runValidators: false }
     );
@@ -2550,7 +2471,7 @@ app.get('/faculty/courses/:courseId/students', verifyToken, async (req, res) => 
 
     // Option A: If your Course model has 'enrolledStudents' populated
     const course = await Course.findById(courseId).populate('enrolledStudents', 'name rollNumber profilePic email');
-    
+
     if (course && course.enrolledStudents && course.enrolledStudents.length > 0) {
       return res.json({ students: course.enrolledStudents });
     }
@@ -2575,8 +2496,8 @@ app.get('/faculty/my-department', verifyToken, async (req, res) => {
     const currentFaculty = await Faculty.findById(req.user.id);
     if (!currentFaculty) return res.status(404).json({ message: "Faculty not found" });
 
-     if (currentFaculty.designation !== "Head of the Department") {
-       return res.status(403).json({ message: "Access Denied. HOD only." });
+    if (currentFaculty.designation !== "Head of the Department") {
+      return res.status(403).json({ message: "Access Denied. HOD only." });
     }
 
     // 3. Find all faculty in the same Institute AND Department
@@ -2584,8 +2505,8 @@ app.get('/faculty/my-department', verifyToken, async (req, res) => {
       instituteId: currentFaculty.instituteId,
       department: currentFaculty.department
     })
-    .select('-password') // Exclude passwords
-    .sort({ name: 1 });  // Sort A-Z
+      .select('-password') // Exclude passwords
+      .sort({ name: 1 });  // Sort A-Z
 
     res.json(colleagues);
   } catch (err) {
@@ -2600,7 +2521,7 @@ app.get('/faculty/my-department', verifyToken, async (req, res) => {
 
 app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
   try {
-    const { courseId, type, date, records, examType } = req.body; 
+    const { courseId, type, date, records, examType } = req.body;
     // records = [{ studentId, value }, ...]
 
     const course = await Course.findById(courseId);
@@ -2611,9 +2532,9 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
       if (!date) return res.status(400).json({ message: "Date is required" });
 
       await Promise.all(records.map(async (record) => {
-        const { studentId, value } = record; 
-        
-        if (!value) return; 
+        const { studentId, value } = record;
+
+        if (!value) return;
 
         const isPresent = value === "Present";
         const numericValue = isPresent ? 1 : 0;
@@ -2635,7 +2556,7 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
         // Update Aggregates for this specific course
         const totalClasses = attDoc.history.length;
         const totalPresent = attDoc.history.filter(h => h.value === 1).length;
-        
+
         attDoc.totalClasses = totalClasses;
         attDoc.totalPresent = totalPresent;
         attDoc.percentage = totalClasses === 0 ? 0 : (totalPresent / totalClasses) * 100;
@@ -2645,10 +2566,10 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
         // ---------------------------------------------------------
         // 2. SYNC WITH STUDENT MODEL (Fixes the Dashboard Discrepancy)
         // ---------------------------------------------------------
-        
+
         // A. Fetch ALL attendance records for this student across ALL courses
         const allStudentAttendance = await Attendance.find({ studentId });
-        
+
         let grandTotalClasses = 0;
         let grandTotalPresent = 0;
 
@@ -2659,8 +2580,8 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
         });
 
         // C. Calculate the TRUE overall percentage
-        const newOverallPercentage = grandTotalClasses === 0 
-          ? 0 
+        const newOverallPercentage = grandTotalClasses === 0
+          ? 0
           : (grandTotalPresent / grandTotalClasses) * 100;
 
         const newAlertLevel = newOverallPercentage < 75 ? 'Critical' : 'Safe';
@@ -2675,8 +2596,8 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
         });
 
       }));
-    } 
-    
+    }
+
     // --- MARKS LOGIC (Unchanged) ---
     else if (type === 'marks') {
       if (!examType) return res.status(400).json({ message: "Exam Type is required" });
@@ -2687,18 +2608,18 @@ app.post('/faculty/evaluation/bulk-update', verifyToken, async (req, res) => {
         if (isNaN(numericVal) || value === "") numericVal = 0;
 
         await Student.updateOne(
-            { _id: studentId, "courseEnrollments.subjects.courseId": courseId },
-            { 
-              $set: { 
-                [`courseEnrollments.$[outer].subjects.$[inner].marksDetails.${examType}`]: numericVal
-              }
-            },
-            { 
-              arrayFilters: [
-                { "outer.semester": course.semester.toString() },
-                { "inner.courseId": courseId }
-              ] 
+          { _id: studentId, "courseEnrollments.subjects.courseId": courseId },
+          {
+            $set: {
+              [`courseEnrollments.$[outer].subjects.$[inner].marksDetails.${examType}`]: numericVal
             }
+          },
+          {
+            arrayFilters: [
+              { "outer.semester": course.semester.toString() },
+              { "inner.courseId": courseId }
+            ]
+          }
         );
       }));
     }
@@ -2721,9 +2642,9 @@ app.get('/student/timetable', verifyToken, async (req, res) => {
     // 2. Find ALL Timetables matching: Institute + Department
     // We REMOVE the 'semester' filter here so we get all sems (e.g., Sem 3, Sem 5)
     // This allows the student to switch views if needed, or ensures we at least find something.
-    const timetables = await Timetable.find({ 
+    const timetables = await Timetable.find({
       instituteId: student.instituteId,
-      department: student.department 
+      department: student.department
     }).sort({ semester: 1 }); // Sort by semester ascending
 
     // Return the array directly
@@ -2740,7 +2661,7 @@ app.get('/faculty/ssr', verifyToken, async (req, res) => {
     if (!faculty) return res.status(404).json({ message: "Faculty not found" });
 
     let ssrData = await FacultySSR.findOne({ facultyId: req.user.id });
-    
+
     // If not exists, return empty structure (frontend handles defaults)
     if (!ssrData) {
       ssrData = { personal: {}, teaching: [], research: { publications: [], fdpAttended: [] }, documents: [] };
@@ -2756,16 +2677,16 @@ app.get('/faculty/ssr', verifyToken, async (req, res) => {
 // 2. UPDATE/SAVE Faculty SSR Data (Section wise)
 app.post('/faculty/ssr/update', verifyToken, async (req, res) => {
   try {
-    const { section, data } = req.body; 
+    const { section, data } = req.body;
     // section: 'personal', 'teaching', 'evaluation', 'research', 'extension', 'mentoring'
 
     const faculty = await Faculty.findById(req.user.id);
-    
+
     let ssrDoc = await FacultySSR.findOne({ facultyId: req.user.id });
     if (!ssrDoc) {
-      ssrDoc = new FacultySSR({ 
-        facultyId: req.user.id, 
-        instituteId: faculty.instituteId 
+      ssrDoc = new FacultySSR({
+        facultyId: req.user.id,
+        instituteId: faculty.instituteId
       });
     }
 
@@ -2773,9 +2694,9 @@ app.post('/faculty/ssr/update', verifyToken, async (req, res) => {
     if (section === 'personal') ssrDoc.personal = { ...ssrDoc.personal, ...data };
     if (section === 'evaluation') ssrDoc.evaluation = { ...ssrDoc.evaluation, ...data };
     if (section === 'mentoring') ssrDoc.mentoring = { ...ssrDoc.mentoring, ...data };
-    
+
     // For Arrays, we usually push or replace. Here we replace for simplicity in editing forms
-    if (section === 'teaching') ssrDoc.teaching = data; 
+    if (section === 'teaching') ssrDoc.teaching = data;
     if (section === 'extension') ssrDoc.extension = data;
     if (section === 'research') ssrDoc.research = { ...ssrDoc.research, ...data };
 
@@ -2805,7 +2726,7 @@ app.post('/faculty/ssr/upload', verifyToken, async (req, res) => {
     ssrDoc.documents.push({
       category,
       title,
-      url: fileData 
+      url: fileData
     });
 
     await ssrDoc.save();
@@ -2834,10 +2755,10 @@ app.post('/faculty/grievance/add', verifyToken, async (req, res) => {
   try {
     const { subject, message, type } = req.body; // type: 'Technical', 'General', 'Urgent'
     const faculty = await Faculty.findById(req.user.id);
-    
+
     // Using the AllGrievance model (ensure it's imported at top)
     const ticketId = `TKT-${Date.now().toString().slice(-6)}`;
-    
+
     const doc = new AllGrievance({
       ticketId,
       userId: req.user.id,
@@ -2985,11 +2906,11 @@ app.get('/student/me', verifyToken, async (req, res) => {
 app.post('/student/update-profile', verifyToken, async (req, res) => {
   try {
     const { profilePic, phone } = req.body;
-    
+
     const updateData = {};
     if (profilePic) updateData.profilePic = profilePic;
     if (phone) updateData.phone = phone;
-    
+
     updateData.updatedAt = Date.now();
 
     const updatedStudent = await Student.findByIdAndUpdate(
@@ -3029,7 +2950,7 @@ app.get('/student/courses/details', verifyToken, async (req, res) => {
     if (student.courseEnrollments) {
       for (const semesterData of student.courseEnrollments) {
         for (const subject of semesterData.subjects) {
-          
+
           // 3. Fetch Attendance History for this specific course
           const attRecord = await Attendance.findOne({
             studentId: student._id,
@@ -3043,7 +2964,7 @@ app.get('/student/courses/details', verifyToken, async (req, res) => {
             courseCode: subject.courseCode,
             semester: semesterData.semester,
             facultyId: subject.facultyId,
-            
+
             // Marks from Student Model
             marks: subject.marksDetails || {
               test1: 0,
@@ -3052,7 +2973,7 @@ app.get('/student/courses/details', verifyToken, async (req, res) => {
               assignment: 0,
               external: 0
             },
-            
+
             // Attendance from Attendance Model
             attendance: {
               percentage: attRecord ? attRecord.percentage : 0,
@@ -3082,16 +3003,16 @@ app.get('/student/course/:courseId/forms', verifyToken, async (req, res) => {
     const studentId = req.user.id;
 
     // 1. Find all active forms for this course
-    const forms = await FacultyForm.find({ 
-      courseId: courseId, 
-      isActive: true 
+    const forms = await FacultyForm.find({
+      courseId: courseId,
+      isActive: true
     }).sort({ createdAt: -1 });
 
     // 2. Check which ones the student has already responded to
     const formsWithStatus = await Promise.all(forms.map(async (form) => {
-      const response = await FacultyFormResponse.findOne({ 
-        formId: form._id, 
-        studentId: studentId 
+      const response = await FacultyFormResponse.findOne({
+        formId: form._id,
+        studentId: studentId
       });
 
       return {
@@ -3236,76 +3157,92 @@ app.post('/student/performance/analyze', verifyToken, async (req, res) => {
   }
 });
 
+// ==========================================
+// ROBUST JOB SEARCH ROUTE (With Source Flag)
+// ==========================================
+app.post("/api/student-jobs/search", async (req, res) => {
+  const { skills = [] } = req.body;
+  const query = skills.join(" ") || "freelance developer";
 
-// --- MISSING ADMIN ROUTES (Paste these into server.js) ---
+  // --- MOCK DATA ---
+  const mockJobs = [
+    {
+      id: "mock-1",
+      title: "Frontend React Developer (Freelance)",
+      company: "TechFlow Solutions",
+      description: "Looking for a React developer to build a dashboard. Skills: React, Tailwind.",
+      salary: "₹25,000 - ₹50,000",
+      matchedSkills: ["React", "Frontend"],
+      isMock: true // Mark as mock
+    },
+    {
+      id: "mock-2",
+      title: "Content Writer & SEO Specialist",
+      company: "Creative Minds",
+      description: "Write engaging blog posts and optimize for SEO. Remote opportunity.",
+      salary: "₹5,000 per article",
+      matchedSkills: ["Writing", "SEO"],
+      isMock: true
+    },
+    {
+      id: "mock-3",
+      title: "Python Backend Intern",
+      company: "DataCorp",
+      description: "Assist in building APIs using Django/Flask. Good exposure to databases.",
+      salary: "₹15,000 / month",
+      matchedSkills: ["Python", "Backend"],
+      isMock: true
+    }
+  ];
 
-// 1. Update Institute Status (Admin)
-app.put('/admin/updateInstituteStatus/:id', verifyToken, async (req, res) => {
   try {
-    const { status } = req.body; // Active, Suspended, Rejected
-    const inst = await Institute.findByIdAndUpdate(
-      req.params.id, 
-      { status }, 
-      { new: true }
-    );
-    // Log the action
-    await Log.create({ 
-      action: 'UPDATE_STATUS', 
-      adminId: req.user.id, 
-      details: `Institute ${inst.code} status changed to ${status}` 
+    // 1. Check if keys exist
+    if (!process.env.ADZUNA_APP_ID || !process.env.ADZUNA_APP_KEY) {
+      console.warn("⚠️ Adzuna Keys Missing. Serving Mock Data.");
+      return res.json({ freelance: mockJobs, source: "MOCK_NO_KEYS" });
+    }
+
+    // 2. Call Adzuna API
+    const url = "https://api.adzuna.com/v1/api/jobs/in/search/1";
+    const response = await axios.get(url, {
+      params: {
+        app_id: process.env.ADZUNA_APP_ID,
+        app_key: process.env.ADZUNA_APP_KEY,
+        what: query,
+        full_time: 0,
+        contract: 1,
+        results_per_page: 20,
+        content_type: "application/json",
+      },
     });
-    res.json(inst);
-  } catch (err) {
-    console.error('Update status error:', err);
-    res.status(500).json({ error: 'Update failed' });
-  }
-});
 
-// 2. Broadcast (Admin) - Placeholder logic as generic broadcast
-app.post('/admin/broadcast', verifyToken, async (req, res) => {
-  try {
-    const { title, message, type } = req.body;
-    // You can save this to a SystemBroadcast model if you have one.
-    // For now, we'll log it and pretend it was sent to all active institutes.
-    await Log.create({
-      action: 'BROADCAST',
-      adminId: req.user.id,
-      details: `Broadcast: ${title} (${type})`
-    });
-    // Optional: create a Notice for every institute? 
-    // Or just return success for the demo.
-    res.json({ success: true, message: 'Broadcast published' });
-  } catch (err) {
-    res.status(500).json({ error: 'Broadcast failed' });
-  }
-});
+    // 3. Format Real Data
+    const jobs = (response.data.results || []).map((job, index) => ({
+      id: job.id || `adzuna-${index}`,
+      title: job.title,
+      company: job.company?.display_name || "Confidential",
+      description: job.description.replace(/<[^>]*>?/gm, '').slice(0, 150) + "...",
+      salary: job.salary_min ? `₹${job.salary_min}` : "Negotiable",
+      matchedSkills: skills,
+      isMock: false // Mark as Real
+    }));
 
-// 3. Fetch System Logs (Admin)
-app.get('/admin/logs', verifyToken, async (req, res) => {
-  try {
-    const logs = await Log.find().sort({ createdAt: -1 }).limit(50);
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ error: 'Fetch logs failed' });
-  }
-});
+    if (jobs.length === 0) {
+      return res.json({ freelance: mockJobs, source: "MOCK_EMPTY_API" });
+    }
 
-// 4. Mock NAAC Validator (Admin Tool)
-app.post('/admin/naacValidator', verifyToken, async (req, res) => {
-  try {
-    // Mock processing delay
-    // In real app, this parses the uploaded PDF
-    const mockScore = (Math.random() * (4.0 - 2.5) + 2.5).toFixed(2);
-    const grades = ['A++', 'A+', 'A', 'B++', 'B+'];
-    const mockGrade = grades[Math.floor(Math.random() * grades.length)];
-    
-    res.json({ 
-      score: mockScore, 
-      grade: mockGrade,
-      details: "Automated analysis completed successfully." 
-    });
+    return res.json({ freelance: jobs, source: "ADZUNA_API" });
+
   } catch (err) {
-    res.status(500).json({ error: 'Validator failed' });
+    // 4. Log specific Adzuna error to help debugging
+    if (err.response) {
+      console.error("❌ Adzuna API Error Details:", JSON.stringify(err.response.data));
+    } else {
+      console.error("❌ Adzuna Network Error:", err.message);
+    }
+
+    // Fallback to 200 OK with Mock Data (Prevents 500 Error in Browser)
+    return res.status(200).json({ freelance: mockJobs, source: "MOCK_ERROR_FALLBACK" });
   }
 });
 // -------------------
