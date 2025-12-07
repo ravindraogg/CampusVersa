@@ -1,0 +1,10 @@
+[build]
+  # This is the path to your Vite app from the REPO ROOT
+  base = "professional-rebuild/unifiededu"
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
