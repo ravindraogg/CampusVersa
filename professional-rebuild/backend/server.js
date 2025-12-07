@@ -322,7 +322,6 @@ app.post('/admin/createInstitute', verifyToken, async (req, res) => {
 });
 
 
-// UPDATE Faculty (Institute Side)
 app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
@@ -337,18 +336,14 @@ app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
       return res.status(404).json({ message: 'Faculty not found or access denied' });
     }
 
+    // EXPANDED Allowed Fields List (This was causing the save issue)
     const allowed = [
-      'name',
-      'email',
-      'phone',
-      'department',
-      'qualification',
-      'experience',
-      'research',
-      'profilePic',
-      'password',
-      'joinedAt',
-      'status'
+      'name', 'email', 'phone', 'department', 
+      'qualification', 'experience', 'research', 
+      'profilePic', 'password', 'joinedAt', 'status',
+      // Added missing fields below so they save correctly:
+      'designation', 'position', 'workingHours', 
+      'ssrStatus', 'naacFollowing', 'loginId'
     ];
 
     const updateData = {};
@@ -360,7 +355,7 @@ app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
 
     updateData.updatedAt = Date.now();
 
-    // department change? update dept counts
+    // Handle department change logic (Faculty count update)
     if (req.body.department && req.body.department !== faculty.department) {
       await Department.findOneAndUpdate(
         { instituteId: instId, code: faculty.department },
@@ -385,7 +380,6 @@ app.put('/institute/faculty/:id', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Update failed' });
   }
 });
-
 app.get('/admin/grievances', verifyToken, async (req, res) => {
   try {
     const list = await AllGrievance.find().sort({ createdAt: -1 });
@@ -594,6 +588,8 @@ app.post('/faculty/course/opt-in', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Operation failed" });
   }
 });
+// --- server.js ---
+
 app.post('/institute/update-profile', verifyToken, async (req, res) => {
   try {
     const { 
@@ -604,18 +600,72 @@ app.post('/institute/update-profile', verifyToken, async (req, res) => {
 
     const updateData = {};
 
-    // Map fields
+    // 1. Map Basic Fields
     if (name) updateData.name = name;
-    if (logoBase64) updateData.logo = logoBase64;
     if (website) updateData.website = website;
     if (phone) updateData.phone = phone;
     if (address) updateData.address = address;
     if (state) updateData.state = state;
     if (pincode) updateData.pincode = pincode;
-    if (themeColorPrimary) updateData.themeColorPrimary = themeColorPrimary;
-    if (themeColorSecondary) updateData.themeColorSecondary = themeColorSecondary;
     if (accreditation) updateData.accreditation = accreditation;
 
+    // 2. Map Manual Colors (Fallback)
+    if (themeColorPrimary) updateData.themeColorPrimary = themeColorPrimary;
+    if (themeColorSecondary) updateData.themeColorSecondary = themeColorSecondary;
+
+    // 3. Handle Logo Upload & AI Analysis
+    if (logoBase64 && logoBase64.startsWith("data:image")) {
+      updateData.logo = logoBase64;
+
+      // Only run AI if Google Client is initialized
+      if (googleClient && aiProvider === "google") {
+        try {
+          console.log("🎨 Triggering AI Color Analysis...");
+          const base64Data = logoBase64.split(",")[1];
+          const mimeType = logoBase64.split(";")[0].split(":")[1];
+          const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+          const prompt = `
+            Analyze this logo and extract two HEX colors in strict JSON format:
+            1. "primary": a dark, rich color from the logo (for sidebar background).
+            2. "secondary": a light, high-contrast color (for text on the sidebar).
+            Return ONLY valid JSON like: { "primary": "#xxxxxx", "secondary": "#xxxxxx" }
+          `;
+
+          const result = await model.generateContent([
+            prompt,
+            { inlineData: { data: base64Data, mimeType } }
+          ]);
+
+          const text = result.response.text();
+          
+          // --- ROBUST JSON PARSING ---
+          // Find the first '{' and the last '}' to extract only the JSON object
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          
+          if (jsonMatch) {
+            const colors = JSON.parse(jsonMatch[0]);
+            
+            if (colors.primary && colors.secondary) {
+              updateData.themeColorPrimary = colors.primary;
+              updateData.themeColorSecondary = colors.secondary;
+              console.log("✅ AI Colors Applied:", colors);
+            }
+          } else {
+            console.warn("⚠️ AI returned text but no JSON found:", text);
+          }
+
+        } catch (err) {
+          console.error("⚠️ AI Analysis Failed:", err.message);
+          // We continue saving even if AI fails
+        }
+      } else {
+         console.log("ℹ️ AI Provider not configured or not Google. Skipping color analysis.");
+      }
+    }
+
+    // 4. Save to MongoDB
+    // 'new: true' ensures we get the document *after* updates are applied
     const updated = await Institute.findByIdAndUpdate(
       req.user.id,
       { $set: updateData },
@@ -623,12 +673,12 @@ app.post('/institute/update-profile', verifyToken, async (req, res) => {
     ).select('-password');
 
     res.json({ success: true, data: updated, message: "Profile updated successfully" });
+
   } catch (err) {
     console.error('/institute/update-profile error:', err);
     res.status(500).json({ error: 'Update failed' });
   }
 });
-
 // 2. CHANGE PASSWORD
 app.post('/institute/change-password', verifyToken, async (req, res) => {
   try {
@@ -749,18 +799,13 @@ app.get('/institute/dashboard-stats', verifyToken, async (req, res) => {
       studentCount,
       notices,
       recentFaculty,
-      naacScore: naacData ? (naacData.overallScore || 'N/A') : 'Pending'
+      naacScore: naacData ? (naacData.overallScore || 'NOT AFFILIATED' ) : 'Pending'
     });
   } catch (err) {
     console.error('/institute/dashboard-stats error:', err);
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
-
-// -------------------
-// Faculty CRUD
-// -------------------
-// --- server.js ---
 
 app.post('/institute/faculty/add', verifyToken, async (req, res) => {
   try {
@@ -1013,6 +1058,7 @@ app.post('/institute/student/:id/calculate-gpa', verifyToken, async (req, res) =
     res.status(500).json({ error: "Calculation failed" });
   }
 });
+
 app.post('/institute/students/add', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
@@ -1517,7 +1563,28 @@ app.post('/admin/naac/verify', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Verification failed" });
   }
 });
-// Delete department
+app.put('/institute/departments/:id', verifyToken, async (req, res) => {
+  try {
+    const { name, code, section, genre, facultyCount } = req.body;
+    
+    // Ensure department belongs to institute
+    const dept = await Department.findOne({ _id: req.params.id, instituteId: req.user.id });
+    if (!dept) return res.status(404).json({ message: 'Department not found' });
+
+    // Update fields
+    if (name) dept.name = name;
+    if (code) dept.code = code;
+    if (section) dept.section = section;
+    if (genre) dept.genre = genre;
+    if (facultyCount !== undefined) dept.facultyCount = facultyCount;
+
+    await dept.save();
+    res.json({ message: 'Department updated', data: dept });
+  } catch (err) {
+    console.error('/institute/departments/:id PUT error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
 app.delete('/institute/departments/:id', verifyToken, async (req, res) => {
   try {
     // Ensure we only delete if it belongs to this institute

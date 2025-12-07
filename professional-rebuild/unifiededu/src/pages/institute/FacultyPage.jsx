@@ -1,5 +1,7 @@
+// FacultyPage.jsx
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit, AlertTriangle } from "lucide-react";
+// ADDED Eye, EyeOff to imports
+import { Plus, Trash2, Edit, AlertTriangle, Eye, EyeOff } from "lucide-react";
 
 export default function FacultyPage({ authFetch, theme, institute, pushToast }) {
   // data
@@ -7,11 +9,12 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
   const [departments, setDepartments] = useState([]);
 
   // UI state
-  const [loading, setLoading] = useState(false); // local page loading for list
-  const [isPageLoading, setIsPageLoading] = useState(false); // full-page overlay loader
+  const [loading, setLoading] = useState(false); 
+  const [isPageLoading, setIsPageLoading] = useState(false); 
   const [isAdding, setIsAdding] = useState(false);
   const [isUploadingPic, setIsUploadingPic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // NEW STATE FOR PASSWORD
 
   // Delete Modal State
   const [deleteId, setDeleteId] = useState(null);
@@ -36,7 +39,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     password: "",
   });
 
-  const [selected, setSelected] = useState(null); // selected faculty for view/edit popup
+  const [selected, setSelected] = useState(null);
 
   // --- Spinner components ---
   const Spinner = ({ size = 6, color = "white" }) => (
@@ -96,10 +99,8 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     const instCode = institute?.code || "CLG";
     const clgNum = institute?.collegeNumber || 1;
 
-    // 1. Filter local list for same department
     const sameDept = list.filter((f) => (f.department || "").toUpperCase() === deptCode);
 
-    // 2. Extract sequences
     const seqNumbers = sameDept.map((f) => {
       if (!f.FID) return 0;
       const last3 = f.FID.slice(-3);
@@ -107,15 +108,12 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       return isNaN(num) ? 0 : num;
     });
 
-    // 3. Find max + 1
     const maxSeq = seqNumbers.length > 0 ? Math.max(...seqNumbers) : 0;
     const nextSeq = maxSeq + 1;
 
-    // 4. Format
     return `${clgNum}${instCode}${deptCode}${String(nextSeq).padStart(3, "0")}`;
   };
 
-  // --- Add faculty (submit) ---
   const submit = async () => {
     if (!form.name || !form.department || !form.password) {
       pushToast({ type: "error", message: "Validation: Name, department, and password required" });
@@ -130,7 +128,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       const payload = {
         ...form,
         department: form.department.toUpperCase(),
-        loginId: finalLoginId, // Send generated FID as loginId
+        loginId: finalLoginId,
       };
 
       const res = await authFetch("/institute/faculty/add", {
@@ -167,13 +165,11 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     }
   };
 
-  // --- filtered list ---
   const filtered = list.filter((f) => {
     const text = `${f.name} ${f.email} ${f.designation} ${f.department}`.toLowerCase();
     return text.includes(search.toLowerCase()) && (filterDept ? f.department === filterDept : true);
   });
 
-  // --- file handlers ---
   const handlePic = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -198,7 +194,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     reader.readAsDataURL(file);
   };
 
-  // --- delete faculty ---
   const confirmDelete = async () => {
     if (!deleteId) return;
     setIsDeleting(true);
@@ -220,7 +215,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
     }
   };
 
-  // --- save edited faculty ---
   const saveFacultyChanges = async (data) => {
     if (!data || !data._id) {
       pushToast({ type: "error", message: "Validation: Invalid faculty data" });
@@ -267,7 +261,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
           <p className="text-gray-500">Manage faculty records</p>
         </div>
 
-        {/* Search + Dropdown + Add Button */}
         <div className="flex gap-3 items-center">
           <input
             value={search}
@@ -297,13 +290,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
             style={{ background: theme.primary, color: "white" }}
             disabled={isAdding}
           >
-            {isAdding ? (
-              <Spinner size={16} color="white" />
-            ) : (
-              <>
-                <Plus className="w-4 h-4" /> Add Faculty
-              </>
-            )}
+            {isAdding ? <Spinner size={16} color="white" /> : <><Plus className="w-4 h-4" /> Add Faculty</>}
           </button>
         </div>
       </div>
@@ -318,7 +305,6 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
           filtered.map((f, index) => (
             <div
               key={f._id || f.FID}
-              // ADDED: overflow-hidden to prevent buttons from spilling out
               className="cursor-pointer p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.08)] bg-white hover:shadow-[0_6px_25px_rgba(0,0,0,0.14)] transition-all flex items-center gap-4 overflow-hidden w-full relative"
               onClick={() => setSelected(f)}
             >
@@ -327,25 +313,15 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   <img src={f.profilePic} className="w-full h-full object-cover" alt="pf" />
                 ) : (
                   <span className="font-bold text-gray-600">
-                    {(f.name || "")
-                      .split(" ")
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase()}
+                    {(f.name || "").split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()}
                   </span>
                 )}
               </div>
 
-              {/* Flex wrapper for text and buttons */}
               <div className="flex-1 flex items-center justify-between gap-2 overflow-hidden">
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-[15px] truncate">
-                    {index + 1}. {f.name}
-                  </p>
-                  <p className="text-[12px] text-gray-600 truncate">
-                    {f.designation} • {f.department}
-                  </p>
+                  <p className="font-semibold text-[15px] truncate">{index + 1}. {f.name}</p>
+                  <p className="text-[12px] text-gray-600 truncate">{f.designation} • {f.department}</p>
                   <p className="text-[10px] text-gray-400 truncate">{f.email}</p>
                 </div>
 
@@ -353,10 +329,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold"
                     style={{ color: theme.secondary }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelected(f);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); setSelected(f); }}
                   >
                     Edit
                   </button>
@@ -364,10 +337,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   <button
                     className="px-3 py-1 rounded-lg text-xs font-semibold text-white"
                     style={{ background: "#E53935" }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteId(f._id);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); setDeleteId(f._id); }}
                   >
                     Delete
                   </button>
@@ -396,9 +366,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   Auto FID preview: <span className="font-semibold">{previewFID()}</span>
                 </div>
               </div>
-              <button onClick={() => setShowAdd(false)} className="text-slate-500">
-                ✕
-              </button>
+              <button onClick={() => setShowAdd(false)} className="text-slate-500">✕</button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-6">
@@ -411,12 +379,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   style={{ borderColor: `#00000040` }}
                   placeholder=" "
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-focus:text-[12px] peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  Full Name
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Full Name</label>
               </div>
 
               {/* EMAIL */}
@@ -428,30 +391,29 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  Email
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Email</label>
               </div>
 
-              {/* PASSWORD */}
+              {/* PASSWORD WITH TOGGLE */}
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="peer w-full p-4 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
+                  className="peer w-full p-4 pr-10 rounded-2xl border bg-white/70 backdrop-blur-lg transition-all outline-none"
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Password</label>
+                
+                {/* TOGGLE BUTTON */}
+                <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-black transition-colors"
                 >
-                  Password
-                </label>
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
 
               {/* PHONE */}
@@ -463,12 +425,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  Phone
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Phone</label>
               </div>
 
               {/* DESIGNATION */}
@@ -480,12 +437,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  Designation
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Designation</label>
               </div>
 
               {/* DEPARTMENT */}
@@ -498,15 +450,10 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                 >
                   <option value="">Select department</option>
                   {departments.map((d) => (
-                    <option key={d.DID} value={d.code}>
-                      {d.code} — {d.name}
-                    </option>
+                    <option key={d.DID} value={d.code}>{d.code} — {d.name}</option>
                   ))}
                 </select>
-
-                <label className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700" style={{ color: "black" }}>
-                  Department
-                </label>
+                <label className="absolute left-4 -top-2 bg-white px-2 text-[12px] text-gray-700" style={{ color: "black" }}>Department</label>
               </div>
 
               {/* POSITION */}
@@ -518,12 +465,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  Position
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Position</label>
               </div>
 
               {/* WORKING HOURS */}
@@ -535,12 +477,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  Working Hours
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>Working Hours</label>
               </div>
 
               {/* SSR STATUS */}
@@ -552,12 +489,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
                   placeholder=" "
                   style={{ borderColor: `#00000040` }}
                 />
-                <label
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0 peer-not-placeholder-shown:text-[12px]"
-                  style={{ color: "black" }}
-                >
-                  SSR Status
-                </label>
+                <label className="absolute left-4 top-1/2 -translate-y-1/2 bg-white px-2 text-gray-700 text-sm transition-all peer-focus:top-0 peer-not-placeholder-shown:top-0" style={{ color: "black" }}>SSR Status</label>
               </div>
 
               {/* NAAC Checkbox */}
@@ -568,25 +500,12 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
 
               {/* UPLOAD PROFILE PIC */}
               <label className="col-span-2 w-full flex items-center justify-center p-4 rounded-2xl border bg-white/70 backdrop-blur-lg cursor-pointer font-medium gap-3" style={{ borderColor: `#00000040` }}>
-                {isUploadingPic ? (
-                  <>
-                    <DarkSpinner />
-                    <span className="text-yellow-600 font-semibold">Uploading…</span>
-                  </>
-                ) : form.profilePic ? (
-                  <span className="text-green-600 font-semibold">Uploaded ✓</span>
-                ) : (
-                  <span className="text-gray-700">Upload Profile Picture</span>
-                )}
-
+                {isUploadingPic ? <><DarkSpinner /><span className="text-yellow-600 font-semibold">Uploading…</span></> : form.profilePic ? <span className="text-green-600 font-semibold">Uploaded ✓</span> : <span className="text-gray-700">Upload Profile Picture</span>}
                 <input type="file" accept="image/*" className="hidden" onChange={handlePic} />
               </label>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">
-                Cancel
-              </button>
-
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-xl border">Cancel</button>
               <button onClick={submit} disabled={isAdding} className="px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60" style={{ background: theme.primary, color: theme.textOnPrimary }}>
                 {isAdding ? <Spinner size={16} color="white" /> : "Add Faculty"}
               </button>
@@ -599,47 +518,25 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
       {selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="w-full max-w-2xl rounded-3xl p-7 shadow-[0_8px_40px_rgba(0,0,0,0.25)]" style={{ background: "white", border: `1px solid ${theme.primary}33` }}>
-            {/* header */}
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-[22px] font-bold">Edit Faculty — {selected.name}</h3>
-              <button onClick={() => setSelected(null)} className="text-gray-600 text-xl hover:text-red-500 transition">
-                ✕
-              </button>
+              <button onClick={() => setSelected(null)} className="text-gray-600 text-xl hover:text-red-500 transition">✕</button>
             </div>
 
-            {/* profile + meta */}
             <div className="flex items-center gap-6 mb-6">
               <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-gray-100 flex items-center justify-center shadow-md">
-                {selected.profilePic ? (
-                  <img src={selected.profilePic} className="w-full h-full object-cover" alt="pf" />
-                ) : (
-                  <span className="font-bold text-gray-600 text-[20px]">
-                    {(selected.name || "")
-                      .split(" ")
-                      .map((x) => x[0])
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase()}
-                  </span>
-                )}
-
+                {selected.profilePic ? <img src={selected.profilePic} className="w-full h-full object-cover" alt="pf" /> : <span className="font-bold text-gray-600 text-[20px]">{(selected.name || "").split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span>}
                 <label className="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded-lg text-xs cursor-pointer">
                   {isUploadingPic ? "Uploading..." : "Edit"}
                   <input type="file" accept="image/*" className="hidden" onChange={handleEditPic} />
                 </label>
               </div>
-
               <div className="flex-1">
-                <p className="text-gray-600 text-sm">
-                  Faculty ID: <b>{selected.FID}</b>
-                </p>
-                <p className="text-gray-600 text-sm">
-                  Department: <b>{selected.department}</b>
-                </p>
+                <p className="text-gray-600 text-sm">Faculty ID: <b>{selected.FID}</b></p>
+                <p className="text-gray-600 text-sm">Department: <b>{selected.department}</b></p>
               </div>
             </div>
 
-            {/* edit form */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input value={selected.name} onChange={(e) => setSelected((prev) => ({ ...prev, name: e.target.value }))} placeholder="Full Name" className="p-3 rounded-xl border" />
               <input value={selected.email} onChange={(e) => setSelected((prev) => ({ ...prev, email: e.target.value }))} placeholder="Email" className="p-3 rounded-xl border" />
@@ -653,11 +550,8 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
               </label>
             </div>
 
-            {/* actions */}
             <div className="flex justify-end gap-3 mt-7">
-              <button onClick={() => setSelected(null)} className="px-5 py-2 rounded-xl border font-semibold">
-                Cancel
-              </button>
+              <button onClick={() => setSelected(null)} className="px-5 py-2 rounded-xl border font-semibold">Cancel</button>
               <button onClick={() => saveFacultyChanges(selected)} disabled={isSaving} className="px-6 py-2 rounded-xl font-semibold flex items-center gap-2" style={{ background: theme.primary, color: theme.textOnPrimary }}>
                 {isSaving ? <Spinner size={16} color="white" /> : "Save Changes"}
               </button>
@@ -671,15 +565,11 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100">
             <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
-              </div>
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4"><AlertTriangle className="w-6 h-6 text-red-600" /></div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Faculty?</h3>
               <p className="text-sm text-gray-500 mb-6">Are you sure you want to delete this faculty member? This action cannot be undone.</p>
               <div className="flex gap-3 w-full">
-                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
-                  Cancel
-                </button>
+                <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">Cancel</button>
                 <button onClick={confirmDelete} disabled={isDeleting} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 shadow-lg shadow-red-200 transition flex justify-center items-center">
                   {isDeleting ? <Spinner size={16} /> : "Delete"}
                 </button>

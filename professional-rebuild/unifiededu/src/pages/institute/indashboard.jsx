@@ -20,6 +20,8 @@ import {
   X,
   Trash2,
   BellOff,
+  Eye, 
+  EyeOff,
   Hash,
   Shield,
   FileText,
@@ -146,7 +148,7 @@ const InstituteDashboard = () => {
   const [notification, setNotification] = useState(null); 
   const [showNotificationsModal, setShowNotificationsModal] = useState(false); 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   // Data State 
   const [institute, setInstitute] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -281,10 +283,13 @@ const InstituteDashboard = () => {
     }
   };
 
+
   const saveProfileFull = async () => {
     setIsPageLoading(true);
     try {
-      const accreditationData = editForm.naacGrade ? [{ type: 'NAAC', grade: editForm.naacGrade, status: true }] : [];
+      const accreditationData = editForm.naacGrade 
+        ? [{ type: 'NAAC', grade: editForm.naacGrade, status: true }] 
+        : [];
 
       const payload = {
         name: editForm.name,
@@ -301,11 +306,30 @@ const InstituteDashboard = () => {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      
       const data = await response.json();
       
       if (data.success) {
+        // 1. Update Institute Data locally
         setInstitute(data.data);
-        showToast("Institute profile details updated successfully!", "success");
+
+        // 2. FORCE UPDATE THEME STATE 
+        // This ensures the sidebar changes color immediately without a refresh
+        if (data.data.themeColorPrimary) {
+          setCurrentTheme((prev) => ({
+            ...prev,
+            // Sidebar Background
+            primary: data.data.themeColorPrimary,
+            // Dark mode variant (usually same as primary for simple themes)
+            dark: data.data.themeColorPrimary,
+            // Sidebar Text Color (Mapped from 'secondary' output of AI)
+            textOnPrimary: data.data.themeColorSecondary || "#FFFFFF", 
+            // Optional: You can keep your accent color (secondary) or update it too
+            // secondary: data.data.themeColorSecondary || prev.secondary
+          }));
+        }
+
+        showToast("Profile & Theme updated!", "success");
       } else {
         throw new Error(data.message);
       }
@@ -424,42 +448,95 @@ const handleLogout = () => {
   };
 
   // --- RENDER SECTIONS ---
-  const renderDashboardHome = () => (
-    <div className="animate-in fade-in duration-500 pb-6">
-      <SectionHeader title="Institute Overview" subtitle={`Welcome back, ${institute?.name || "Administrator"} (${institute?.code || "..."}).`} />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard title="Total Faculty" value={dashboardLoading ? "..." : dashboardStats?.facultyCount ?? "—"} icon={Users} trend="+4 this month" theme={currentTheme.secondary} />
-        <StatCard title="Total Students" value={dashboardLoading ? "..." : dashboardStats?.studentCount ?? "—"} icon={Building2} trend="+12% vs last year" theme={currentTheme.secondary} />
-        <StatCard title="NAAC Score" value={dashboardLoading ? "..." : dashboardStats?.naacScore ?? "Pending"} icon={CheckCircle} theme={currentTheme.secondary} />
-        <StatCard title="AI Optimizations" value="85%" icon={Cpu} color="secondary" theme={currentTheme.secondary} />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-gray-800">Recent Notices</h3>
-            <button onClick={() => setActiveTab("notices")} className="text-sm font-semibold hover:underline" style={{ color: currentTheme.secondary }}>View All</button>
-          </div>
-          <div className="space-y-4">
-            {noticesLoading ? <div className="py-8 text-center">Loading...</div> : noticesList && noticesList.length > 0 ? noticesList.slice(0, 5).map((n) => (
-              <div key={n._id || n.id} className="flex items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <div className="p-2 rounded-lg mr-4 bg-opacity-10" style={{ backgroundColor: `${currentTheme.primary}20` }}><Bell className="w-5 h-5" style={{ color: currentTheme.primary }} /></div>
-                <div><h4 className="font-semibold text-gray-800">{n.title}</h4><p className="text-xs text-gray-500 mt-1">{new Date(n.date || n.createdAt).toLocaleDateString()} • {n.type || "General"}</p></div>
-              </div>
-            )) : <div className="py-6 text-sm text-gray-500">No notices yet.</div>}
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <h3 className="font-bold text-gray-800 mb-6">Quick Actions</h3>
-          <div className="space-y-3">
-            <button onClick={() => setActiveTab("faculty")} className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors group"><span className="flex items-center"><Plus className="w-4 h-4 mr-2" /> Add Faculty</span><ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: currentTheme.primary }} /></button>
-            <button onClick={() => setActiveTab("requests")} className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors group"><span className="flex items-center"><Send className="w-4 h-4 mr-2" /> New Admin Request</span><ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: currentTheme.primary }} /></button>
-            <button onClick={() => setActiveTab("ai-timetable")} className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors group"><span className="flex items-center"><Cpu className="w-4 h-4 mr-2" /> Generate Timetable</span><ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: currentTheme.primary }} /></button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+// indashboard.jsx
 
+  const renderDashboardHome = () => {
+    // 1. Extract NAAC Data safely from the institute profile
+    const naacData = institute?.accreditation && institute.accreditation.length > 0 
+      ? institute.accreditation[0] 
+      : null;
+
+    // 2. Check if NAAC is Active (Status is true)
+    const showNaacCard = naacData && naacData.status === true;
+
+    return (
+      <div className="animate-in fade-in duration-500 pb-6">
+        <SectionHeader 
+          title="Institute Overview" 
+          subtitle={`Welcome back, ${institute?.name || "Administrator"} (${institute?.code || "..."}).`} 
+        />
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <StatCard 
+            title="Total Faculty" 
+            value={dashboardLoading ? "..." : dashboardStats?.facultyCount ?? "—"} 
+            icon={Users} 
+            theme={currentTheme.secondary} 
+          />
+          
+          <StatCard 
+            title="Total Students" 
+            value={dashboardLoading ? "..." : dashboardStats?.studentCount ?? "—"} 
+            icon={Building2} 
+            theme={currentTheme.secondary} 
+          />
+          
+          {/* --- 3. CONDITIONAL NAAC CARD --- */}
+          {showNaacCard ? (
+            <StatCard 
+              title="NAAC Accredited" 
+              value={naacData.grade || "N/A"} // Show Grade (e.g. A++)
+              icon={CheckCircle} 
+              theme={currentTheme.secondary} 
+            />
+          ) : (
+            // Optional: Show a placeholder or nothing if not accredited
+            <StatCard 
+              title="Accreditation" 
+              value="Not Active" 
+              icon={Shield} 
+              color="gray" // You might need to handle this color prop in StatCard
+              theme={{ primary: "#9ca3af", secondary: "#d1d5db" }} 
+            />
+          )}
+
+          <StatCard 
+            title="AI Optimizations" 
+            value="85%" 
+            icon={Cpu} 
+            color="secondary" 
+            theme={currentTheme.secondary} 
+          />
+        </div>
+
+        {/* ... Rest of the dashboard (Recent Notices, Quick Actions) ... */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-gray-800">Recent Notices</h3>
+              <button onClick={() => setActiveTab("notices")} className="text-sm font-semibold hover:underline" style={{ color: currentTheme.secondary }}>View All</button>
+            </div>
+            <div className="space-y-4">
+              {noticesLoading ? <div className="py-8 text-center">Loading...</div> : noticesList && noticesList.length > 0 ? noticesList.slice(0, 5).map((n) => (
+                <div key={n._id || n.id} className="flex items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
+                  <div className="p-2 rounded-lg mr-4 bg-opacity-10" style={{ backgroundColor: `${currentTheme.primary}20` }}><Bell className="w-5 h-5" style={{ color: currentTheme.primary }} /></div>
+                  <div><h4 className="font-semibold text-gray-800">{n.title}</h4><p className="text-xs text-gray-500 mt-1">{new Date(n.date || n.createdAt).toLocaleDateString()} • {n.type || "General"}</p></div>
+                </div>
+              )) : <div className="py-6 text-sm text-gray-500">No notices yet.</div>}
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-800 mb-6">Quick Actions</h3>
+            <div className="space-y-3">
+              <button onClick={() => setActiveTab("faculty")} className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors group"><span className="flex items-center"><Plus className="w-4 h-4 mr-2" /> Add Faculty</span><ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: currentTheme.primary }} /></button>
+              <button onClick={() => setActiveTab("requests")} className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors group"><span className="flex items-center"><Send className="w-4 h-4 mr-2" /> New Admin Request</span><ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: currentTheme.primary }} /></button>
+              <button onClick={() => setActiveTab("ai-timetable")} className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors group"><span className="flex items-center"><Cpu className="w-4 h-4 mr-2" /> Generate Timetable</span><ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: currentTheme.primary }} /></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
   const renderSettingsSection = () => (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-6 relative">
       <SectionHeader title="Institute Settings" subtitle="Manage profile, security, and team access" />
@@ -608,36 +685,70 @@ const handleLogout = () => {
                 <p className="text-sm text-gray-500 mt-1">Keep your institute account secure.</p>
              </div>
              <div className="space-y-4">
-                <div>
+                
+                {/* Current Password */}
+                <div className="relative">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
-                   <input 
-                     type="password" 
-                     value={passForm.current} 
-                     onChange={e => setPassForm({...passForm, current: e.target.value})} 
-                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
-                     placeholder="••••••••"
-                   />
+                   <div className="relative">
+                     <input 
+                       type={showPassword ? "text" : "password"} 
+                       value={passForm.current} 
+                       onChange={e => setPassForm({...passForm, current: e.target.value})} 
+                       className="w-full p-3 pr-10 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
+                       placeholder="••••••••"
+                     />
+                     <button 
+                       type="button"
+                       onClick={() => setShowPassword(!showPassword)}
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                     >
+                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                     </button>
+                   </div>
                 </div>
-                <div>
+
+                {/* New Password */}
+                <div className="relative">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
-                   <input 
-                     type="password" 
-                     value={passForm.new} 
-                     onChange={e => setPassForm({...passForm, new: e.target.value})} 
-                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
-                     placeholder="••••••••"
-                   />
+                   <div className="relative">
+                     <input 
+                       type={showPassword ? "text" : "password"} 
+                       value={passForm.new} 
+                       onChange={e => setPassForm({...passForm, new: e.target.value})} 
+                       className="w-full p-3 pr-10 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
+                       placeholder="••••••••"
+                     />
+                     <button 
+                       type="button"
+                       onClick={() => setShowPassword(!showPassword)}
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                     >
+                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                     </button>
+                   </div>
                 </div>
-                <div>
+
+                {/* Confirm Password */}
+                <div className="relative">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New Password</label>
-                   <input 
-                     type="password" 
-                     value={passForm.confirm} 
-                     onChange={e => setPassForm({...passForm, confirm: e.target.value})} 
-                     className="w-full p-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
-                     placeholder="••••••••"
-                   />
+                   <div className="relative">
+                     <input 
+                       type={showPassword ? "text" : "password"} 
+                       value={passForm.confirm} 
+                       onChange={e => setPassForm({...passForm, confirm: e.target.value})} 
+                       className="w-full p-3 pr-10 bg-white border border-gray-300 rounded-xl outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
+                       placeholder="••••••••"
+                     />
+                     <button 
+                       type="button"
+                       onClick={() => setShowPassword(!showPassword)}
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                     >
+                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                     </button>
+                   </div>
                 </div>
+
                 <button 
                   onClick={handlePasswordChange} 
                   disabled={isPageLoading}
