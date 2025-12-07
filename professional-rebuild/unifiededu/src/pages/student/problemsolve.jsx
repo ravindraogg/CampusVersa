@@ -102,7 +102,6 @@ const PROBLEM_SET = [
   { id: 139, title: "Sqrt(x)", platform: "LeetCode", difficulty: "Easy", topic: "Math", url: "https://leetcode.com/problems/sqrt-x/" },
   { id: 140, title: "Remove Duplicates from Sorted List", platform: "LeetCode", difficulty: "Easy", topic: "Linked List", url: "https://leetcode.com/problems/remove-duplicates-from-sorted-list/" }
 ];
-
 const ITEMS_PER_PAGE = 10;
 
 const ProblemSolvingArena = ({ theme }) => {
@@ -125,37 +124,38 @@ const ProblemSolvingArena = ({ theme }) => {
 
   const getDifficultyColor = (diff) => {
     switch (diff.toLowerCase()) {
-      case 'easy': return 'bg-green-100 text-green-700';
-      case 'medium': return 'bg-yellow-100 text-yellow-700';
-      case 'hard': return 'bg-red-100 text-red-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'easy': return 'bg-green-100 text-green-700 border-green-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'hard': return 'bg-red-100 text-red-700 border-red-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
 
   const getPlatformIcon = (platform) => {
-    if (platform === 'LeetCode') return <Code2 size={16} className="text-orange-500" />;
-    if (platform === 'CodeChef') return <Terminal size={16} className="text-brown-600" />; // using brown logically, or generic
-    return <Code2 size={16} />;
+    if (platform === 'LeetCode') return <Code2 size={14} className="text-orange-500" />;
+    if (platform === 'CodeChef') return <Terminal size={14} className="text-brown-600" />; 
+    return <Code2 size={14} />;
   };
 
   return (
-    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-gray-100">
+    <div className="bg-white rounded-2xl md:rounded-[2rem] p-4 md:p-6 shadow-sm border border-gray-100">
       
-      {/* Header */}
+      {/* --- HEADER & FILTERS --- */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Problem Solving Arena</h2>
-          <p className="text-gray-500 text-sm mt-1">
-            Master Data Structures & Algorithms with {PROBLEM_SET.length}+ curated problems.
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Problem Arena</h2>
+          <p className="text-gray-500 text-xs md:text-sm mt-1">
+            Master DSA with curated problems.
           </p>
         </div>
         
-        <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
+        {/* Platform Toggles - Scrollable on mobile */}
+        <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200 overflow-x-auto no-scrollbar whitespace-nowrap">
           {['All', 'LeetCode', 'CodeChef'].map(platform => (
             <button
               key={platform}
               onClick={() => { setActivePlatform(platform); setCurrentPage(1); }}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${
                 activePlatform === platform 
                   ? 'shadow-sm text-white' 
                   : 'text-gray-500 hover:text-gray-900 hover:bg-white'
@@ -170,26 +170,26 @@ const ProblemSolvingArena = ({ theme }) => {
         </div>
       </div>
 
-      {/* Search Bar */}
+      {/* --- SEARCH BAR --- */}
       <div className="relative mb-6">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
         <input 
           type="text" 
-          placeholder="Search by problem name or topic (e.g., 'Array', 'DP')..." 
+          placeholder="Search problems..." 
           value={searchTerm}
           onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-          className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-opacity-50 transition-all"
+          className="w-full pl-10 pr-4 py-2.5 md:py-3 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-opacity-50 transition-all"
           style={{ focusRingColor: theme.primary }}
         />
       </div>
 
-      {/* Problems Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-100">
+      {/* --- DESKTOP VIEW: TABLE (Hidden on Mobile) --- */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-100">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
-              <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Problem Title</th>
+              <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Title</th>
               <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Platform</th>
               <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Difficulty</th>
               <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Topic</th>
@@ -200,73 +200,102 @@ const ProblemSolvingArena = ({ theme }) => {
             {currentProblems.map((problem) => (
               <tr key={problem.id} className="hover:bg-gray-50 transition-colors group">
                 <td className="p-4 text-sm text-gray-400 font-medium">#{problem.id}</td>
-                <td className="p-4">
-                  <span className="font-bold text-gray-800 text-sm">{problem.title}</span>
-                </td>
+                <td className="p-4"><span className="font-bold text-gray-800 text-sm">{problem.title}</span></td>
                 <td className="p-4">
                   <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
-                    {getPlatformIcon(problem.platform)}
-                    {problem.platform}
+                    {getPlatformIcon(problem.platform)} {problem.platform}
                   </div>
                 </td>
                 <td className="p-4">
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${getDifficultyColor(problem.difficulty)}`}>
+                  <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase border ${getDifficultyColor(problem.difficulty)}`}>
                     {problem.difficulty}
                   </span>
                 </td>
                 <td className="p-4">
-                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">
-                    {problem.topic}
-                  </span>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">{problem.topic}</span>
                 </td>
                 <td className="p-4 text-right">
-                  <a 
-                    href={problem.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-bold hover:underline transition-all"
-                    style={{ color: theme.primary }}
-                  >
+                  <a href={problem.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold hover:underline" style={{ color: theme.primary }}>
                     Solve <ExternalLink size={12} />
                   </a>
                 </td>
               </tr>
             ))}
-            {currentProblems.length === 0 && (
-              <tr>
-                <td colSpan="6" className="p-8 text-center text-gray-500 italic">
-                  No problems found matching your search.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* --- MOBILE VIEW: CARDS (Visible only on Mobile) --- */}
+      <div className="md:hidden flex flex-col gap-3">
+        {currentProblems.map((problem) => (
+          <div key={problem.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/30 flex flex-col gap-3 shadow-sm">
+            
+            {/* Row 1: Title and ID */}
+            <div className="flex justify-between items-start gap-2">
+               <h3 className="font-bold text-gray-800 text-sm leading-tight">{problem.title}</h3>
+               <span className="text-[10px] font-mono text-gray-400 shrink-0">#{problem.id}</span>
+            </div>
+
+            {/* Row 2: Badges (Scrollable horizontally if needed) */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getDifficultyColor(problem.difficulty)}`}>
+                {problem.difficulty}
+              </span>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-200 text-[10px] font-bold text-gray-600">
+                 {getPlatformIcon(problem.platform)} {problem.platform}
+              </div>
+              <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-medium border border-gray-200">
+                {problem.topic}
+              </span>
+            </div>
+
+            {/* Row 3: Action Button (Bottom of Card) */}
+            <a 
+              href={problem.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="mt-1 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold text-white transition-transform active:scale-95 shadow-sm"
+              style={{ backgroundColor: theme.primary }}
+            >
+              Solve Problem <ExternalLink size={12} />
+            </a>
+          </div>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {currentProblems.length === 0 && (
+        <div className="p-8 text-center text-gray-500 italic text-sm">
+          No problems found matching your search.
+        </div>
+      )}
+
+      {/* --- PAGINATION (Responsive) --- */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6">
-          <p className="text-sm text-gray-500">
-            Showing <span className="font-bold text-gray-800">{startIndex + 1}</span> to <span className="font-bold text-gray-800">{Math.min(startIndex + ITEMS_PER_PAGE, filteredProblems.length)}</span> of {filteredProblems.length} problems
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+          <p className="text-xs text-gray-500 hidden md:block">
+            Page <span className="font-bold">{currentPage}</span> of {totalPages}
           </p>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between w-full md:w-auto gap-2">
             <button 
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="p-2 border border-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="flex-1 md:flex-none flex items-center justify-center gap-1 p-2 md:px-3 border border-gray-200 rounded-lg text-xs font-medium disabled:opacity-50 disabled:bg-gray-50"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={14} /> Prev
             </button>
-            <span className="text-sm font-bold text-gray-700">
-              Page {currentPage} of {totalPages}
+            
+            <span className="text-xs font-bold text-gray-700 md:hidden">
+              {currentPage} / {totalPages}
             </span>
+
             <button 
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="p-2 border border-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="flex-1 md:flex-none flex items-center justify-center gap-1 p-2 md:px-3 border border-gray-200 rounded-lg text-xs font-medium disabled:opacity-50 disabled:bg-gray-50"
             >
-              <ChevronRight size={16} />
+              Next <ChevronRight size={14} />
             </button>
           </div>
         </div>

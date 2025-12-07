@@ -770,11 +770,12 @@ const MockInterview = () => {
       `}</style>
       
       <div className="flex">
+        {/* LIGHT THEME SIDEBAR MODIFICATION */}
         <motion.div 
           initial={{ x: -100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="w-80 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 p-6 flex flex-col shadow-2xl rounded-3xl m-4 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto"
+          className="w-80 bg-white p-6 flex flex-col shadow-2xl rounded-3xl m-4 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto border border-gray-100"
         >
           <motion.div 
             className="mb-8"
@@ -790,8 +791,8 @@ const MockInterview = () => {
                 <Brain className="w-7 h-7 text-white" />
               </motion.div>
               <div>
-                <h1 className="text-xl font-extrabold text-white">InterviewPro</h1>
-                <p className="text-xs text-gray-400">Master your interviews</p>
+                <h1 className="text-xl font-extrabold text-gray-800">InterviewPro</h1>
+                <p className="text-xs text-gray-500">Master your interviews</p>
               </div>
             </div>
           </motion.div>
@@ -815,14 +816,14 @@ const MockInterview = () => {
                 whileTap={{ scale: 0.98 }}
                 className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
                   activeSection === section.id
-                    ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white font-semibold shadow-xl'
-                    : 'text-gray-300 hover:bg-slate-800 hover:text-white'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold shadow-xl'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-transparent hover:border-gray-200'
                 }`}
               >
                 {activeSection === section.id && (
                   <motion.div
                     layoutId="activeSection"
-                    className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-indigo-600/20"
+                    className="absolute inset-0 bg-white/10"
                     initial={false}
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
@@ -830,18 +831,18 @@ const MockInterview = () => {
                 <motion.div 
                   className={`w-11 h-11 rounded-xl flex items-center justify-center relative z-10 ${
                     activeSection === section.id 
-                      ? `bg-gradient-to-br ${section.gradient}` 
-                      : 'bg-slate-700'
+                      ? 'bg-white/20' 
+                      : 'bg-gray-100 group-hover:bg-white border border-gray-200'
                   }`}
                   whileHover={{ rotate: 10 }}
                 >
                   {React.createElement(section.icon, { 
-                    className: `w-6 h-6 ${activeSection === section.id ? 'text-white' : 'text-gray-400 group-hover:text-white'}` 
+                    className: `w-6 h-6 ${activeSection === section.id ? 'text-white' : 'text-gray-500 group-hover:text-purple-600'}` 
                   })}
                 </motion.div>
                 <div className="flex-1 text-left relative z-10">
                   <span className="block text-sm font-semibold">{section.title}</span>
-                  <span className="text-xs text-gray-400">{section.description.split('.')[0]}</span>
+                  <span className={`text-xs ${activeSection === section.id ? 'text-purple-100' : 'text-gray-400'}`}>{section.description.split('.')[0]}</span>
                 </div>
                 {activeSection === section.id && (
                   <motion.div
@@ -849,7 +850,7 @@ const MockInterview = () => {
                     animate={{ scale: 1 }}
                     className="relative z-10"
                   >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-5 h-5 text-white" />
                   </motion.div>
                 )}
               </motion.button>
@@ -860,10 +861,10 @@ const MockInterview = () => {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.6 }}
-            className="mt-6 p-4 rounded-2xl bg-gradient-to-br from-purple-600/20 to-indigo-600/20 border border-purple-500/30"
+            className="mt-6 p-4 rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100"
           >
-            <p className="text-xs text-gray-300 flex items-center space-x-2">
-              <Trophy className="w-4 h-4 text-yellow-400" />
+            <p className="text-xs text-gray-600 flex items-center space-x-2">
+              <Trophy className="w-4 h-4 text-yellow-500" />
               <span>Practice makes perfect!</span>
             </p>
           </motion.div>

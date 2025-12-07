@@ -290,7 +290,8 @@ const Sidebar = ({ selectedTool, setSelectedTool }) => (
     initial={{ x: -100, opacity: 0 }}
     animate={{ x: 0, opacity: 1 }}
     transition={{ duration: 0.5 }}
-    className="w-72 bg-slate-900 p-6 flex flex-col shadow-2xl rounded-3xl m-4 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto"
+    // LIGHT THEME EDIT: Changed from bg-slate-900 to bg-white
+    className="w-72 bg-white p-6 flex flex-col shadow-2xl rounded-3xl m-4 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto border border-gray-100"
   >
     <motion.div 
       className="mb-8"
@@ -307,8 +308,8 @@ const Sidebar = ({ selectedTool, setSelectedTool }) => (
           <Code className="w-6 h-6 text-white" />
         </motion.div>
         <div>
-          <h1 className="text-xl font-extrabold text-white">ProjectCollab</h1>
-          <p className="text-xs text-gray-400">Master collaboration tools</p>
+          <h1 className="text-xl font-extrabold text-gray-800">ProjectCollab</h1>
+          <p className="text-xs text-gray-500">Master collaboration tools</p>
         </div>
       </div>
     </motion.div>
@@ -326,31 +327,31 @@ const Sidebar = ({ selectedTool, setSelectedTool }) => (
           whileTap={{ scale: 0.98 }}
           className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
             selectedTool === tool.id
-              ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white font-semibold shadow-xl'
-              : 'text-gray-300 hover:bg-slate-800 hover:text-white'
+              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold shadow-xl'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
           }`}
         >
           {selectedTool === tool.id && (
             <motion.div
               layoutId="activeTool"
-              className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-indigo-600/20"
+              className="absolute inset-0 bg-white/10"
               initial={false}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
             />
           )}
-          <tool.icon className={`w-5 h-5 relative z-10 ${selectedTool === tool.id ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} />
+          <tool.icon className={`w-5 h-5 relative z-10 ${selectedTool === tool.id ? 'text-white' : 'text-gray-400 group-hover:text-purple-600'}`} />
           <div className="flex-1 text-left relative z-10">
             <span className="block text-sm font-semibold">{tool.name}</span>
-            <span className="text-xs text-gray-400">{tool.category}</span>
+            <span className={`text-xs ${selectedTool === tool.id ? 'text-purple-100' : 'text-gray-400'}`}>{tool.category}</span>
           </div>
-          {selectedTool === tool.id && <ChevronRight className="w-4 h-4 relative z-10" />}
+          {selectedTool === tool.id && <ChevronRight className="w-4 h-4 relative z-10 text-white" />}
         </motion.button>
       ))}
     </div>
 
-    <div className="mt-6 p-4 bg-slate-800 rounded-xl border border-slate-700">
-      <p className="text-xs text-gray-400 mb-2">Need Help?</p>
-      <a href="#support" className="text-sm font-medium text-purple-400 hover:text-purple-300 flex items-center space-x-1">
+    <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+      <p className="text-xs text-gray-500 mb-2">Need Help?</p>
+      <a href="#support" className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center space-x-1">
         <BookOpen className="w-4 h-4" />
         <span>View Documentation</span>
       </a>

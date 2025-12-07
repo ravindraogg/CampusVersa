@@ -370,12 +370,15 @@ const RoadmapNode = ({ title, url, type = 'topic', icon, subtitle }) => {
   const isMotivation = type === 'motivation';
   const isFactor = type === 'factor';
 
-  const baseClasses = "text-center p-4 m-2 rounded-2xl shadow-xl font-bold text-sm flex flex-col items-center justify-center transition-all duration-300 cursor-pointer border-2 break-words max-w-full";
+  const baseClasses = "text-center p-4 m-2 rounded-2xl shadow-lg font-bold text-sm flex flex-col items-center justify-center transition-all duration-300 cursor-pointer border break-words max-w-full";
   const topicClasses = "bg-gradient-to-r from-yellow-400 to-orange-500 text-white hover:from-yellow-500 hover:to-orange-600 transform hover:scale-105 border-yellow-300";
-  const checkpointClasses = "bg-gradient-to-r from-gray-600 to-gray-800 text-white border-gray-400";
+  // Checkpoint: Darker for contrast, but clean
+  const checkpointClasses = "bg-gradient-to-r from-gray-700 to-gray-900 text-white border-gray-600";
   const choiceClasses = "bg-gradient-to-r from-purple-400 to-pink-500 text-white border-purple-300";
-  const motivationClasses = "bg-white text-gray-900 border-gray-300 shadow-lg flex items-center justify-center transform hover:scale-110";
-  const factorClasses = "bg-blue-50 text-blue-900 border-blue-200 text-xs p-3 rounded-xl shadow-md transform hover:scale-105";
+  // Motivation: White card with shadow
+  const motivationClasses = "bg-white text-gray-900 border-gray-200 flex items-center justify-center transform hover:scale-110";
+  // Factor: Light blue background
+  const factorClasses = "bg-blue-50 text-blue-900 border-blue-200 text-xs p-3 rounded-xl shadow-sm transform hover:scale-105";
 
   let classes = baseClasses;
   let IconComp = null;
@@ -405,7 +408,7 @@ const RoadmapNode = ({ title, url, type = 'topic', icon, subtitle }) => {
     <div className={classes} style={style}>
       {IconComp}
       {url ? <Play className="w-5 h-5 mb-1" /> : null}
-      <div className={isMotivation ? "text-base mt-1" : isFactor ? "text-xs font-medium" : "text-sm"}>{title}</div>
+      <div className={isMotivation ? "text-base mt-1 font-bold" : isFactor ? "text-xs font-medium" : "text-sm"}>{title}</div>
       {subtitle && <div className="text-xs opacity-80 mt-1 italic">{subtitle}</div>}
     </div>
   );
@@ -429,10 +432,10 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
   if (isMotivational) {
     return (
       <div className="flex flex-col items-center animate-fade-in w-full">
-        <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-white">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-gray-900">
           {flow.title}
         </h2>
-        <p className="text-gray-300 text-center mb-12 max-w-4xl px-4">{flow.description}</p>
+        <p className="text-gray-600 text-center mb-12 max-w-4xl px-4">{flow.description}</p>
         
         {/* Changed from fixed flex-row to responsive flex-col (mobile) -> flex-row (desktop) */}
         <div className="flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl gap-0 lg:gap-4">
@@ -440,8 +443,8 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
             <Fragment key={level.level || levelIndex}>
               <div className="flex flex-col items-center w-full lg:w-auto">
                 {level.description && (
-                  <div className="bg-gray-800 border border-gray-600 rounded-xl p-3 mb-3 max-w-xs text-center">
-                    <p className="text-gray-300 text-xs">{level.description}</p>
+                  <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-3 mb-3 max-w-xs text-center">
+                    <p className="text-gray-600 text-xs">{level.description}</p>
                   </div>
                 )}
                 <div className="flex flex-col items-center space-y-4 mb-4 w-full">
@@ -455,9 +458,9 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
               {levelIndex < flow.path.length - 1 && (
                 <div className="flex items-center justify-center my-2 lg:my-0">
                   {/* Vertical Line (Mobile) */}
-                  <div className="w-1 h-12 bg-gray-500 rounded-full lg:hidden"></div>
+                  <div className="w-1 h-12 bg-gray-300 rounded-full lg:hidden"></div>
                   {/* Horizontal Line (Desktop) */}
-                  <div className="hidden lg:block h-1 w-16 bg-gray-500 rounded-full"></div>
+                  <div className="hidden lg:block h-1 w-16 bg-gray-300 rounded-full"></div>
                 </div>
               )}
             </Fragment>
@@ -471,8 +474,8 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
   const renderLevel = (level, levelIndex) => (
     <div key={level.level || levelIndex} className="flex flex-col items-center mb-8 w-full">
       {level.description && (
-        <div className={`p-4 rounded-xl mb-4 text-center max-w-2xl ${isMotivational ? 'bg-green-900/30 border-green-500' : 'bg-blue-900/20 border-blue-500'}`}>
-          <p className={`${isMotivational ? 'text-green-200' : 'text-blue-200'}`}>{level.description}</p>
+        <div className={`p-4 rounded-xl mb-4 text-center max-w-2xl border ${isMotivational ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+          <p className={`${isMotivational ? 'text-green-800' : 'text-blue-800'}`}>{level.description}</p>
         </div>
       )}
       <div className="flex flex-wrap justify-center items-center gap-4 w-full">
@@ -485,8 +488,8 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
 
   return (
     <div className="flex flex-col items-center animate-fade-in w-full">
-      <h2 className="text-3xl font-bold text-center mb-2 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">{flow.title}</h2>
-      <p className="text-gray-400 text-center mb-10 max-w-2xl px-4">{flow.description}</p>
+      <h2 className="text-3xl font-bold text-center mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{flow.title}</h2>
+      <p className="text-gray-600 text-center mb-10 max-w-2xl px-4">{flow.description}</p>
       
       <button 
         onClick={toggleView}
@@ -499,11 +502,11 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
         <>
           {renderLevel(flow.path[currentLevel], currentLevel)}
           <div className="flex gap-4 mb-8">
-            <button onClick={goPrev} disabled={currentLevel === 0} className="px-6 py-2 bg-gray-700 text-white rounded-xl disabled:opacity-50 flex items-center gap-2 hover:bg-gray-600">
+            <button onClick={goPrev} disabled={currentLevel === 0} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-xl disabled:opacity-50 flex items-center gap-2 hover:bg-gray-300 shadow-sm transition-colors">
               <ArrowLeft size={16} /> Prev
             </button>
-            <span className="text-gray-300 self-center">Step {currentLevel + 1} / {maxLevel + 1}</span>
-            <button onClick={goNext} disabled={currentLevel === maxLevel} className="px-6 py-2 bg-blue-600 text-white rounded-xl disabled:opacity-50 flex items-center gap-2 hover:bg-blue-700">
+            <span className="text-gray-600 self-center font-medium">Step {currentLevel + 1} / {maxLevel + 1}</span>
+            <button onClick={goNext} disabled={currentLevel === maxLevel} className="px-6 py-2 bg-blue-600 text-white rounded-xl disabled:opacity-50 flex items-center gap-2 hover:bg-blue-700 shadow-lg transition-colors">
               Next <ArrowRight size={16} />
             </button>
           </div>
@@ -512,7 +515,7 @@ const FlowVisualization = ({ flow, isMotivational = false }) => {
         <div className="flex flex-col items-center w-full space-y-4">
           {flow.path.map((level, levelIndex) => (
             <Fragment key={level.level || levelIndex}>
-              {levelIndex > 0 && <div className="h-16 w-1 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>}
+              {levelIndex > 0 && <div className="h-16 w-1 bg-gradient-to-b from-blue-300 to-purple-300 rounded-full"></div>}
               {renderLevel(level, levelIndex)}
             </Fragment>
           ))}
@@ -539,8 +542,8 @@ const SearchScreen = ({ onSelectRoadmap, onSearch, searchResults }) => {
   return (
     <div className="text-center animate-fade-in">
       <header className="mb-12 px-4">
-        <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Developer Roadmaps 2025</h1>
-        <p className="text-lg md:text-xl text-gray-300">Student-friendly guides to tech mastery. Easy steps, real projects!</p>
+        <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Developer Roadmaps 2025</h1>
+        <p className="text-lg md:text-xl text-gray-600">Student-friendly guides to tech mastery. Easy steps, real projects!</p>
       </header>
       <div className="relative max-w-xl mx-auto mb-8 px-4">
         <Search className="absolute left-8 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
@@ -548,7 +551,7 @@ const SearchScreen = ({ onSelectRoadmap, onSearch, searchResults }) => {
           type="text"
           placeholder="Search roadmap (e.g., React, DevOps, Blockchain)..."
           onChange={(e) => handleSearch(e.target.value)}
-          className="bg-gray-800 border-2 border-gray-700 rounded-xl pl-12 pr-4 py-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-lg shadow-lg"
+          className="bg-white border-2 border-gray-200 rounded-xl pl-12 pr-4 py-4 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-lg shadow-lg"
         />
       </div>
       {searchResults.length > 1 && (
@@ -557,7 +560,7 @@ const SearchScreen = ({ onSelectRoadmap, onSearch, searchResults }) => {
             <button
               key={key}
               onClick={() => onSelectRoadmap(key)}
-              className="px-8 py-4 rounded-xl font-semibold transition-all bg-gradient-to-r from-gray-700 to-gray-600 text-gray-200 hover:from-blue-600 hover:to-purple-600 hover:text-white transform hover:scale-105 shadow-lg"
+              className="px-8 py-4 rounded-xl font-semibold transition-all bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-blue-300 hover:text-blue-600 transform hover:scale-105 shadow-md"
             >
               {roadmapData[key].title}
             </button>
@@ -589,7 +592,7 @@ export default function Roadmap() {
   const currentRoadmap = selectedRoadmapKey ? roadmapData[selectedRoadmapKey] : null;
 
   return (
-    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white min-h-screen font-sans p-2 md:p-8 overflow-x-hidden">
+    <div className="bg-gradient-to-br from-blue-50 via-white to-gray-100 text-gray-900 min-h-screen font-sans p-2 md:p-8 overflow-x-hidden">
       <style>{`
         @keyframes fade-in {
             from { opacity: 0; transform: translateY(20px); }
@@ -602,18 +605,18 @@ export default function Roadmap() {
           <div className="relative w-full">
             <button 
               onClick={() => setSelectedRoadmapKey(null)} 
-              className="absolute -top-6 left-0 flex items-center gap-2 bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg z-10"
+              className="absolute -top-6 left-0 flex items-center gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-semibold py-3 px-6 rounded-xl transition-all shadow-md z-10"
             >
               <ArrowLeft size={20} /> Back to Home
             </button>
-            <div className="bg-gray-800/50 backdrop-blur-sm p-4 md:p-8 rounded-2xl shadow-2xl mt-12 border border-gray-700 w-full overflow-hidden">
+            <div className="bg-white/80 backdrop-blur-md p-4 md:p-8 rounded-2xl shadow-2xl mt-12 border border-white/50 w-full overflow-hidden">
               <FlowVisualization flow={currentRoadmap} />
             </div>
           </div>
         ) : (
           <SearchScreen onSelectRoadmap={setSelectedRoadmapKey} onSearch={setSearchTerm} searchResults={searchResults} />
         )}
-        <footer className="text-center text-gray-400 mt-16 text-sm border-t border-gray-700 pt-8 px-4">
+        <footer className="text-center text-gray-500 mt-16 text-sm border-t border-gray-200 pt-8 px-4">
           <p>🌟 Click yellow boxes for 2025 YouTube courses. Step-by-step for easy learning. Build, practice, succeed!</p>
           <p>Created for students | Educational use only</p>
         </footer>

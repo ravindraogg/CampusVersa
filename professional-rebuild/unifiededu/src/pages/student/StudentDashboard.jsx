@@ -20,7 +20,7 @@ import {
   Mic,
   Code2,
   Users,
-  Send, 
+  Send,
   Table as TableIcon,
   Menu,
   X,
@@ -32,15 +32,15 @@ import StudentAttendanceSection from "./StudentAttendanceSection";
 import StudentPerformanceSection from "./StudentPerformanceSection";
 import StudentProfileSection from "./StudentProfileSection";
 import StudentTimetableSection from "./StudentTimetableSection";
-import StudentCoursesSection from "./StudentCoursesSection"; 
+import StudentCoursesSection from "./StudentCoursesSection";
 
 // --- FEATURE COMPONENTS ---
-import ResumeBuilder from "./resume"; 
+import ResumeBuilder from "./resume";
 import MockInterview from "./mockinterview";
-import ProjectCollab from "./projectcolab"; 
-import FreelanceHub from "./freelance"; 
-import ProblemSolvingArena from "./problemsolve"; 
-import Roadmap from "./roadmap"; 
+import ProjectCollab from "./projectcolab";
+import FreelanceHub from "./freelance";
+import ProblemSolvingArena from "./problemsolve";
+import Roadmap from "./roadmap";
 
 const API_URL = import.meta.env.VITE_BACK_URI;
 
@@ -58,11 +58,11 @@ const DEFAULT_THEME = {
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "attendance", label: "Attendance", icon: CalendarDays },
-  { id: "timetable", label: "Timetable", icon: TableIcon }, 
+  { id: "timetable", label: "Timetable", icon: TableIcon },
   { id: "courses", label: "Courses", icon: BookOpen },
   { id: "performance", label: "Performance", icon: TrendingUp },
-  { id: "career", label: "Career & Skills", icon: Briefcase }, 
-  { id: "freelance", label: "Freelance Hub", icon: Send }, 
+  { id: "career", label: "Career & Skills", icon: Briefcase },
+  { id: "freelance", label: "Jobs & Hubs", icon: Send },
 ];
 
 // --- HELPER: VTU Grading Logic (Client Side) ---
@@ -135,7 +135,7 @@ const CareerHub = ({ theme }) => {
 
     return (
       <div className="animate-in fade-in slide-in-from-right-4 duration-300 h-full flex flex-col">
-        <button 
+        <button
           onClick={() => setActiveFeature(null)}
           className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors w-fit"
         >
@@ -157,7 +157,7 @@ const CareerHub = ({ theme }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {FEATURES.map((feature) => (
-          <div 
+          <div
             key={feature.id}
             onClick={() => setActiveFeature(feature.id)}
             className="group bg-white rounded-2xl p-5 md:p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all cursor-pointer flex flex-col justify-between min-h-[180px]"
@@ -173,7 +173,7 @@ const CareerHub = ({ theme }) => {
                 {feature.description}
               </p>
             </div>
-            
+
             <div className="mt-4 md:mt-6 pt-3 md:pt-4 border-t border-gray-50 flex items-center text-xs md:text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
               {feature.buttonText} <ChevronRight size={16} className="ml-1" />
             </div>
@@ -217,7 +217,7 @@ const authFetch = async (path, opts = {}) => {
   const token = localStorage.getItem("studentToken");
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  
+
   const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
   if (res.status === 401 || res.status === 403) {
     localStorage.removeItem("studentToken");
@@ -227,8 +227,39 @@ const authFetch = async (path, opts = {}) => {
   return res;
 };
 
-// --- UPDATED NAVIGATION & ACTIONS ---
-// Merges Nav, Notifications, and Settings logic for Mobile
+// --- DESKTOP NAV COMPONENT (CENTERED) ---
+const DesktopNav = ({ activeTab, setActiveTab, theme }) => {
+  const getButtonStyle = (isActive) => ({
+    backgroundColor: isActive
+      ? (theme.textOnPrimary === "#FFFFFF" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)")
+      : "transparent",
+    color: theme.textOnPrimary,
+    opacity: isActive ? 1 : 0.8,
+  });
+
+  return (
+    <div
+      className="hidden md:flex h-full rounded-[2rem] shadow-sm items-center px-2 transition-all duration-300"
+      style={{ backgroundColor: theme.primary }}
+    >
+      <div className="flex items-center gap-1 p-1">
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`px-4 py-2.5 rounded-[2rem] flex items-center gap-2 transition-all duration-300 whitespace-nowrap text-sm font-medium hover:bg-white/10`}
+            style={getButtonStyle(activeTab === item.id)}
+          >
+            <item.icon className="w-4 h-4" />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- HEADER ACTIONS (RIGHT SIDE) ---
 const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobileMenu, setOpenMobileMenu }) => {
   const menuRef = useRef(null);
 
@@ -242,76 +273,73 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Helper to determine active button styles based on theme
-  const getButtonStyle = (isActive) => ({
-    backgroundColor: isActive
-      ? (theme.textOnPrimary === "#FFFFFF" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)")
-      : "transparent",
-    color: theme.textOnPrimary,
-    opacity: isActive ? 1 : 0.8,
-  });
-
   return (
     <div className="flex items-center gap-3 h-full">
-      
-      {/* --- DESKTOP VIEW --- */}
+
+      {/* --- DESKTOP VIEW ACTIONS --- */}
       <div className="hidden md:flex items-center gap-3 h-full">
-        <div
-          className="h-full rounded-[2rem] shadow-sm flex items-center px-2 transition-all duration-300"
-          style={{ backgroundColor: theme.primary }}
-        >
-          <div className="flex items-center gap-1 p-1">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`px-4 py-2.5 rounded-[2rem] flex items-center gap-2 transition-all duration-300 whitespace-nowrap text-sm font-medium hover:bg-white/10`}
-                style={getButtonStyle(activeTab === item.id)}
-              >
-                <item.icon className="w-4 h-4" />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </div>
+
+        {/* Notification & Settings Group (The "Notification Card") */}
+        <div className="h-full px-2 rounded-[2rem] shadow-sm flex items-center justify-center gap-1 bg-white border border-gray-100 hover:bg-gray-50 transition-colors">
+          {/* Bell Button */}
+          <button className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+            <Bell className="w-5 h-5" />
+          </button>
+
+          <div className="w-px h-6 bg-gray-200 mx-1"></div>
+
+          {/* Settings Button */}
+          <button
+            onClick={() => setActiveTab('settings')}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
         </div>
 
-        <button className="h-full aspect-square rounded-[2rem] shadow-sm flex items-center justify-center bg-white border border-gray-100 hover:bg-gray-50">
-           <Bell className="w-5 h-5 text-gray-600" />
-        </button>
-        
-        <button 
-           onClick={handleLogout} 
-           className="h-full px-6 rounded-[2rem] shadow-sm flex items-center justify-center gap-2 bg-white border border-gray-100 hover:bg-red-50 text-gray-700 font-bold text-sm group"
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="h-full px-6 rounded-[2rem] shadow-sm flex items-center justify-center gap-2 bg-white border border-gray-100 hover:bg-red-50 text-gray-700 font-bold text-sm group"
         >
-           <LogOut className="w-5 h-5 group-hover:text-red-600 transition-colors" /> 
-           <span className="group-hover:text-red-600 transition-colors">Logout</span>
+          <LogOut className="w-5 h-5 group-hover:text-red-600 transition-colors" />
+          <span className="group-hover:text-red-600 transition-colors">Logout</span>
         </button>
       </div>
 
-      {/* --- MOBILE VIEW --- */}
+      {/* --- MOBILE VIEW ACTIONS --- */}
       <div className="md:hidden flex items-center gap-2 relative" ref={menuRef}>
-         <div className="h-10 rounded-2xl flex items-center p-1 shadow-sm border border-gray-100 bg-white">
-            {/* 1. Notification Icon */}
-            <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500">
-               <Bell className="w-4 h-4" />
-            </button>
-            
-            <div className="w-px h-4 bg-gray-200 mx-1"></div>
+        <div className="h-12 rounded-2xl flex items-center p-1.5 shadow-sm border border-gray-100 bg-white">
+          {/* 1. Notification Icon */}
+          <button className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500">
+            <Bell className="w-5 h-5" />
+          </button>
 
-            {/* 2. Hamburger Trigger */}
-            <button
-               onClick={() => setOpenMobileMenu(!openMobileMenu)}
-               className="h-8 px-3 rounded-xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-sm transition-transform active:scale-95"
-               style={{ backgroundColor: theme.primary }}
-            >
-               {openMobileMenu ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-            </button>
-         </div>
+          {/* 2. Settings Icon (Added inside the card) */}
+          <button
+            onClick={() => setActiveTab('settings')}
+            className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
 
-         {/* Mobile Dropdown Menu (Styled like Laptop Nav) */}
-         {openMobileMenu && (
-          <div 
-            className="absolute top-12 right-0 z-50 w-64 rounded-2xl shadow-xl p-2 animate-in fade-in slide-in-from-top-2 origin-top-right backdrop-blur-sm"
+          <div className="w-px h-5 bg-gray-200 mx-1"></div>
+
+          {/* 3. Hamburger Trigger */}
+          <button
+            onClick={() => setOpenMobileMenu(!openMobileMenu)}
+            className="h-9 px-3 rounded-xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-sm transition-transform active:scale-95"
+            style={{ backgroundColor: theme.primary }}
+          >
+            {openMobileMenu ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Mobile Dropdown Menu */}
+        {openMobileMenu && (
+          <div
+            className="absolute top-14 right-0 z-50 w-64 rounded-2xl shadow-xl p-2 animate-in fade-in slide-in-from-top-2 origin-top-right backdrop-blur-sm"
             style={{ backgroundColor: theme.primary }}
           >
             <div className="flex flex-col gap-1">
@@ -319,8 +347,7 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
                 <span>Navigation</span>
                 <span className="text-[9px] normal-case font-normal border px-2 py-0.5 rounded opacity-60" style={{ borderColor: theme.textOnPrimary }}>Close</span>
               </div>
-              
-              {/* Main Nav Items */}
+
               {NAV_ITEMS.map((item) => (
                 <button
                   key={item.id}
@@ -328,8 +355,8 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
                     setActiveTab(item.id);
                     setOpenMobileMenu(false);
                   }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10`}
-                  style={getButtonStyle(activeTab === item.id)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10"
+                  style={{ color: theme.textOnPrimary, opacity: activeTab === item.id ? 1 : 0.8 }}
                 >
                   <item.icon className="w-4 h-4" />
                   {item.label}
@@ -338,27 +365,13 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
 
               <div className="h-px opacity-20 my-1" style={{ backgroundColor: theme.textOnPrimary }}></div>
 
-              {/* Settings Item */}
               <button
-                  onClick={() => {
-                    setActiveTab("settings");
-                    setOpenMobileMenu(false);
-                  }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10`}
-                  style={getButtonStyle(activeTab === "settings")}
-                >
-                  <Settings className="w-4 h-4" />
-                  Settings
-              </button>
-
-              {/* Logout Item */}
-              <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10 opacity-80 hover:opacity-100"
-                  style={{ color: theme.textOnPrimary }}
-                >
-                  <LogOut className="w-4 h-4" />
-                  Logout
+                onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10 opacity-80 hover:opacity-100"
+                style={{ color: theme.textOnPrimary }}
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
               </button>
             </div>
           </div>
@@ -380,15 +393,14 @@ const StudentDashboard = () => {
 
   // Data States
   const [performanceChartData, setPerformanceChartData] = useState([]);
-  const [recentAttendance, setRecentAttendance] = useState([]); 
-  const [subjectWiseData, setSubjectWiseData] = useState([]); 
-  const [availableTimetables, setAvailableTimetables] = useState([]); 
+  const [recentAttendance, setRecentAttendance] = useState([]);
+  const [subjectWiseData, setSubjectWiseData] = useState([]);
+  const [availableTimetables, setAvailableTimetables] = useState([]);
 
   // --- DATA LOADING ---
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch Basic Profile
       const res = await authFetch("/student/me");
       const data = await res.json();
       let currentStudent = data.student;
@@ -403,13 +415,11 @@ const StudentDashboard = () => {
         }));
       }
 
-      // 2. Fetch LIVE Attendance & Use it to Calculate GPA
       try {
         const attRes = await authFetch("/student/attendance/full");
         if (attRes.ok) {
           const attFullData = await attRes.json();
-          
-          // A. Attendance Logic
+
           let totalClasses = 0;
           let totalPresent = 0;
           const liveSubjects = attFullData.map(record => {
@@ -423,50 +433,49 @@ const StudentDashboard = () => {
           setSubjectWiseData(liveSubjects);
 
           const liveOverall = totalClasses > 0 ? (totalPresent / totalClasses) * 100 : 0;
-          
-          // B. CLIENT-SIDE GPA CALCULATION
+
           let calculatedResults = [];
           let sumSiCi = 0;
           let sumCiTotal = 0;
 
           const creditMap = {};
           attFullData.forEach(r => {
-            if(r.courseId && r.courseId._id) {
-                creditMap[r.courseId._id] = r.courseId.credits || 3; 
+            if (r.courseId && r.courseId._id) {
+              creditMap[r.courseId._id] = r.courseId.credits || 3;
             }
           });
 
           if (currentStudent.courseEnrollments) {
             currentStudent.courseEnrollments.forEach(semData => {
-                let semCreditsTotal = 0;
-                let semProduct = 0;
+              let semCreditsTotal = 0;
+              let semProduct = 0;
 
-                semData.subjects.forEach(sub => {
-                    const credits = creditMap[sub.courseId] || 3; 
-                    let finalMarks = sub.marksObtained || 0;
-                    if(finalMarks === 0 && sub.marksDetails) {
-                        const m = sub.marksDetails;
-                        const internal = (m.test1 + m.test2 + m.test3 + m.assignment) / 4;
-                        const external = m.external / 2; 
-                        finalMarks = internal + external;
-                    }
-
-                    const gp = getGradePoint(finalMarks);
-                    if(gp > 0 || finalMarks >= 0) { 
-                        semCreditsTotal += credits;
-                        semProduct += (credits * gp);
-                    }
-                });
-
-                if (semCreditsTotal > 0) {
-                    const sgpa = semProduct / semCreditsTotal;
-                    calculatedResults.push({
-                        semester: semData.semester,
-                        sgpa: parseFloat(sgpa.toFixed(2))
-                    });
-                    sumSiCi += (sgpa * semCreditsTotal);
-                    sumCiTotal += semCreditsTotal;
+              semData.subjects.forEach(sub => {
+                const credits = creditMap[sub.courseId] || 3;
+                let finalMarks = sub.marksObtained || 0;
+                if (finalMarks === 0 && sub.marksDetails) {
+                  const m = sub.marksDetails;
+                  const internal = (m.test1 + m.test2 + m.test3 + m.assignment) / 4;
+                  const external = m.external / 2;
+                  finalMarks = internal + external;
                 }
+
+                const gp = getGradePoint(finalMarks);
+                if (gp > 0 || finalMarks >= 0) {
+                  semCreditsTotal += credits;
+                  semProduct += (credits * gp);
+                }
+              });
+
+              if (semCreditsTotal > 0) {
+                const sgpa = semProduct / semCreditsTotal;
+                calculatedResults.push({
+                  semester: semData.semester,
+                  sgpa: parseFloat(sgpa.toFixed(2))
+                });
+                sumSiCi += (sgpa * semCreditsTotal);
+                sumCiTotal += semCreditsTotal;
+              }
             });
           }
 
@@ -475,30 +484,28 @@ const StudentDashboard = () => {
           currentStudent = {
             ...currentStudent,
             attendance: {
-                ...currentStudent.attendance,
-                overallPercentage: liveOverall
+              ...currentStudent.attendance,
+              overallPercentage: liveOverall
             },
             academic: {
-                ...currentStudent.academic,
-                cgpa: calculatedCGPA,
-                creditsEarned: sumCiTotal,
-                semesterResults: calculatedResults 
+              ...currentStudent.academic,
+              cgpa: calculatedCGPA,
+              creditsEarned: sumCiTotal,
+              semesterResults: calculatedResults
             }
           };
 
           setStudent(currentStudent);
 
-          // C. Update Charts
           const sortedResults = [...calculatedResults].sort((a, b) => Number(a.semester) - Number(b.semester));
           const perfData = sortedResults.map(sem => ({
             label: `Sem ${sem.semester}`,
-            value: (sem.sgpa / 10) * 100, 
+            value: (sem.sgpa / 10) * 100,
             tooltip: `SGPA: ${sem.sgpa}`
           }));
           setPerformanceChartData(perfData);
 
-          // D. Recent Activity
-          const allHistory = attFullData.flatMap(record => 
+          const allHistory = attFullData.flatMap(record =>
             (record.history || []).map(h => ({
               ...h,
               courseName: record.courseId?.name || "Unknown Course",
@@ -510,7 +517,6 @@ const StudentDashboard = () => {
         }
       } catch (e) { console.warn("Attendance/GPA fetch error", e); }
 
-      // 4. Timetables
       try {
         const ttRes = await authFetch("/student/timetable");
         if (ttRes.ok) {
@@ -532,9 +538,9 @@ const StudentDashboard = () => {
       if (institute.logo) {
         let link = document.querySelector("link[rel~='icon']");
         if (!link) {
-            link = document.createElement("link");
-            link.rel = "icon";
-            document.getElementsByTagName("head")[0].appendChild(link);
+          link = document.createElement("link");
+          link.rel = "icon";
+          document.getElementsByTagName("head")[0].appendChild(link);
         }
         link.href = institute.logo;
       }
@@ -542,9 +548,9 @@ const StudentDashboard = () => {
   }, [student, institute]);
 
   useEffect(() => { loadData(); }, [loadData]);
-  
+
   const handleLogout = () => {
-    setIsMobileMenuOpen(false); 
+    setIsMobileMenuOpen(false);
     setShowLogoutModal(true);
   };
   const confirmLogout = () => {
@@ -552,266 +558,26 @@ const StudentDashboard = () => {
     window.location.href = "/student/auth";
   };
 
-  // --- RENDER DASHBOARD OVERVIEW ---
-  const renderDashboardOverview = () => (
-    <div className="animate-in fade-in duration-500 grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6 pb-20 md:pb-10">
-      
-      {/* 1. Welcome Header */}
-      <div className="lg:col-span-4 bg-gradient-to-r from-gray-50 to-white p-5 md:p-6 rounded-[2rem] border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm relative overflow-hidden gap-4">
-        <div className="relative z-10">
-          <h2 className="text-xl md:text-2xl font-bold text-gray-800">
-            Welcome back, {student?.name?.split(" ")[0]}!
-          </h2>
-          <p className="text-gray-500 text-xs md:text-sm mt-1 flex items-center gap-2">
-             <Sparkles className="w-3 h-3 md:w-4 md:h-4 text-yellow-500" />
-             AI Prediction: <span className="font-bold text-green-600">Stable Growth</span>.
-          </p>
-        </div>
-        {student?.attendance?.overallPercentage < 75 && (
-          <div className="flex flex-col gap-2 relative z-10 w-full md:w-auto">
-             <div className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl border border-red-100 text-xs font-bold shadow-sm">
-                <AlertCircle className="w-4 h-4" /> 
-                <span>Low Attendance ({Number(student.attendance.overallPercentage || 0).toFixed(0)}%)</span>
-             </div>
-          </div>
-        )}
-      </div>
-
-      {/* 2. Left Column (Main Stats & Charts) - Span 3 */}
-      <div className="lg:col-span-3 flex flex-col gap-4 md:gap-6 order-2 md:order-1">
-         
-         {/* Quick Stats Row */}
-         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            
-            {/* CGPA CARD */}
-            <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                   <div className="p-2 bg-green-50 rounded-full text-green-600"><GraduationCap className="w-4 h-4 md:w-5 md:h-5"/></div>
-                   <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">CGPA</span>
-                </div>
-                <div className="mt-2">
-                   <h3 className="text-xl md:text-2xl font-black text-gray-800">{student?.academic?.cgpa || "0.00"}</h3>
-                   <p className="text-[9px] md:text-[10px] text-green-600 font-bold">Cumulative</p>
-                </div>
-            </div>
-
-            {/* Attendance Card */}
-            <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                   <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-4 h-4 md:w-5 md:h-5"/></div>
-                   <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Attendance</span>
-                </div>
-                <div className="mt-2">
-                   <h3 className="text-xl md:text-2xl font-black text-gray-800">{Number(student?.attendance?.overallPercentage || 0).toFixed(2)}%</h3>
-                   <p className="text-[9px] md:text-[10px] text-gray-400">Overall Avg</p>
-                </div>
-            </div>
-
-            {/* Credits Card */}
-            <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                   <div className="p-2 bg-orange-50 rounded-full text-orange-600"><ListTodo className="w-4 h-4 md:w-5 md:h-5"/></div>
-                   <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Credits</span>
-                </div>
-                <div className="mt-2">
-                   <h3 className="text-xl md:text-2xl font-black text-gray-800">{student?.academic?.creditsEarned || 0}</h3>
-                   <p className="text-[9px] md:text-[10px] text-orange-500 font-bold">Earned</p>
-                </div>
-            </div>
-
-            {/* Courses Card */}
-            <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                   <div className="p-2 bg-purple-50 rounded-full text-purple-600"><BookOpen className="w-4 h-4 md:w-5 md:h-5"/></div>
-                   <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Courses</span>
-                </div>
-                <div className="mt-2">
-                   <h3 className="text-xl md:text-2xl font-black text-gray-800">
-                     {student?.courseEnrollments?.find(s => s.semester === student.semester)?.subjects?.length || 0}
-                   </h3>
-                   <p className="text-[9px] md:text-[10px] text-gray-400">Active</p>
-                </div>
-            </div>
-         </div>
-         
-         {/* Charts Section */}
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-            
-            {/* SUBJECT ATTENDANCE CARD */}
-            <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px] md:min-h-[300px]">
-               <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-bold text-gray-700 text-sm md:text-base flex items-center gap-2">
-                     <CalendarDays className="w-4 h-4 text-gray-400" /> Subject Attendance
-                  </h4>
-                  <span className={`text-[10px] md:text-xs px-2 py-1 rounded font-bold ${
-                    student?.attendance?.overallPercentage  >= 75 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
-                  }`}>
-                    {student?.attendance?.overallPercentage >= 75 ? "Good" : "Low"}
-                  </span>
-               </div>
-               
-               {/* List View */}
-               <div className="space-y-4 overflow-y-auto flex-1 custom-scrollbar pr-2">
-                  {subjectWiseData.length > 0 ? (
-                    subjectWiseData.map((subj, idx) => (
-                      <div key={idx} className="flex flex-col gap-1 group">
-                        <div className="flex justify-between items-center">
-                           <p className="text-xs font-bold text-gray-700 truncate w-3/4" title={subj.subjectName}>
-                              {subj.subjectName}
-                           </p>
-                           <span className={`text-xs font-bold ${subj.percentage >= 75 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {Number(subj.percentage || 0).toFixed(2)}%
-                           </span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                           <div 
-                             className={`h-1.5 rounded-full transition-all duration-500 ${subj.percentage >= 75 ? 'bg-emerald-500' : 'bg-red-500'}`} 
-                             style={{ width: `${subj.percentage}%` }}
-                           ></div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400 text-xs">No subjects found</div>
-                  )}
-               </div>
-            </div>
-
-            {/* Performance Trend Chart */}
-            <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px] md:min-h-[300px]">
-               <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-bold text-gray-700 text-sm md:text-base flex items-center gap-2">
-                     <TrendingUp className="w-4 h-4 text-gray-400" /> Academic Trend
-                  </h4>
-                  <span className="text-[10px] md:text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">SGPA/Sem</span>
-               </div>
-               <SimpleBarChart data={performanceChartData} color="#6366f1" height="h-40 md:h-48" />
-            </div>
-         </div>
-      </div>
-
-      {/* 3. Right Column (Sidebar) - Span 1 */}
-      <div className="lg:col-span-1 flex flex-col gap-4 order-1 md:order-2">
-         
-         {/* Profile Card */}
-         <div 
-            className="bg-white p-3 md:p-4 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() => setActiveTab("settings")}
-         >
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gray-100 flex items-center justify-center border-2 overflow-hidden shrink-0" style={{ borderColor: theme.primary }}>
-               {student?.profilePic ? (
-                  <img src={student.profilePic} alt="Profile" className="w-full h-full object-cover" />
-               ) : (
-                  <span className="text-base md:text-lg font-bold text-gray-400">{student?.name?.charAt(0)}</span>
-               )}
-            </div>
-            <div className="overflow-hidden">
-               <h3 className="font-bold text-gray-800 truncate text-xs md:text-sm">{student?.name}</h3>
-               <p className="text-[10px] md:text-xs text-gray-500 truncate">{student?.SID || "Student"}</p>
-            </div>
-         </div>
-
-         {/* Schedule */}
-         <div className="bg-orange-50 p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-orange-100 relative overflow-hidden">
-            <div className="absolute right-[-20px] top-[-20px] opacity-10">
-               <CalendarDays className="w-20 h-20 md:w-24 md:h-24 text-orange-600" />
-            </div>
-            <p className="text-orange-600 text-[10px] md:text-xs font-bold uppercase mb-1 relative z-10">Today's Schedule</p>
-            <h3 className="text-3xl md:text-4xl font-extrabold text-orange-900 relative z-10">
-               {student?.todayClasses || 0} <span className="text-base md:text-lg ml-1 font-bold opacity-60">Classes</span>
-            </h3>
-            <p className="text-[10px] md:text-xs text-orange-700 mt-2 relative z-10 font-medium cursor-pointer hover:underline" onClick={() => setActiveTab('timetable')}>
-               Check Timetable
-            </p>
-         </div>
-
-         {/* Recent Activity */}
-         <div className="bg-white p-4 md:p-5 rounded-[2rem] border border-gray-100 shadow-sm hidden md:block">
-            <h4 className="font-bold text-gray-800 text-xs md:text-sm mb-3 flex items-center gap-2">
-               <History className="w-4 h-4 text-gray-400" /> Recent Attendance
-            </h4>
-            <div className="space-y-3">
-               {recentAttendance.length > 0 ? (
-                  recentAttendance.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
-                       <div className="overflow-hidden">
-                          <p className="text-xs font-bold text-gray-700 truncate w-32">{item.courseName}</p>
-                          <p className="text-[10px] text-gray-400">
-                             {new Date(item.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
-                          </p>
-                       </div>
-                       <div className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-bold ${
-                          item.value === 1 ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"
-                       }`}>
-                          {item.value === 1 ? "P" : "A"}
-                       </div>
-                    </div>
-                  ))
-               ) : (
-                  <p className="text-xs text-gray-400 text-center py-2">No recent records found.</p>
-               )}
-            </div>
-         </div>
-      </div>
-      
-      {showLogoutModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl p-6 md:p-8 max-w-sm w-full relative overflow-hidden">
-            {/* Background decoration */}
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-400 to-orange-500"></div>
-            
-            <div className="flex flex-col items-center text-center gap-5">
-              <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center rotate-3">
-                <LogOut className="w-7 h-7 md:w-8 md:h-8 ml-1" />
-              </div>
-              <div>
-                <h3 className="text-lg md:text-xl font-black text-gray-800">See you soon!</h3>
-                <p className="text-xs md:text-sm text-gray-500 mt-2 font-medium">
-                  Are you sure you want to log out?
-                </p>
-              </div>
-              <div className="flex gap-3 w-full mt-2">
-                <button
-                  onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 px-4 py-2.5 md:py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs md:text-sm hover:bg-gray-200 transition-colors"
-                >
-                  Stay
-                </button>
-                <button
-                  onClick={confirmLogout}
-                  className="flex-1 px-4 py-2.5 md:py-3 rounded-xl bg-gray-900 text-white font-bold text-xs md:text-sm hover:bg-black transition-colors shadow-xl shadow-gray-200"
-                >
-                  Logout
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  // --- CONTENT SWITCHER ---
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard": return renderDashboardOverview();
       case "attendance": return <StudentAttendanceSection student={student} />;
-      case "timetable": 
+      case "timetable":
         return (
-          <StudentTimetableSection 
-             timetables={availableTimetables} 
-             student={student} 
-             theme={theme} 
+          <StudentTimetableSection
+            timetables={availableTimetables}
+            student={student}
+            theme={theme}
           />
         );
-      case "courses": 
+      case "courses":
         return <StudentCoursesSection student={student} theme={theme} />;
       case "performance": return <StudentPerformanceSection student={student} />;
       case "career": return <CareerHub theme={theme} />;
-      case "freelance": 
+      case "freelance":
         return (
           <div className="animate-in fade-in h-full">
-             <FreelanceHub theme={theme} />
+            <FreelanceHub theme={theme} />
           </div>
         );
       case "settings": return <div className="animate-in fade-in max-w-4xl mx-auto"><StudentProfileSection student={student} institute={institute} theme={theme} refreshProfile={loadData} /></div>;
@@ -819,34 +585,240 @@ const StudentDashboard = () => {
     }
   };
 
-  if (loading) return <div className="h-[100dvh] flex items-center justify-center bg-[#F8F9FC]"><Loader2 className="w-10 h-10 animate-spin" style={{color: theme.primary}}/></div>;
+  // --- RENDER DASHBOARD OVERVIEW ---
+  const renderDashboardOverview = () => (
+    <div className="animate-in fade-in duration-500 grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6 pb-20 md:pb-10">
 
-  return (
-    <div className="h-[100dvh] w-screen bg-[#F8F9FC] p-3 md:p-6 flex flex-col gap-4 md:gap-6 overflow-hidden font-sans antialiased relative">
-      
-      {/* HEADER SECTION: Responsive Layout */}
-      <div className="shrink-0 flex items-center justify-between gap-4 h-14 md:h-18 relative z-50">
-        
-        {/* Left: Logo (Smaller on Mobile, but VISIBLE) */}
-        <div className="h-full px-3 md:px-6 rounded-2xl md:rounded-[2rem] flex items-center gap-2 md:gap-4 shadow-lg shadow-gray-200/50 min-w-fit" style={{ backgroundColor: theme.primary, color: theme.white }}>
-          <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-white/20 flex items-center justify-center p-1 border-2 border-white/30 shrink-0">
-            {institute?.logo ? <img src={institute.logo} alt="Logo" className="w-full h-full object-contain p-1" /> : <GraduationCap className="w-4 h-4 md:w-6 md:h-6 text-white" />}
+      {/* 1. Welcome Header */}
+      <div className="lg:col-span-4 bg-gradient-to-r from-gray-50 to-white p-5 md:p-6 rounded-[2rem] border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm relative overflow-hidden gap-4">
+        <div className="relative z-10">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800">
+            Welcome back, {student?.name?.split(" ")[0]}!
+          </h2>
+          <p className="text-gray-500 text-xs md:text-sm mt-1 flex items-center gap-2">
+            <Sparkles className="w-3 h-3 md:w-4 md:h-4 text-yellow-500" />
+            AI Prediction: <span className="font-bold text-green-600">Stable Growth</span>.
+          </p>
+        </div>
+        {student?.attendance?.overallPercentage < 75 && (
+          <div className="flex flex-col gap-2 relative z-10 w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl border border-red-100 text-xs font-bold shadow-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span>Low Attendance ({Number(student.attendance.overallPercentage || 0).toFixed(0)}%)</span>
+            </div>
           </div>
-          {/* Changed 'hidden xs:block' to just 'block' but scaled down heavily for mobile */}
-          <div className="block">
-            <h1 className="font-extrabold text-[10px] md:text-lg leading-none">{institute?.code || "CAMPUS"}</h1>
-            <p className="text-[8px] md:text-[10px] uppercase font-bold mt-0.5 md:mt-1 opacity-90" style={{color: theme.secondary}}>Student Portal</p>
+        )}
+      </div>
+
+      {/* 2. Left Column (Main Stats & Charts) - Span 3 */}
+      <div className="lg:col-span-3 flex flex-col gap-4 md:gap-6 order-2 md:order-1">
+
+        {/* Quick Stats Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+
+          {/* CGPA CARD */}
+          <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-green-50 rounded-full text-green-600"><GraduationCap className="w-4 h-4 md:w-5 md:h-5" /></div>
+              <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">CGPA</span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-xl md:text-2xl font-black text-gray-800">{student?.academic?.cgpa || "0.00"}</h3>
+              <p className="text-[9px] md:text-[10px] text-green-600 font-bold">Cumulative</p>
+            </div>
+          </div>
+
+          {/* Attendance Card */}
+          <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-4 h-4 md:w-5 md:h-5" /></div>
+              <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Attendance</span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-xl md:text-2xl font-black text-gray-800">{Number(student?.attendance?.overallPercentage || 0).toFixed(2)}%</h3>
+              <p className="text-[9px] md:text-[10px] text-gray-400">Overall Avg</p>
+            </div>
+          </div>
+
+          {/* Credits Card */}
+          <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-orange-50 rounded-full text-orange-600"><ListTodo className="w-4 h-4 md:w-5 md:h-5" /></div>
+              <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Credits</span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-xl md:text-2xl font-black text-gray-800">{student?.academic?.creditsEarned || 0}</h3>
+              <p className="text-[9px] md:text-[10px] text-orange-500 font-bold">Earned</p>
+            </div>
+          </div>
+
+          {/* Courses Card */}
+          <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-purple-50 rounded-full text-purple-600"><BookOpen className="w-4 h-4 md:w-5 md:h-5" /></div>
+              <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Courses</span>
+            </div>
+            <div className="mt-2">
+              <h3 className="text-xl md:text-2xl font-black text-gray-800">
+                {student?.courseEnrollments?.find(s => s.semester === student.semester)?.subjects?.length || 0}
+              </h3>
+              <p className="text-[9px] md:text-[10px] text-gray-400">Active</p>
+            </div>
           </div>
         </div>
 
-        {/* Center/Right: Merged Actions (Nav + Settings + Bell) */}
-        <HeaderActions 
-           activeTab={activeTab} 
-           setActiveTab={setActiveTab} 
-           theme={theme} 
-           handleLogout={handleLogout}
-           openMobileMenu={isMobileMenuOpen}
-           setOpenMobileMenu={setIsMobileMenuOpen}
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+
+          {/* SUBJECT ATTENDANCE CARD */}
+          <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px] md:min-h-[300px]">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-bold text-gray-700 text-sm md:text-base flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-gray-400" /> Subject Attendance
+              </h4>
+              <span className={`text-[10px] md:text-xs px-2 py-1 rounded font-bold ${student?.attendance?.overallPercentage >= 75 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
+                }`}>
+                {student?.attendance?.overallPercentage >= 75 ? "Good" : "Low"}
+              </span>
+            </div>
+
+            {/* List View */}
+            <div className="space-y-4 overflow-y-auto flex-1 custom-scrollbar pr-2">
+              {subjectWiseData.length > 0 ? (
+                subjectWiseData.map((subj, idx) => (
+                  <div key={idx} className="flex flex-col gap-1 group">
+                    <div className="flex justify-between items-center">
+                      <p className="text-xs font-bold text-gray-700 truncate w-3/4" title={subj.subjectName}>
+                        {subj.subjectName}
+                      </p>
+                      <span className={`text-xs font-bold ${subj.percentage >= 75 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {Number(subj.percentage || 0).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className={`h-1.5 rounded-full transition-all duration-500 ${subj.percentage >= 75 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                        style={{ width: `${subj.percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-400 text-xs">No subjects found</div>
+              )}
+            </div>
+          </div>
+
+          {/* Performance Trend Chart */}
+          <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px] md:min-h-[300px]">
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="font-bold text-gray-700 text-sm md:text-base flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-gray-400" /> Academic Trend
+              </h4>
+              <span className="text-[10px] md:text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">SGPA/Sem</span>
+            </div>
+            <SimpleBarChart data={performanceChartData} color="#6366f1" height="h-40 md:h-48" />
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Right Column (Sidebar) - Span 1 */}
+      <div className="lg:col-span-1 flex flex-col gap-4 order-1 md:order-2">
+
+        {/* Profile Card */}
+        <div
+          className="bg-white p-3 md:p-4 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors"
+          onClick={() => setActiveTab("settings")}
+        >
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gray-100 flex items-center justify-center border-2 overflow-hidden shrink-0" style={{ borderColor: theme.primary }}>
+            {student?.profilePic ? (
+              <img src={student.profilePic} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-base md:text-lg font-bold text-gray-400">{student?.name?.charAt(0)}</span>
+            )}
+          </div>
+          <div className="overflow-hidden">
+            <h3 className="font-bold text-gray-800 truncate text-xs md:text-sm">{student?.name}</h3>
+            <p className="text-[10px] md:text-xs text-gray-500 truncate">{student?.SID || "Student"}</p>
+          </div>
+        </div>
+
+        {/* Schedule */}
+        <div className="bg-orange-50 p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-orange-100 relative overflow-hidden">
+          <div className="absolute right-[-20px] top-[-20px] opacity-10">
+            <CalendarDays className="w-20 h-20 md:w-24 md:h-24 text-orange-600" />
+          </div>
+          <p className="text-orange-600 text-[10px] md:text-xs font-bold uppercase mb-1 relative z-10">Today's Schedule</p>
+          <h3 className="text-3xl md:text-4xl font-extrabold text-orange-900 relative z-10">
+            {student?.todayClasses || 0} <span className="text-base md:text-lg ml-1 font-bold opacity-60">Classes</span>
+          </h3>
+          <p className="text-[10px] md:text-xs text-orange-700 mt-2 relative z-10 font-medium cursor-pointer hover:underline" onClick={() => setActiveTab('timetable')}>
+            Check Timetable
+          </p>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="bg-white p-4 md:p-5 rounded-[2rem] border border-gray-100 shadow-sm hidden md:block">
+          <h4 className="font-bold text-gray-800 text-xs md:text-sm mb-3 flex items-center gap-2">
+            <History className="w-4 h-4 text-gray-400" /> Recent Attendance
+          </h4>
+          <div className="space-y-3">
+            {recentAttendance.length > 0 ? (
+              recentAttendance.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                  <div className="overflow-hidden">
+                    <p className="text-xs font-bold text-gray-700 truncate w-32">{item.courseName}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-bold ${item.value === 1 ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"
+                    }`}>
+                    {item.value === 1 ? "P" : "A"}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-2">No recent records found.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (loading) return <div className="h-[100dvh] flex items-center justify-center bg-[#F8F9FC]"><Loader2 className="w-10 h-10 animate-spin" style={{ color: theme.primary }} /></div>;
+
+  return (
+    <div className="h-[100dvh] w-screen bg-[#F8F9FC] p-3 md:p-6 flex flex-col gap-4 md:gap-6 overflow-hidden font-sans antialiased relative">
+
+      {/* HEADER SECTION: Responsive Layout */}
+      <div className="shrink-0 flex items-center justify-between gap-4 h-18 md:h-18 relative z-50">
+
+        {/* Left: Logo (FIXED SIZE on Mobile) */}
+        <div className="h-full px-3 md:px-6 rounded-2xl md:rounded-[2rem] flex items-center gap-2 md:gap-4 shadow-lg shadow-gray-200/50 min-w-fit" style={{ backgroundColor: theme.primary, color: theme.white }}>
+          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center p-1 border-2 border-white/30 shrink-0">
+            {institute?.logo ? <img src={institute.logo} alt="Logo" className="w-full h-full object-contain p-1" /> : <GraduationCap className="w-6 h-6 text-white" />}
+          </div>
+          <div className="block">
+            <h1 className="font-extrabold text-[10px] md:text-lg leading-none">{institute?.code || "CAMPUS"}</h1>
+            <p className="text-[8px] md:text-[10px] uppercase font-bold mt-0.5 md:mt-1 opacity-90" style={{ color: theme.secondary }}>Student Portal</p>
+          </div>
+        </div>
+
+        {/* Center: Desktop Navigation (Absolute Center Removed -> Flex) */}
+        <div className="hidden md:flex items-center justify-center flex-1 mx-4 h-full">
+          <DesktopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
+        </div>
+
+        {/* Right: Actions (Nav + Settings + Bell) */}
+        <HeaderActions
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          theme={theme}
+          handleLogout={handleLogout}
+          openMobileMenu={isMobileMenuOpen}
+          setOpenMobileMenu={setIsMobileMenuOpen}
         />
       </div>
 
@@ -854,6 +826,28 @@ const StudentDashboard = () => {
       <div className="flex-1 bg-white rounded-2xl md:rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.08)] p-4 md:p-8 overflow-y-auto relative custom-scrollbar border border-gray-100">
         {renderContent()}
       </div>
+
+      {/* Logout Modal */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl p-6 md:p-8 max-w-sm w-full relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-400 to-orange-500"></div>
+            <div className="flex flex-col items-center text-center gap-5">
+              <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center rotate-3">
+                <LogOut className="w-7 h-7 md:w-8 md:h-8 ml-1" />
+              </div>
+              <div>
+                <h3 className="text-lg md:text-xl font-black text-gray-800">See you soon!</h3>
+                <p className="text-xs md:text-sm text-gray-500 mt-2 font-medium">Are you sure you want to log out?</p>
+              </div>
+              <div className="flex gap-3 w-full mt-2">
+                <button onClick={() => setShowLogoutModal(false)} className="flex-1 px-4 py-2.5 md:py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs md:text-sm hover:bg-gray-200 transition-colors">Stay</button>
+                <button onClick={confirmLogout} className="flex-1 px-4 py-2.5 md:py-3 rounded-xl bg-gray-900 text-white font-bold text-xs md:text-sm hover:bg-black transition-colors shadow-xl shadow-gray-200">Logout</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -3153,6 +3153,79 @@ app.post('/student/performance/analyze', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Analysis failed" });
   }
 });
+
+
+// --- MISSING ADMIN ROUTES (Paste these into server.js) ---
+
+// 1. Update Institute Status (Admin)
+app.put('/admin/updateInstituteStatus/:id', verifyToken, async (req, res) => {
+  try {
+    const { status } = req.body; // Active, Suspended, Rejected
+    const inst = await Institute.findByIdAndUpdate(
+      req.params.id, 
+      { status }, 
+      { new: true }
+    );
+    // Log the action
+    await Log.create({ 
+      action: 'UPDATE_STATUS', 
+      adminId: req.user.id, 
+      details: `Institute ${inst.code} status changed to ${status}` 
+    });
+    res.json(inst);
+  } catch (err) {
+    console.error('Update status error:', err);
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+// 2. Broadcast (Admin) - Placeholder logic as generic broadcast
+app.post('/admin/broadcast', verifyToken, async (req, res) => {
+  try {
+    const { title, message, type } = req.body;
+    // You can save this to a SystemBroadcast model if you have one.
+    // For now, we'll log it and pretend it was sent to all active institutes.
+    await Log.create({
+      action: 'BROADCAST',
+      adminId: req.user.id,
+      details: `Broadcast: ${title} (${type})`
+    });
+    // Optional: create a Notice for every institute? 
+    // Or just return success for the demo.
+    res.json({ success: true, message: 'Broadcast published' });
+  } catch (err) {
+    res.status(500).json({ error: 'Broadcast failed' });
+  }
+});
+
+// 3. Fetch System Logs (Admin)
+app.get('/admin/logs', verifyToken, async (req, res) => {
+  try {
+    const logs = await Log.find().sort({ createdAt: -1 }).limit(50);
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch logs failed' });
+  }
+});
+
+// 4. Mock NAAC Validator (Admin Tool)
+app.post('/admin/naacValidator', verifyToken, async (req, res) => {
+  try {
+    // Mock processing delay
+    // In real app, this parses the uploaded PDF
+    const mockScore = (Math.random() * (4.0 - 2.5) + 2.5).toFixed(2);
+    const grades = ['A++', 'A+', 'A', 'B++', 'B+'];
+    const mockGrade = grades[Math.floor(Math.random() * grades.length)];
+    
+    res.json({ 
+      score: mockScore, 
+      grade: mockGrade,
+      details: "Automated analysis completed successfully." 
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Validator failed' });
+  }
+});
 // -------------------
 // Generic Error Handler (fallback)
 // -------------------

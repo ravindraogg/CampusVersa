@@ -4,7 +4,9 @@ import {
   Activity, Zap, BarChart2, BookOpen, Award 
 } from "lucide-react";
 
+// Safe API URL definition
 const API_URL = import.meta.env.VITE_BACK_URI;
+
 
 const StudentPerformanceSection = ({ student }) => {
   const [analysis, setAnalysis] = useState(null);
@@ -43,7 +45,6 @@ const StudentPerformanceSection = ({ student }) => {
   };
 
   // --- REUSABLE SVG LINE CHART ---
-  // Added 'maxValue' prop to handle SGPA (10) vs AI Scores (100)
   const PerformanceLineChart = ({ data, color = "#8b5cf6", maxValue = 100 }) => {
     if (!data || data.length === 0) return <div className="text-center text-gray-400 text-xs py-10">No data available</div>;
 
@@ -53,7 +54,6 @@ const StudentPerformanceSection = ({ student }) => {
 
     const points = data.map((item, index) => {
       const x = (index / (data.length - 1 || 1)) * (width - 2 * padding) + padding;
-      // Scale Y based on maxValue (10 for SGPA, 100 for AI)
       const y = height - ((item.score || 0) / maxValue) * (height - 2 * padding) - padding;
       return { x, y, score: item.score, label: item.label };
     });
@@ -100,7 +100,7 @@ const StudentPerformanceSection = ({ student }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 pb-10">
       
-      {/* 1. ACADEMIC OVERVIEW SECTION (New) */}
+      {/* 1. ACADEMIC OVERVIEW SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* CGPA Card */}
         <div className="lg:col-span-1 bg-white border border-gray-100 rounded-[2.5rem] p-8 shadow-sm flex flex-col justify-center items-center relative overflow-hidden">
@@ -121,7 +121,6 @@ const StudentPerformanceSection = ({ student }) => {
              </h3>
              <span className="text-xs text-gray-400 font-medium">Semester-wise Performance</span>
            </div>
-           {/* Passing maxValue=10 for SGPA */}
            <PerformanceLineChart data={sgpaData} color="#3b82f6" maxValue={10} />
         </div>
       </div>
@@ -162,7 +161,8 @@ const StudentPerformanceSection = ({ student }) => {
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Activity className="w-5 h-5 text-indigo-500" /> Strategic Overview
               </h3>
-              <p className="text-gray-600 leading-loose text-justify font-medium">
+              {/* Changed: leading-relaxed -> leading-normal to reduce gap between lines */}
+              <p className="text-gray-600 leading-normal text-justify hyphens-auto">
                 {analysis.insight}
               </p>
               
@@ -171,16 +171,19 @@ const StudentPerformanceSection = ({ student }) => {
                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Metric Analysis</h4>
                    <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-1 rounded-full font-bold">AI Score</span>
                 </div>
-                {/* AI Graph (maxValue default 100) */}
                 <PerformanceLineChart data={analysis.graphData} color="#8b5cf6" maxValue={100} />
               </div>
             </div>
 
-            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-[2rem] p-6 flex items-center justify-between shadow-sm">
-               <div className="text-2xl font-black text-emerald-700 max-w-[60%] text-left leading-tight">
+            {/* Prediction Card */}
+            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-[2rem] p-6 flex flex-col gap-6 shadow-sm">
+               {/* Ensure w-full is used so text continues to the end properly */}
+               <div className="text-lg font-bold text-emerald-800 w-full text-left leading-relaxed">
                  {analysis.prediction}
                </div>
-               <div className="flex items-center gap-4">
+               
+               {/* Badge positioned at bottom right */}
+               <div className="flex items-center gap-4 self-end mt-2">
                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-emerald-600">
                    <TrendingUp className="w-6 h-6" />
                  </div>

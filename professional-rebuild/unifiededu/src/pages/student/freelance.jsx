@@ -18,7 +18,7 @@ const INITIAL_JOBS = [
     type: 'Freelance',
     tags: ['React', 'Tailwind', 'Web Design'],
     isAlumni: false,
-    verified: true,
+    verified: true, 
     color: 'bg-purple-100 text-purple-600',
     createdAt: new Date().toISOString()
   },
@@ -339,7 +339,7 @@ const FreelanceHub = ({ theme }) => {
       {/* 1. Header Area */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900">Freelance Hub</h2>
+          <h2 className="text-3xl font-bold text-gray-900">Jobs & Hub</h2>
           <p className="text-gray-500 mt-1">
             {jobs.length} open positions • <span className="font-medium" style={{ color: activeTheme.primary }}>Verified Client Network</span>
           </p>
