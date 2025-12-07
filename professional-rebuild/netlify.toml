@@ -1,5 +1,5 @@
 [build]
-  base = "professional-rebuild/unifiededu"
+  base = "unifiededu"
   command = "npm install && npm run build"
   publish = "dist"
 
@@ -7,4 +7,3 @@
   from = "/*"
   to = "/index.html"
   status = 200
-  
