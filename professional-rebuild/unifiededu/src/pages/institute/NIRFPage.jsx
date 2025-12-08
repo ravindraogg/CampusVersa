@@ -5,7 +5,7 @@ import {
   Globe, LayoutGrid, AlertCircle, Info, UploadCloud, 
   FileText, ArrowRight, CheckCircle, X
 } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
   // --- State ---
   const [loading, setLoading] = useState(false);
@@ -111,7 +111,7 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
     form.append('file', file);
 
     try {
-        const res = await fetch("http://localhost:5000/institute/nirf/bulk-upload", {
+        const res = await fetch(`${API_URL}/institute/nirf/bulk-upload`, {
             method: "POST",
             headers: { 
                 // Authorization header must include 'Bearer ' prefix

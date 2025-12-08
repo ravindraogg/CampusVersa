@@ -16,8 +16,7 @@ import {
 } from 'recharts';
 
 // --- CONFIGURATION ---
-// Simplified backend URI to avoid import.meta issues in ES2015 environments
-const BACKEND_URI = 'http://localhost:5000';
+const BACKEND_URI = import.meta.env.VITE_BACK_URI;
 const API_BASE_URL = `${BACKEND_URI}/admin`;
 
 // --- COMPONENT: ADVANCED GLOBAL SEARCH ---

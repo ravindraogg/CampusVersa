@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit, AlertTriangle, Eye, EyeOff, Upload } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 export default function FacultyPage({ authFetch, theme, institute, pushToast }) {
   // data
   const [list, setList] = useState([]);
@@ -138,7 +138,7 @@ export default function FacultyPage({ authFetch, theme, institute, pushToast }) 
         return;
       }
 
-      const res = await fetch("http://localhost:5000/institute/faculty/bulk-upload", {
+      const res = await fetch(`${API_URL}/institute/faculty/bulk-upload`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`

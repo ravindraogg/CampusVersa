@@ -3,7 +3,7 @@ import {
   BookOpen, Plus, Trash2, Search, Filter, Layers, 
   Calendar, Hash, CheckCircle, Loader2, Upload
 } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const CoursesPage = ({ authFetch, theme, pushToast }) => {
   const [courses, setCourses] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -121,7 +121,7 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
         return;
       }
 
-      const res = await fetch("http://localhost:5000/institute/courses/bulk-upload", {
+      const res = await fetch(`${API_URL}/institute/courses/bulk-upload`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`

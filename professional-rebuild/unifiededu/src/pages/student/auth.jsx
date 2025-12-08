@@ -27,7 +27,7 @@ const StudentLogin = () => {
     setError("");
 
     try {
-      const API_URL = import.meta.env.VITE_BACK_URI || "http://localhost:5000";
+      const API_URL = import.meta.env.VITE_BACK_URI;
 
       const res = await fetch(`${API_URL}/student/login`, {
         method: "POST",

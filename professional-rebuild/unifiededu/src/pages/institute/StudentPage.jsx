@@ -256,7 +256,7 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
       }
 
       // 2. Use native fetch to handle FormData headers automatically
-      const res = await fetch("http://localhost:5000/institute/students/bulk-upload", {
+      const res = await fetch(`${API_URL}/institute/students/bulk-upload`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}` // Attach the retrieved token
