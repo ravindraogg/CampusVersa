@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Clock, Users, Calendar, ChevronDown, CheckCircle, AlertCircle, Briefcase } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const StudentTimetableSection = ({ 
   timetables = [], 
   student, 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Trash2, Edit, ChevronDown, AlertTriangle, RefreshCw, Eye, EyeOff, Upload } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 export default function StudentPage({ authFetch, theme, institute, pushToast }) {
   const [students, setStudents] = useState([]);
   const [departments, setDepartments] = useState([]);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Users, Search, AlertCircle, Loader2, Filter, BookOpen, ChevronRight } from "lucide-react";
 import FacultyStudentInfo from "./FacultyStudentInfo";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const SectionHeader = ({ title, subtitle }) => (
   <div className="mb-6 border-b border-gray-100 pb-4">
     <h2 className="text-2xl font-bold text-gray-800">{title}</h2>

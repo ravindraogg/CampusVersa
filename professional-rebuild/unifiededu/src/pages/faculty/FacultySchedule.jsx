@@ -8,7 +8,7 @@ import {
   ChevronDown,
   CheckCircle,
 } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const FacultySchedule = ({ authFetch, theme, faculty, pushToast }) => {
   const [timetables, setTimetables] = useState([]);
   const [selectedTimetable, setSelectedTimetable] = useState(null);

@@ -3,7 +3,7 @@ import {
   Save, Users, ClipboardList, GraduationCap, Calendar,
   Loader2, CheckCircle2, ArrowRight
 } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const FacultyEvaluation = ({ authFetch, theme, faculty, pushToast }) => {
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState("");

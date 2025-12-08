@@ -2,7 +2,7 @@
 import React from "react";
 import { FileText, Map, Mic, Lightbulb, Users, Briefcase, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const StudentCareerSection = () => {
   const navigate = useNavigate();
 

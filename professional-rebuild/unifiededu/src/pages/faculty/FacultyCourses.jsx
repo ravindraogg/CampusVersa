@@ -5,7 +5,7 @@ import {
   Loader2, Save, Search, Eye, Download, X, AlertCircle, Filter, Info,
   Lock, CheckCircle, UserX
 } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 const FacultyCourses = ({ authFetch, theme, pushToast, faculty, refreshProfile }) => {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);

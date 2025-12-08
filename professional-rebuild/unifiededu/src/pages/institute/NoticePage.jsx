@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Bell, Calendar, Users, FileText, ChevronDown, AlertTriangle, Import, BookOpen } from "lucide-react";
-
+const API_URL = import.meta.env.VITE_BACK_URI;
 export default function NoticePage({ authFetch, theme, institute, pushToast }) {
   // Data State
   const [list, setList] = useState([]);
