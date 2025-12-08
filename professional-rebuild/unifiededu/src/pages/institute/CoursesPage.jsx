@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
   BookOpen, Plus, Trash2, Search, Filter, Layers, 
-  Calendar, Hash, CheckCircle, Loader2 
+  Calendar, Hash, CheckCircle, Loader2, Upload
 } from "lucide-react";
 
 const CoursesPage = ({ authFetch, theme, pushToast }) => {
@@ -23,6 +23,11 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
 
   // Filters
   const [filterDept, setFilterDept] = useState("All");
+
+  // --- NEW: BULK UPLOAD STATE ---
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [isUploadingBulk, setIsUploadingBulk] = useState(false);
 
   // Load Data
   useEffect(() => {
@@ -93,6 +98,54 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
     }
   };
 
+  // --- NEW FUNCTION: HANDLE BULK UPLOAD ---
+// --- NEW FUNCTION: HANDLE BULK UPLOAD ---
+  const handleBulkUpload = async () => {
+    if (!bulkFile) {
+      pushToast({ type: "error", message: "Please select a file first" });
+      return;
+    }
+    setIsUploadingBulk(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", bulkFile);
+
+      // 1. ROBUST TOKEN RETRIEVAL
+      const token = localStorage.getItem('instituteToken') || 
+                    localStorage.getItem('authToken') || 
+                    localStorage.getItem('token');
+      
+      if (!token) {
+        pushToast({ message: "Authentication token not found", type: "error" });
+        setIsUploadingBulk(false);
+        return;
+      }
+
+      const res = await fetch("http://localhost:5000/institute/courses/bulk-upload", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        pushToast({ message: `Uploaded ${data.count} courses!`, type: "success" });
+        setShowBulkModal(false);
+        setBulkFile(null);
+        fetchData(); 
+      } else {
+        pushToast({ message: data.message || "Upload failed", type: "error" });
+      }
+    } catch (err) {
+      console.error(err);
+      pushToast({ message: "Server error during upload", type: "error" });
+    } finally {
+      setIsUploadingBulk(false);
+    }
+  };
+
   // Filter Logic
   const filteredCourses = filterDept === "All" 
     ? courses 
@@ -110,13 +163,25 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
           </h2>
           <p className="text-sm text-gray-500 mt-1">Define subjects and map them to departments & years.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="px-5 py-2.5 rounded-xl text-white font-medium shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
-          style={{ backgroundColor: theme.primary }}
-        >
-          <Plus className="w-5 h-5" /> Add New Course
-        </button>
+        
+        <div className="flex gap-3">
+          {/* BULK UPLOAD BUTTON */}
+          <button
+            onClick={() => setShowBulkModal(true)}
+            className="px-5 py-2.5 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
+            style={{ backgroundColor: theme.primary, color: 'white' }}
+          >
+            <Upload className="w-5 h-5" /> Upload
+          </button>
+
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="px-5 py-2.5 rounded-xl text-white font-medium shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
+            style={{ backgroundColor: theme.primary }}
+          >
+            <Plus className="w-5 h-5" /> Add New Course
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -161,7 +226,7 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
                    <span className="px-2 py-1 rounded bg-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
                      {course.department}
                    </span>
-                   <span className="text-xs font-bold" style={{ color: theme.secondary }}>
+                   <span className="text-xs font-bold" style={{ color: 'white' }}>
                      {course.year} Year
                    </span>
                 </div>
@@ -184,6 +249,56 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* BULK UPLOAD MODAL */}
+      {showBulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">Bulk Upload Courses</h3>
+              <button onClick={() => setShowBulkModal(false)} className="text-gray-400 hover:text-red-500">✕</button>
+            </div>
+
+            <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-gray-50 hover:bg-blue-50 transition-colors">
+              <Upload className="w-12 h-12 text-gray-400 mb-4" />
+              <p className="text-sm text-gray-600 font-medium mb-2">Drag & Drop or Click to Upload</p>
+              <p className="text-xs text-gray-400 mb-4">Supported: CSV, XML, PDF</p>
+              
+              <input 
+                type="file" 
+                id="courseBulkInput" 
+                className="hidden" 
+                accept=".csv,.xml,.pdf,.txt"
+                onChange={(e) => setBulkFile(e.target.files[0])}
+              />
+              <label 
+                htmlFor="courseBulkInput" 
+                className="px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-transform active:scale-95"
+                style={{ backgroundColor: theme.primary, color: 'white' }}
+              >
+                Choose File
+              </label>
+            </div>
+
+            {bulkFile && (
+              <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-xl text-sm flex items-center gap-2">
+                <span className="font-bold">Selected:</span> {bulkFile.name}
+              </div>
+            )}
+
+            <div className="mt-6">
+              <button 
+                onClick={handleBulkUpload} 
+                disabled={isUploadingBulk || !bulkFile}
+                className="w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-50"
+                style={{ backgroundColor: theme.primary, color: 'white' }}
+              >
+                {isUploadingBulk ? <Loader2 className="w-5 h-5 animate-spin" /> : "Start Upload"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

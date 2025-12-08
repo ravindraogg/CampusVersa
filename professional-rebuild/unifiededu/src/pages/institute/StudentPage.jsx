@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, Edit, ChevronDown, AlertTriangle, RefreshCw, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, Edit, ChevronDown, AlertTriangle, RefreshCw, Eye, EyeOff, Upload } from "lucide-react";
 
 export default function StudentPage({ authFetch, theme, institute, pushToast }) {
   const [students, setStudents] = useState([]);
@@ -24,6 +24,11 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
     admissionYear: new Date().getFullYear().toString(),
   });
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // --- NEW: BULK UPLOAD STATE ---
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [isUploadingBulk, setIsUploadingBulk] = useState(false);
 
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -225,6 +230,60 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
     }
   };
 
+// Replace your existing handleBulkUpload function with this:
+
+// --- NEW: HANDLE BULK UPLOAD ---
+  const handleBulkUpload = async () => {
+    if (!bulkFile) {
+      pushToast({ type: "error", message: "Please select a file first" });
+      return;
+    }
+    setIsUploadingBulk(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", bulkFile);
+
+      // 1. ROBUST TOKEN RETRIEVAL
+      // Based on your screenshot, we check 'instituteToken' first, then 'authToken'
+      const token = localStorage.getItem('instituteToken') || 
+                    localStorage.getItem('authToken') || 
+                    localStorage.getItem('token');
+
+      if (!token) {
+        pushToast({ type: "error", message: "Authentication token not found. Please login again." });
+        setIsUploadingBulk(false);
+        return;
+      }
+
+      // 2. Use native fetch to handle FormData headers automatically
+      const res = await fetch("http://localhost:5000/institute/students/bulk-upload", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}` // Attach the retrieved token
+          // NOTE: Do NOT set 'Content-Type'. Browser sets it for FormData.
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        pushToast({ type: "success", message: `Uploaded ${data.count} students!` });
+        setShowBulkModal(false);
+        setBulkFile(null);
+        await load();
+      } else {
+        pushToast({ type: "error", message: data.message || "Upload failed" });
+      }
+    } catch (err) {
+      console.error(err);
+      pushToast({ type: "error", message: "Server error during upload" });
+    } finally {
+      setIsUploadingBulk(false);
+    }
+  };
+
+
   const handlePic = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -356,6 +415,15 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
             <RefreshCw className="w-4 h-4" /> USN
           </button>
 
+          {/* BULK UPLOAD BUTTON */}
+          <button
+            onClick={() => setShowBulkModal(true)}
+            className="px-4 py-3 rounded-xl flex items-center gap-2 font-bold shadow-md transition-all hover:opacity-90"
+            style={{ backgroundColor: theme.primary, color: 'white' }}
+          >
+            <Upload className="w-4 h-4" /> Upload
+          </button>
+
           <button
             onClick={() => {
               setForm({
@@ -393,6 +461,56 @@ export default function StudentPage({ authFetch, theme, institute, pushToast }) 
           </div>
         ))}
       </div>
+
+      {/* BULK UPLOAD MODAL */}
+      {showBulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800">Bulk Upload Students</h3>
+              <button onClick={() => setShowBulkModal(false)} className="text-gray-400 hover:text-red-500">✕</button>
+            </div>
+
+            <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-gray-50 hover:bg-blue-50 transition-colors">
+              <Upload className="w-12 h-12 text-gray-400 mb-4" />
+              <p className="text-sm text-gray-600 font-medium mb-2">Drag & Drop or Click to Upload</p>
+              <p className="text-xs text-gray-400 mb-4">Supported: CSV, XML, PDF</p>
+              
+              <input 
+                type="file" 
+                id="bulkUploadInput" 
+                className="hidden" 
+                accept=".csv,.xml,.pdf,.txt"
+                onChange={(e) => setBulkFile(e.target.files[0])}
+              />
+              <label 
+                htmlFor="bulkUploadInput" 
+                className="px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-transform active:scale-95"
+                style={{ backgroundColor: theme.primary, color:"white" }}
+              >
+                Choose File
+              </label>
+            </div>
+
+            {bulkFile && (
+              <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-xl text-sm flex items-center gap-2">
+                <span className="font-bold">Selected:</span> {bulkFile.name}
+              </div>
+            )}
+
+            <div className="mt-6">
+              <button 
+                onClick={handleBulkUpload} 
+                disabled={isUploadingBulk || !bulkFile}
+                className="w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-50"
+                style={{ backgroundColor: theme.primary, color: theme.secondary }}
+              >
+                {isUploadingBulk ? <Spinner size={18} color={theme.secondary} /> : "Start Upload"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ADD STUDENT MODAL */}
       {showAdd && (

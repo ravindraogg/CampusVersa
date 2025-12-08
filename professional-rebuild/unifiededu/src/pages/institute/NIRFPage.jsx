@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import {
   Save, Loader2, RefreshCw, Users, BookOpen, 
   IndianRupee, FlaskConical, GraduationCap, 
-  Globe, LayoutGrid, AlertCircle, Info
+  Globe, LayoutGrid, AlertCircle, Info, UploadCloud, 
+  FileText, ArrowRight, CheckCircle, X
 } from "lucide-react";
 
 export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
@@ -11,6 +12,11 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState("studentStrength");
   const [academicYear, setAcademicYear] = useState("2024-2025");
+  const [uploadStatus, setUploadStatus] = useState("");
+  // Bulk Upload State
+  const [uploading, setUploading] = useState(false);
+  const [parsedData, setParsedData] = useState(null); // Holds AI result for preview
+  const [showPreview, setShowPreview] = useState(false);
 
   // Store reference data (names lists) separately from form numbers
   const [referenceData, setReferenceData] = useState({
@@ -79,7 +85,103 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
     fetchNIRFData();
   }, [academicYear]);
 
-  // --- Auto Sync Handler ---
+// --- HANDLER: BULK UPLOAD (Robust Token Fix) ---
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 1. ROBUST TOKEN RETRIEVAL
+    // Based on your screenshot, we check 'instituteToken' first, then 'authToken'
+    const token = localStorage.getItem('instituteToken') || 
+                  localStorage.getItem('authToken') || 
+                  localStorage.getItem('token'); 
+
+    // Debugging: Log exactly what is being sent
+    console.log("Attempting upload with token:", token ? `${token.substring(0, 10)}...` : "NULL");
+
+    if (!token) {
+        pushToast({ type: "error", message: "Authentication Error: No token found. Please log in again." });
+        return;
+    }
+
+    setUploading(true);
+    setUploadStatus("Uploading..."); // Update status text
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+        const res = await fetch("http://localhost:5000/institute/nirf/bulk-upload", {
+            method: "POST",
+            headers: { 
+                // Authorization header must include 'Bearer ' prefix
+                "Authorization": `Bearer ${token}` 
+            },
+            body: form
+        });
+
+        const result = await res.json();
+
+        if (res.ok && result.success) {
+            setParsedData(result.data);
+            setShowPreview(true);
+            setUploadStatus("Success!");
+            pushToast({ type: "success", message: "Document Parsed Successfully" });
+        } else {
+            console.error("Upload failed details:", result);
+            setUploadStatus("Error: " + (result.message || "Upload failed"));
+            pushToast({ type: "error", message: result.message || "Failed to parse document" });
+        }
+    } catch (err) {
+        console.error("Network error:", err);
+        setUploadStatus("Network Error");
+        pushToast({ type: "error", message: "Upload failed: Server connection error" });
+    } finally {
+        setUploading(false);
+        e.target.value = null; // Reset file input to allow re-upload
+    }
+  };
+  // --- HANDLER: MERGE PARSED DATA ---
+  const handleMergeData = () => {
+    if (!parsedData) return;
+
+    // Deep merge logic: Only update fields that the AI found (not null)
+    setFormData(prev => {
+        const newData = { ...prev };
+        
+        const updateRecursive = (target, source) => {
+            Object.keys(source).forEach(key => {
+                if (source[key] !== null && typeof source[key] === 'object') {
+                    if (!target[key]) target[key] = {};
+                    updateRecursive(target[key], source[key]);
+                } else if (source[key] !== null && source[key] !== undefined) {
+                    target[key] = Number(source[key]);
+                }
+            });
+        };
+
+        updateRecursive(newData, parsedData);
+        return newData;
+    });
+
+    setShowPreview(false);
+    setParsedData(null);
+    pushToast({ type: "success", message: "Data Merged! Click Save to confirm." });
+  };
+
+  // --- Handlers (Existing) ---
+  const handleNestedChange = (section, subsection, field, value) => {
+    setFormData(prev => {
+      const updated = { ...prev };
+      if (subsection) {
+        updated[section][subsection][field] = Number(value);
+      } else {
+        updated[section][field] = Number(value);
+      }
+      return updated;
+    });
+  };
+
   const handleAutoSync = async () => {
     pushToast({ type: "info", message: "Analyzing Institute Database..." });
     setLoading(true);
@@ -90,12 +192,10 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
       if (res.ok) {
         const syncedData = await res.json();
         
-        // 1. Save Metadata (Faculty Names) for Hover
         if (syncedData.meta) {
           setReferenceData(prev => ({ ...prev, ...syncedData.meta }));
         }
 
-        // 2. Merge Synced Numbers
         setFormData(prev => ({
           ...prev,
           studentStrength: { ...prev.studentStrength, ...syncedData.studentStrength },
@@ -117,19 +217,6 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
     }
   };
 
-  // --- Handlers ---
-  const handleNestedChange = (section, subsection, field, value) => {
-    setFormData(prev => {
-      const updated = { ...prev };
-      if (subsection) {
-        updated[section][subsection][field] = Number(value);
-      } else {
-        updated[section][field] = Number(value);
-      }
-      return updated;
-    });
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -148,8 +235,6 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
   };
 
   // --- UI Components ---
-  
-  // Updated InputGroup to support Hover List
   const InputGroup = ({ label, value, onChange, prefix, note, hoverList }) => {
     const [showPopover, setShowPopover] = useState(false);
 
@@ -177,7 +262,6 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
         </div>
         {note && <p className="text-[10px] text-gray-400 mt-1">{note}</p>}
 
-        {/* --- HOVER POPOVER --- */}
         {showPopover && hoverList && (
           <div className="absolute left-0 bottom-full mb-2 w-48 bg-white border border-gray-200 shadow-xl rounded-lg z-50 animate-in fade-in zoom-in-95 duration-200">
              <div className="bg-gray-100 px-3 py-2 rounded-t-lg border-b border-gray-200 text-xs font-bold text-gray-600">
@@ -206,11 +290,89 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
     { id: "outreachInclusivity", label: "Outreach (OI)", icon: Globe },
   ];
 
+  // --- PREVIEW MODAL RENDERER ---
+  const renderPreviewModal = () => {
+    if (!showPreview || !parsedData) return null;
+    
+    // Helper to render rows comparing Current vs Extracted
+    const diffRow = (label, section, sub, key) => {
+        // Safe access to nested properties
+        const current = sub ? formData[section][sub][key] : formData[section][key];
+        const extracted = sub ? parsedData[section]?.[sub]?.[key] : parsedData[section]?.[key];
+
+        // Only show if AI actually found a value for this field
+        if (extracted === undefined || extracted === null) return null;
+
+        return (
+            <tr className="border-b last:border-0 hover:bg-green-50/50 transition-colors">
+                <td className="p-3 text-sm text-gray-600 font-medium">{label}</td>
+                <td className="p-3 text-sm font-bold text-gray-400">{current || 0}</td>
+                <td className="p-3 text-sm font-bold text-green-600 flex items-center gap-2 bg-green-50/30 rounded-r-lg">
+                    {extracted} <ArrowRight className="w-3 h-3"/>
+                </td>
+            </tr>
+        );
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-4 bg-green-50 border-b border-green-100 flex justify-between items-center">
+                    <h3 className="font-bold text-green-800 flex items-center gap-2">
+                        <FileText className="w-5 h-5"/> Data Extracted Successfully
+                    </h3>
+                    <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5"/></button>
+                </div>
+                
+                <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    <p className="text-sm text-gray-500 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100 text-blue-700">
+                       <Info className="w-3 h-3 inline mr-1"/> 
+                       The AI has analyzed your document. Please review the extracted numbers below against your current data before merging.
+                    </p>
+                    
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-gray-100 text-xs uppercase text-gray-500 sticky top-0">
+                            <tr>
+                                <th className="p-3 rounded-tl-lg">Field</th>
+                                <th className="p-3">Current Value</th>
+                                <th className="p-3 rounded-tr-lg">New (From Doc)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {/* Example Comparisons - The modal will only show what was found */}
+                            {diffRow("Library Expenditure", "financialResources", "capitalExpenditure", "library")}
+                            {diffRow("New Equipment", "financialResources", "capitalExpenditure", "newEquipment")}
+                            {diffRow("Maintenance", "financialResources", "operationalExpenditure", "maintenance")}
+                            {diffRow("Scopus Publications", "researchPerformance", "publications", "scopus")}
+                            {diffRow("Patents Granted", "researchPerformance", "ipr", "patentsGranted")}
+                            {diffRow("Median Salary", "graduationOutcomes", "placements", "medianSalary")}
+                            {diffRow("Total Enrolled", "studentStrength", null, "totalEnrolled")}
+                            {/* You can add more diffRow calls for other fields here */}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="p-4 bg-gray-50 border-t flex justify-end gap-3">
+                    <button onClick={() => setShowPreview(false)} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-200 transition-colors">
+                        Discard
+                    </button>
+                    <button onClick={handleMergeData} className="px-4 py-2 rounded-lg text-sm font-bold bg-green-600 text-white hover:bg-green-700 shadow-lg flex items-center gap-2 transition-transform hover:scale-105">
+                        <CheckCircle className="w-4 h-4"/> Merge & Update Form
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+  };
+
   if (loading && !formData.studentStrength) return <div className="h-full flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-gray-400"/></div>;
 
   return (
-    <div className="h-full flex flex-col animate-in fade-in duration-500">
+    <div className="h-full flex flex-col animate-in fade-in duration-500 relative">
       
+      {/* RENDER MODAL IF ACTIVE */}
+      {renderPreviewModal()}
+
       {/* Header */}
       <div className="shrink-0 flex flex-col md:flex-row justify-between items-center mb-6 pb-4 border-b border-gray-100">
         <div>
@@ -221,15 +383,38 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
         </div>
         
         <div className="flex items-center gap-3 mt-4 md:mt-0">
-          <select 
-            value={academicYear} 
-            onChange={(e) => setAcademicYear(e.target.value)}
-            className="bg-white border border-gray-200 text-sm rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-100 font-medium text-gray-700 cursor-pointer"
-          >
-            <option value="2024-2025">2024-2025</option>
-            <option value="2023-2024">2023-2024</option>
-            <option value="2022-2023">2022-2023</option>
-          </select>
+          
+          <div className="flex items-center gap-2">
+            <select 
+              value={academicYear} 
+              onChange={(e) => setAcademicYear(e.target.value)}
+              className="bg-white border border-gray-200 text-sm rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-100 font-medium text-gray-700 cursor-pointer"
+            >
+              <option value="2024-2025">2024-2025</option>
+              <option value="2023-2024">2023-2024</option>
+            </select>
+
+          {/* --- UPLOAD BUTTON GROUP --- */}
+<div className="flex flex-col items-end">
+  <label className={`flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm font-bold hover:bg-purple-100 transition-colors border border-purple-100 cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+      {uploading ? <Loader2 className="w-4 h-4 animate-spin"/> : <UploadCloud className="w-4 h-4" />}
+      {uploading ? "Parsing..." : "Upload Report"}
+      <input 
+        type="file" 
+        className="hidden" 
+        accept=".pdf,.csv,.xlsx" 
+        onChange={handleFileUpload} 
+      />
+  </label>
+  
+  {/* Add this status text below the button */}
+  {uploadStatus && (
+    <span className={`text-[10px] mt-1 font-medium ${uploadStatus.includes("Error") ? "text-red-500" : "text-green-600"}`}>
+      {uploadStatus}
+    </span>
+  )}
+</div>
+          </div>
 
           <button 
             onClick={handleAutoSync}
@@ -314,15 +499,12 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
               <h3 className="text-lg font-bold text-gray-800 border-b pb-2">Faculty Information</h3>
               <div className="grid grid-cols-3 gap-4">
-                
-                {/* --- THIS FIELD NOW HAS THE HOVER LIST --- */}
                 <InputGroup 
                    label="Total Faculty" 
                    value={formData.facultyDetails.totalFaculty} 
                    onChange={(v) => handleNestedChange("facultyDetails", null, "totalFaculty", v)} 
                    hoverList={referenceData.facultyNames} 
                 />
-                
                 <InputGroup label="Ph.D. Holders" value={formData.facultyDetails.phdCount} onChange={(v) => handleNestedChange("facultyDetails", null, "phdCount", v)} />
                 <InputGroup label="Female Faculty" value={formData.facultyDetails.femaleFaculty} onChange={(v) => handleNestedChange("facultyDetails", null, "femaleFaculty", v)} />
               </div>

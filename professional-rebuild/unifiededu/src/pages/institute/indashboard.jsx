@@ -458,7 +458,7 @@ const InstituteDashboard = () => {
           {/* --- UPDATED: NIRF STATUS CARD (Replaced NAAC) --- */}
           <StatCard 
             title="NIRF Status" 
-            value="Data Draft" 
+            value="NOT AFFILIATED" 
             icon={BarChart3} 
             color="secondary"
             theme={currentTheme.secondary} 

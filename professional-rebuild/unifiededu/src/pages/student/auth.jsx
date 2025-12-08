@@ -41,10 +41,16 @@ const StudentLogin = () => {
         throw new Error(data.message || "Login failed");
       }
 
+      // Store Auth Details
       localStorage.setItem("studentToken", data.token);
       localStorage.setItem("studentName", data.user.name);
 
-      navigate("/student/dashboard");
+      // --- KYC REDIRECTION LOGIC ---
+      if (data.user.isKycVerified) {
+        navigate("/student/dashboard");
+      } else {
+        navigate("/student/kyc"); // Navigate to the new KYC page
+      }
 
     } catch (err) {
       setError(err.message);

@@ -35,7 +35,7 @@ import StudentPerformanceSection from "./StudentPerformanceSection";
 import StudentProfileSection from "./StudentProfileSection";
 import StudentTimetableSection from "./StudentTimetableSection";
 import StudentCoursesSection from "./StudentCoursesSection";
-import UniversalNoticePage from "../UniversalNoticePage"; // Import your Notice Page
+import UniversalNoticePage from "../UniversalNoticePage";
 
 // --- FEATURE COMPONENTS ---
 import ResumeBuilder from "./resume";

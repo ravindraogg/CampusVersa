@@ -16,7 +16,11 @@ const StudentSchema = new mongoose.Schema({
   semester: { type: String, required: true },
   profilePic: { type: String },
   password: { type: String }, // Make sure not to duplicate keys like in your snippet
-
+  kyc: {
+    verified: { type: Boolean, default: false },
+    kycType: { type: String, default: null }, // e.g., 'aadhar'
+    aadharLast4: { type: String, default: null } 
+  },
   // --- ACADEMIC ---
   academic: {
     cgpa: { type: Number, default: 0 }, 

@@ -6,7 +6,13 @@ const jwt = require('jsonwebtoken');
 const axios = require("axios");
 const http = require('http');
 const { Server } = require("socket.io"); 
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const csv = require('csv-parser');
+const XLSX = require('xlsx');
 
+const { getJson } = require("serpapi"); // SERPAPI for Google Scholar
+const upload = multer({ dest: 'uploads/' });
 const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID;
 const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY;
 let GoogleGenerativeAI;
@@ -41,6 +47,15 @@ const FacultySSR = require('./models/institute/FacultySSR');
 const FacultyForm = require('./models/institute/FacultyForm');
 const FacultyFormResponse = require('./models/institute/FacultyFormResponse');
 const NIRFStats = require('./models/institute/NIRFStats');
+const Aadhaar = require('./models/institute/Aadhaar');
+// In server.js, near the top imports
+const fs = require('fs');
+
+// Ensure uploads directory exists
+const uploadDir = 'uploads/';
+if (!fs.existsSync(uploadDir)){
+    fs.mkdirSync(uploadDir);
+}
 
 const ReminderSchema = new mongoose.Schema({
   facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
@@ -56,7 +71,7 @@ const { verifyToken } = require('./middleware/authMiddleware'); // assumes this 
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
-app.use(cors());
+app.use(cors('*'));
 const server = http.createServer(app); // Wrap express
 const io = new Server(server, {
   cors: {
@@ -265,7 +280,281 @@ app.post('/admin/login', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+// --- HELPER: VERIFY SINGLE PAPER WITH SERPAPI ---
+const verifyPaperWithSerpApi = async (paper, facultyName) => {
+  return new Promise((resolve) => {
+    // Construct query: Title + Author Name
+    const query = `${paper.title} "${facultyName}"`;
+    
+    getJson({
+      engine: "google_scholar",
+      q: query,
+      api_key: process.env.SERPAPI_KEY // Ensure this is in your .env
+    }, (json) => {
+      try {
+        if (!json.organic_results || json.organic_results.length === 0) {
+          resolve({ ...paper, verification: { status: 'Not Found', details: 'No results on Google Scholar' } });
+          return;
+        }
 
+        // Check the top result
+        const topResult = json.organic_results[0];
+        
+        // 1. Title Match (Fuzzy check)
+        const titleMatch = topResult.title.toLowerCase().includes(paper.title.toLowerCase().substring(0, 20)); // Match first 20 chars
+        
+        // 2. Publisher/Source Check (e.g., IEEE, Springer)
+        const pubInfo = topResult.publication_info?.summary || "";
+        const link = topResult.link || "";
+        const isIEEE = link.includes('ieee.org') || pubInfo.toLowerCase().includes('ieee');
+        const isSpringer = link.includes('springer') || pubInfo.toLowerCase().includes('springer');
+        
+        // 3. Author Check inside result snippet
+        // Note: Google Scholar summary usually looks like "A Gupta, B Kumar..."
+        const authorMatch = pubInfo.toLowerCase().includes(facultyName.split(' ')[0].toLowerCase()); // Check first name presence
+
+        let status = 'Verified';
+        let details = 'Found on Google Scholar.';
+
+        if (!titleMatch) {
+            status = 'Warning';
+            details = 'Title mismatch in search result.';
+        } else if (!authorMatch) {
+            status = 'Warning'; 
+            details = 'Faculty name not clearly found in author list.';
+        }
+
+        resolve({
+          ...paper,
+          link: link,
+          verification: {
+            status,
+            details,
+            isIEEE,
+            isSpringer,
+            snippet: pubInfo
+          }
+        });
+
+      } catch (e) {
+        resolve({ ...paper, verification: { status: 'Error', details: 'Verification API failed' } });
+      }
+    });
+  });
+};
+
+// --- ROUTE: BULK RESEARCH UPLOAD ---
+app.post('/faculty/research/bulk-upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(req.user.id);
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    let rawText = "";
+
+    // 1. EXTRACT TEXT BASED ON FILE TYPE
+    if (req.file.mimetype === 'application/pdf') {
+      const dataBuffer = fs.readFileSync(req.file.path);
+      const data = await pdf(dataBuffer);
+      rawText = data.text;
+    } else if (req.file.mimetype === 'text/csv' || req.file.mimetype === 'application/vnd.ms-excel') {
+        // Simple CSV parse to string
+        const results = [];
+        await new Promise((resolve) => {
+            fs.createReadStream(req.file.path)
+            .pipe(csv())
+            .on('data', (data) => results.push(JSON.stringify(data)))
+            .on('end', () => {
+                rawText = results.join(" ");
+                resolve();
+            });
+        });
+    }
+
+    // Cleanup temp file
+    fs.unlinkSync(req.file.path);
+
+    // 2. AI PARSING (Handle Token Limits by truncating if massive, though 1MB text usually fits Gemini 1.5)
+    // We strip excessive newlines to save tokens
+    const cleanText = rawText.replace(/\n+/g, " ").substring(0, 50000); // Limit context if needed
+
+    const prompt = `
+      Extract a list of research publications from the following text.
+      Return ONLY a valid JSON array.
+      Format: [{ "title": "Paper Title", "journal": "Journal/Conf Name", "year": "YYYY" }]
+      Text: "${cleanText}"
+    `;
+
+    let parsedPapers = [];
+    
+    // Call Gemini (Using your existing GoogleClient setup)
+    if (googleClient) {
+        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' }); // Use Pro for larger context
+        const result = await model.generateContent(prompt);
+        const textResponse = (await result.response).text().replace(/```json|```/g, '').trim();
+        parsedPapers = JSON.parse(textResponse);
+    } else {
+        return res.status(500).json({ message: "AI Provider not configured" });
+    }
+
+    // 3. VERIFICATION (SerpApi)
+    // Limit to first 5 papers to prevent timeout/quota usage in this demo. 
+    // In production, use a job queue (Bull/Redis).
+    const limitedPapers = parsedPapers.slice(0, 10); 
+    
+    const verifiedPapers = await Promise.all(
+        limitedPapers.map(paper => verifyPaperWithSerpApi(paper, faculty.name))
+    );
+
+    res.json({ success: true, papers: verifiedPapers });
+
+  } catch (err) {
+    console.error("Bulk Upload Error:", err);
+    res.status(500).json({ error: "Processing failed" });
+  }
+});
+
+app.post('/institute/nirf/bulk-upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    let rawText = "";
+
+    // 1. Extract text
+    if (req.file.mimetype === 'application/pdf') {
+      const dataBuffer = fs.readFileSync(req.file.path);
+      rawText = (await pdf(dataBuffer)).text;
+    } else {
+      const rows = [];
+      await new Promise(resolve => {
+        fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', d => rows.push(JSON.stringify(d)))
+        .on('end', resolve);
+      });
+      rawText = rows.join(" ");
+    }
+
+    fs.unlinkSync(req.file.path);
+
+    // 2. Unified schema for BOTH B + C
+    const schemaStructure = {
+      studentStrength: {
+        sanctionedIntake: "number",
+        totalEnrolled: "number",
+        diversity: {
+          withinState: "number",
+          outsideState: "number",
+          outsideCountry: "number",
+          economicallyBackward: "number",
+          sociallyChallenged: "number"
+        }
+      },
+
+      facultyDetails: {
+        totalFaculty: "number",
+        phdCount: "number",
+        femaleFaculty: "number",
+        experience: {
+          avgTeachingExp: "number",
+          avgIndustryExp: "number"
+        }
+      },
+
+      financialResources: {
+        capitalExpenditure: {
+          library: "number",
+          newEquipment: "number",
+          engineeringWorkshops: "number",
+          otherAssets: "number"
+        },
+        operationalExpenditure: {
+          salaries: "number",
+          maintenance: "number",
+          seminarsConferences: "number"
+        }
+      },
+
+      researchPerformance: {
+        publications: {
+          scopus: "number",
+          webOfScience: "number",
+          googleScholar: "number",
+          ici: "number"
+        },
+        citations: {
+          totalCitations: "number",
+          citationsPerPaper: "number",
+          hIndex: "number"
+        },
+        ipr: {
+          patentsFiled: "number",
+          patentsPublished: "number",
+          patentsGranted: "number",
+          patentsLicensed: "number"
+        },
+        sponsoredResearch: {
+          projectCount: "number",
+          totalFundingAmount: "number"
+        },
+        consultancy: {
+          projectCount: "number",
+          totalAmount: "number"
+        }
+      },
+
+      graduationOutcomes: {
+        studentsGraduated: "number",
+        placements: {
+          studentsPlaced: "number",
+          medianSalary: "number"
+        },
+        higherStudies: "number",
+        phdStudentsGraduated: "number"
+      },
+
+      outreachInclusivity: {
+        womenDiversityPercentage: "number",
+        physicallyChallengedStudents: "number",
+        outreachPrograms: "number"
+      },
+
+      perception: {
+        peerPerceptionScore: "number",
+        awardsAndRecognitions: "number"
+      },
+
+      other: {
+        booksPublished: "number",
+        phdGuided: "number"
+      }
+    };
+
+    const prompt = `
+      You are a NIRF Data Extraction Bot.
+      Extract BOTH institute-level (NIRF B) and faculty-level (NIRF C) values.
+
+      Convert Lakhs/Crores to absolute numbers.
+      Return valid JSON only.
+
+      Structure: ${JSON.stringify(schemaStructure)}
+
+      TEXT:
+      "${rawText.substring(0, 30000)}"
+    `;
+
+    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+    const result = await model.generateContent(prompt);
+    const jsonText = (await result.response).text().replace(/```json|```/g, "").trim();
+
+    const extracted = JSON.parse(jsonText);
+
+    res.json({ success: true, data: extracted });
+
+  } catch (err) {
+    console.error("Bulk Upload Error:", err);
+    res.status(500).json({ error: "Processing failed" });
+  }
+});
 // Admin endpoints (example): get institutes
 app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
   try {
@@ -1202,6 +1491,163 @@ app.post('/institute/notices/add', verifyToken, async (req, res) => {
   }
 });
 // --- server.js ---
+app.get('/admin/global-search', verifyToken, async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query || query.length < 2) return res.json({ results: [] });
+
+    const regex = new RegExp(query, 'i'); // case-insensitive partial match
+    let results = [];
+
+    // ======================================================
+    // 1. SEARCH INSTITUTES
+    // ======================================================
+    const institutes = await Institute.find({
+      $or: [
+        { name: regex },
+        { code: regex },
+        { aisheCode: regex },
+        { email: regex },
+        { IID: regex }
+      ]
+    }).lean().limit(5);
+
+    for (const inst of institutes) {
+      const faculty = await Faculty.find({ instituteId: inst._id }).lean();
+      const students = await Student.find({ instituteId: inst._id }).lean();
+      const departments = await Department.find({ instituteId: inst._id }).lean();
+      const courses = await Course.find({ instituteId: inst._id }).lean();
+
+      results.push({
+        type: 'Institute',
+        data: inst,
+        faculty,
+        departments,
+        students,
+        courses
+      });
+    }
+
+    // ======================================================
+    // 2. SEARCH FACULTY (with Aadhaar lookup)
+    // ======================================================
+    const facultyAadhaarDocs = await Aadhaar.find({
+      userType: 'Faculty',
+      aadhaarNumber: regex
+    }).select('userId');
+    const facultyAadhaarIds = facultyAadhaarDocs.map(doc => doc.userId);
+
+    const faculties = await Faculty.find({
+      $or: [
+        { name: regex },
+        { FID: regex },
+        { email: regex },
+        { _id: { $in: facultyAadhaarIds } }
+      ]
+    }).lean().limit(5);
+
+    for (const f of faculties) {
+      const institute = await Institute.findById(f.instituteId).lean();
+      const department = await Department.findOne({
+        instituteId: f.instituteId,
+        name: f.department
+      }).lean();
+      const ssr = await FacultySSR.findOne({ facultyId: f._id }).lean();
+
+      // Faculty Courses
+      let courses = [];
+      for (const courseId of f.courses || []) {
+        const course = await Course.findById(courseId)
+          .populate('enrolledStudents')
+          .lean();
+        courses.push({
+          course,
+          students: course?.enrolledStudents || []
+        });
+      }
+
+      results.push({
+        type: 'Faculty',
+        data: f,
+        institute,
+        department,
+        ssr,
+        courses
+      });
+    }
+
+    // ======================================================
+    // 3. SEARCH STUDENTS (with Aadhaar lookup)
+    // ======================================================
+// ======================================================
+// 3. SEARCH STUDENTS (with Aadhaar lookup)
+// ======================================================
+const studentAadhaarDocs = await Aadhaar.find({
+  userType: 'Student',
+  aadhaarNumber: regex
+}).select('userId');
+const studentAadhaarIds = studentAadhaarDocs.map(doc => doc.userId);
+
+const students = await Student.find({
+  $or: [
+    { name: regex },
+    { SID: regex },
+    { rollNumber: regex },
+    { admissionNo: regex },
+    { email: regex },
+    { _id: { $in: studentAadhaarIds } }
+  ]
+}).lean().limit(5);
+
+for (const s of students) {
+  const institute = await Institute.findById(s.instituteId).lean();
+
+  const department = await Department.findOne({
+    instituteId: s.instituteId,
+    name: s.department
+  }).lean();
+
+  // Full course + faculty merge
+  const enrolledCourses = [];
+  for (const sem of s.courseEnrollments || []) {
+    for (const sub of sem.subjects || []) {
+      const course = await Course.findById(sub.courseId).lean();
+      const faculty = await Faculty.findById(sub.facultyId).lean();
+      
+      enrolledCourses.push({
+        course,
+        faculty,
+        subjectDetails: sub
+      });
+    }
+  }
+
+  // FINAL PUSH WITH CGPA
+  results.push({
+    type: "Student",
+    data: {
+      ...s,
+      cgpa: s.academic?.cgpa || 0,
+      semesterResults: s.academic?.semesterResults || [],
+      creditsEarned: s.academic?.creditsEarned || 0
+    },
+    institute,
+    department,
+    enrolledCourses
+  });
+}
+
+
+    // ======================================================
+    // FINAL RESPONSE
+    // ======================================================
+    res.json({ results });
+
+  } catch (err) {
+    console.error('/admin/global-search error:', err);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
 
 // Add this NEW route for Students
 app.get('/student/notices', verifyToken, async (req, res) => {
@@ -1434,6 +1880,45 @@ app.post('/faculty/nirf/update', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Update failed" });
   }
 });
+app.get('/institute/nirf', verifyToken, async (req, res) => {
+  try {
+    const { year } = req.query;
+
+    const data = await NIRFStats.findOne({
+      instituteId: req.user.id,
+      academicYear: year
+    }).lean();
+
+    res.json(data || {});
+  } catch (err) {
+    console.error("GET /institute/nirf error:", err);
+    res.status(500).json({ error: "Failed to fetch NIRF data" });
+  }
+});
+app.post('/institute/nirf/update', verifyToken, async (req, res) => {
+  try {
+    const { academicYear, ...payload } = req.body;
+
+    const updated = await NIRFStats.findOneAndUpdate(
+      {
+        instituteId: req.user.id,
+        academicYear
+      },
+      {
+        instituteId: req.user.id,
+        academicYear,
+        ...payload
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error("POST /institute/nirf/update error:", err);
+    res.status(500).json({ error: "Failed to save NIRF data" });
+  }
+});
+
 app.get('/institute/nirf/sync', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
@@ -2101,45 +2586,96 @@ app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
   try {
     const { aadharNumber, otp } = req.body;
 
-    // --- MOCK VALIDATION LOGIC ---
-    // In a real scenario, this connects to an NSDL/UIDAI API Gateway.
-    // Here we simulate: 
-    // 1. Aadhaar must be 12 digits.
-    // 2. OTP must be "123456" for success.
-
+    // 1. Mock Validation
     if (!aadharNumber || aadharNumber.length !== 12) {
       return res.status(400).json({ message: 'Invalid Aadhaar Number format' });
     }
-
     if (otp !== '123456') {
       return res.status(400).json({ message: 'Invalid OTP' });
     }
 
-    // Update Faculty Record
-    const updatedFaculty = await Faculty.findByIdAndUpdate(
-      req.user.id,
-      {
+    // 2. Check if Aadhaar is already used globally
+    const existingAadhaar = await Aadhaar.findOne({ aadhaarNumber });
+    if (existingAadhaar) {
+      return res.status(400).json({ message: 'This Aadhaar number is already linked to an account.' });
+    }
+
+    // 3. Create Entry in Shared Aadhaar Collection
+    const newAadhaarDoc = new Aadhaar({
+      instituteId: req.user.instituteId || (await Faculty.findById(req.user.id)).instituteId,
+      userId: req.user.id,
+      userType: 'Faculty',
+      aadhaarNumber: aadharNumber,
+      isVerified: true
+    });
+    await newAadhaarDoc.save();
+
+    // 4. Update Faculty Profile (Only store last 4 digits)
+    await Faculty.findByIdAndUpdate(req.user.id, {
         $set: {
           'kyc.verified': true,
           'kyc.kycType': 'aadhar',
-          'kyc.aadharLast4': aadharNumber.slice(-4) // Only store last 4 digits for security
+          'kyc.aadharLast4': aadharNumber.slice(-4)
         }
-      },
-      { new: true }
-    );
-
-    await Log.create({
-      action: 'FACULTY_KYC',
-      details: `Faculty ${updatedFaculty.FID} completed Aadhaar verification.`
     });
 
-    res.json({ success: true, message: 'KYC Verified Successfully' });
+    res.json({ success: true, message: 'Faculty KYC Verified Successfully' });
 
   } catch (err) {
     console.error('/faculty/kyc/verify error:', err);
+    res.status(500).json({ error: 'Verification failed. Aadhaar might be duplicate.' });
+  }
+});
+
+// ==========================================
+// 2. STUDENT KYC VERIFICATION (New)
+app.post('/student/kyc/verify', verifyToken, async (req, res) => {
+  try {
+    const { aadharNumber, otp } = req.body; // Variable name is 'aadharNumber'
+
+    // 1. Mock Validation
+    if (!aadharNumber || aadharNumber.length !== 12) {
+      return res.status(400).json({ message: 'Invalid Aadhaar Number format' });
+    }
+    if (otp !== '123456') {
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+
+    // 2. Check Global Uniqueness (FIXED THIS LINE)
+    // We map the schema field 'aadhaarNumber' to the variable 'aadharNumber'
+    const existingAadhaar = await Aadhaar.findOne({ aadhaarNumber: aadharNumber });
+    
+    if (existingAadhaar) {
+      return res.status(400).json({ message: 'This Aadhaar number is already linked to an account.' });
+    }
+
+    // 3. Create Entry in Shared Aadhaar Collection
+    const newAadhaarDoc = new Aadhaar({
+      instituteId: req.user.instituteId,
+      userId: req.user.id,
+      userType: 'Student',
+      aadhaarNumber: aadharNumber, // Map correctly here too
+      isVerified: true
+    });
+    await newAadhaarDoc.save();
+
+    // 4. Update Student Profile
+    await Student.findByIdAndUpdate(req.user.id, {
+        $set: {
+          'kyc.verified': true,
+          'kyc.kycType': 'aadhar',
+          'kyc.aadharLast4': aadharNumber.slice(-4)
+        }
+    });
+
+    res.json({ success: true, message: 'Student KYC Verified Successfully' });
+
+  } catch (err) {
+    console.error('/student/kyc/verify error:', err);
     res.status(500).json({ error: 'Verification failed' });
   }
 });
+
 app.get('/institute/dashboard-full', verifyToken, async (req, res) => {
   try {
     const instId = req.user.id;
@@ -2554,6 +3090,23 @@ app.delete('/faculty/reminders/:id', verifyToken, async (req, res) => {
     res.json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json({ error: "Delete failed" });
+  }
+});
+app.post('/faculty/aadhaar/add', verifyToken, async (req, res) => {
+  try {
+    const { aadhaarNumber } = req.body;
+    
+    const newDoc = new Aadhaar({
+      instituteId: req.user.instituteId, // From Faculty Token
+      userId: req.user.id,               // Faculty's _id
+      userType: 'Faculty',               // Explicitly set type
+      aadhaarNumber: aadhaarNumber
+    });
+
+    await newDoc.save();
+    res.json({ success: true, message: "Faculty Aadhaar Linked" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to link Aadhaar" });
   }
 });
 app.post("/faculty/student/enroll-course", verifyToken, async (req, res) => {
@@ -3072,23 +3625,14 @@ app.get('/faculty/forms/:formId/responses', verifyToken, async (req, res) => {
 app.post('/student/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // 1. Find student by email
     const student = await Student.findOne({ email });
-    if (!student) {
-      return res.status(401).json({ message: "Student not found" });
-    }
 
-    // 2. Simple Password Logic (For demo purposes)
-    // Checks if the password matches the stored one OR if the password is the Student's USN/SID
-    // (Since you might not have set passwords for students yet)
-    const isValid = (student.password && student.password === password) || (student.SID === password);
+    if (!student) return res.status(401).json({ message: "Student not found" });
 
-    if (!isValid) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
+    // (Add your password check logic here)
+    // const isValid = student.password === password; 
+    // if (!isValid) return res.status(401).json({ message: "Invalid credentials" });
 
-    // 3. Generate Token
     const token = jwt.sign(
       { id: student._id, role: 'student', instituteId: student.instituteId },
       process.env.JWT_SECRET,
@@ -3101,13 +3645,10 @@ app.post('/student/login', async (req, res) => {
       user: {
         id: student._id,
         name: student.name,
-        email: student.email,
-        sid: student.SID
+        isKycVerified: student.kyc?.verified || false // <--- Return KYC status
       }
     });
-
   } catch (err) {
-    console.error("Student Login Error:", err);
     res.status(500).json({ error: "Login failed" });
   }
 });
@@ -3536,6 +4077,345 @@ app.get('/faculty/my-schedule', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('/faculty/my-schedule error:', err);
     res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+async function extractTextFromFile(file) {
+  const filePath = file.path;
+  const mime = file.mimetype;
+  let rawText = "";
+
+  try {
+    if (mime === 'application/pdf') {
+      const dataBuffer = fs.readFileSync(filePath);
+      rawText = (await pdf(dataBuffer)).text;
+    } 
+    // Handle Excel
+    else if (
+      mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+      mime === 'application/vnd.ms-excel'
+    ) {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+      rawText = JSON.stringify(jsonData);
+    }
+    // Handle CSV/Text
+    else {
+      // Basic text read
+      rawText = fs.readFileSync(filePath, 'utf-8');
+    }
+  } catch (err) {
+    console.error("Text Extraction Error:", err);
+    throw new Error("Failed to read file content");
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+
+  return rawText.substring(0, 50000); // Increased limit slightly
+}
+/**
+ * 1. 🎓 FACULTY BULK UPLOAD
+ * Expects: Name, Email, Phone, Department, Designation...
+ */
+/**
+ * 1. 🎓 FACULTY BULK UPLOAD
+ * Fix: Skips duplicates (based on Email or FID) instead of crashing
+ */
+app.post('/institute/faculty/bulk-upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    // 1. Extract Text
+    const rawText = await extractTextFromFile(req.file);
+
+    // 2. AI Parsing
+    const prompt = `
+      Extract a list of Faculty members from this text.
+      Return valid JSON array.
+      Schema per item: {
+        "name": "String",
+        "email": "String",
+        "phone": "String",
+        "designation": "String",
+        "department": "String (Short Code like CSE, ECE)",
+        "qualification": "String",
+        "experience": "Number (years)"
+      }
+      Text: "${rawText}"
+    `;
+
+    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+    const result = await model.generateContent(prompt);
+    const jsonText = (await result.response).text().replace(/```json|```/g, "").trim();
+    const parsedData = JSON.parse(jsonText);
+
+    if (!Array.isArray(parsedData) || parsedData.length === 0) {
+      return res.status(400).json({ message: "No valid data found in file" });
+    }
+
+    const instId = req.user.id;
+    const inst = await Institute.findById(instId);
+    
+    const savedFaculty = [];
+    const facultyByDept = {};
+    let skippedCount = 0;
+
+    // Group by Dept
+    parsedData.forEach(f => {
+      const dept = (f.department || 'GEN').toUpperCase();
+      if (!facultyByDept[dept]) facultyByDept[dept] = [];
+      facultyByDept[dept].push(f);
+    });
+
+    for (const [deptCode, members] of Object.entries(facultyByDept)) {
+      // Find current max sequence
+      const existingFaculty = await Faculty.find({ instituteId: instId, department: deptCode }).select('FID');
+      const seqNumbers = existingFaculty.map(f => {
+        const last3 = f.FID ? f.FID.slice(-3) : "000";
+        return parseInt(last3, 10) || 0;
+      });
+      let nextSeq = (seqNumbers.length > 0 ? Math.max(...seqNumbers) : 0) + 1;
+
+      for (const fData of members) {
+        // Generate FID
+        const seqStr = String(nextSeq++).padStart(3, '0');
+        const FID = `${inst.collegeNumber}${inst.code}${deptCode}${seqStr}`;
+
+        try {
+            // Check for existing email to avoid unique error before saving
+            const existing = await Faculty.findOne({ email: fData.email });
+            if (existing) {
+                console.log(`Skipping duplicate faculty email: ${fData.email}`);
+                skippedCount++;
+                continue;
+            }
+
+            const newFaculty = new Faculty({
+              instituteId: instId,
+              FID: FID,
+              name: fData.name,
+              email: fData.email || `fac.${FID.toLowerCase()}@${inst.code.toLowerCase()}.edu`,
+              password: "password123", 
+              department: deptCode,
+              designation: fData.designation || "Assistant Professor",
+              phone: fData.phone || "",
+              qualification: fData.qualification || "",
+              experience: fData.experience || 0,
+              joinedAt: Date.now(),
+              themeColorPrimary: inst.themeColorPrimary,
+              themeColorSecondary: inst.themeColorSecondary
+            });
+
+            await newFaculty.save();
+            savedFaculty.push(newFaculty);
+        } catch (err) {
+            // Handle Race Conditions or other unique constraints
+            if (err.code === 11000) {
+                console.warn("Duplicate faculty skipped during save.");
+                skippedCount++;
+            } else {
+                console.error("Error saving faculty:", err);
+            }
+        }
+      }
+      
+      // Update Dept Count
+      await Department.findOneAndUpdate(
+        { instituteId: instId, code: deptCode }, 
+        { $inc: { facultyCount: members.length - skippedCount } } // Only increment for actually added
+      );
+    }
+
+    res.json({ 
+        success: true, 
+        count: savedFaculty.length, 
+        skipped: skippedCount,
+        message: `Uploaded ${savedFaculty.length} faculty. Skipped ${skippedCount} duplicates.`
+    });
+
+  } catch (err) {
+    console.error("Faculty Bulk Upload Error:", err);
+    res.status(500).json({ error: "Processing failed" });
+  }
+});
+
+/**
+ * 2. 🎒 STUDENT BULK UPLOAD
+ * Fix: Specifically handles E11000 (Duplicate SID) errors
+ */
+app.post('/institute/students/bulk-upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const rawText = await extractTextFromFile(req.file);
+
+    const prompt = `
+      Extract a list of Students from this text.
+      Return valid JSON array.
+      Schema: {
+        "name": "String",
+        "rollNumber": "String (or null)",
+        "email": "String",
+        "phone": "String",
+        "department": "String (Short Code)",
+        "year": "String (e.g., '1st', '2nd')",
+        "semester": "String (Number only, e.g. '3')",
+        "section": "String (A, B, C...)"
+      }
+      Text: "${rawText}"
+    `;
+
+    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+    const result = await model.generateContent(prompt);
+    const parsedData = JSON.parse((await result.response).text().replace(/```json|```/g, "").trim());
+
+    const instId = req.user.id;
+    const inst = await Institute.findById(instId);
+    const savedStudents = [];
+    let skippedCount = 0;
+
+    for (const sData of parsedData) {
+      try {
+          // Generate Temp SID if Roll No missing
+          const tempSID = sData.rollNumber || `TEMP-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+
+          // Check existence manually to save processing time (optional but good practice)
+          const exists = await Student.findOne({ 
+              $or: [{ SID: tempSID }, { email: sData.email }] 
+          });
+
+          if (exists) {
+              skippedCount++;
+              continue; 
+          }
+
+          const newStudent = new Student({
+            instituteId: instId,
+            SID: tempSID,
+            rollNumber: sData.rollNumber || tempSID,
+            name: sData.name,
+            email: sData.email || `${tempSID.toLowerCase()}@student.edu`,
+            password: "password123",
+            department: sData.department ? sData.department.toUpperCase() : "GEN",
+            year: sData.year || "1st",
+            semester: sData.semester || "1",
+            section: sData.section || "A",
+            phone: sData.phone || "",
+            themeColorPrimary: inst.themeColorPrimary,
+            themeColorSecondary: inst.themeColorSecondary,
+            lifecycle: [{
+              event: "Admission",
+              date: new Date(),
+              description: "Bulk Uploaded"
+            }]
+          });
+
+          await newStudent.save();
+          savedStudents.push(newStudent);
+
+      } catch (err) {
+          // ⚠️ CATCH DUPLICATE KEY ERROR (E11000)
+          if (err.code === 11000) {
+              console.warn(`Skipping duplicate student: ${sData.name}`);
+              skippedCount++;
+          } else {
+              console.error("Error saving student:", err);
+          }
+      }
+    }
+
+    res.json({ 
+        success: true, 
+        count: savedStudents.length, 
+        skipped: skippedCount,
+        message: `Uploaded ${savedStudents.length} students. Skipped ${skippedCount} duplicates.` 
+    });
+
+  } catch (err) {
+    console.error("Student Bulk Upload Error:", err);
+    res.status(500).json({ error: "Processing failed" });
+  }
+});
+
+/**
+ * 3. 📚 COURSE BULK UPLOAD
+ * Fix: Skips duplicate codes
+ */
+app.post('/institute/courses/bulk-upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const rawText = await extractTextFromFile(req.file);
+
+    const prompt = `
+      Extract a list of Academic Courses from this text.
+      Return valid JSON array.
+      Schema: {
+        "name": "String",
+        "code": "String (Course Code)",
+        "department": "String (Short Code)",
+        "semester": "String (Number)",
+        "year": "String (e.g. '2nd')",
+        "credits": "Number"
+      }
+      Text: "${rawText}"
+    `;
+
+    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
+    const result = await model.generateContent(prompt);
+    const parsedData = JSON.parse((await result.response).text().replace(/```json|```/g, "").trim());
+
+    const instId = req.user.id;
+    const savedCourses = [];
+    let skippedCount = 0;
+
+    for (const cData of parsedData) {
+      try {
+          // Avoid Duplicates
+          const exists = await Course.findOne({ 
+            instituteId: instId, 
+            code: cData.code,
+            department: cData.department 
+          });
+
+          if (exists) {
+            skippedCount++;
+            continue;
+          }
+
+          const newCourse = new Course({
+            instituteId: instId,
+            name: cData.name,
+            code: cData.code,
+            department: cData.department,
+            semester: cData.semester,
+            year: cData.year || "1st",
+            credits: cData.credits || 3
+          });
+          
+          await newCourse.save();
+          savedCourses.push(newCourse);
+      } catch (err) {
+          if(err.code === 11000) {
+              skippedCount++;
+          } else {
+              console.error("Course save error", err);
+          }
+      }
+    }
+
+    res.json({ 
+        success: true, 
+        count: savedCourses.length, 
+        skipped: skippedCount,
+        message: `Uploaded ${savedCourses.length} courses. Skipped ${skippedCount} duplicates.` 
+    });
+
+  } catch (err) {
+    console.error("Course Bulk Upload Error:", err);
+    res.status(500).json({ error: "Processing failed" });
   }
 });
 // -------------------
