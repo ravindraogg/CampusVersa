@@ -26,7 +26,8 @@ import {
   Menu,
   X,
   Settings,
-  Megaphone // Added for Notices
+  Megaphone,
+  Award // Added for Notices
 } from "lucide-react";
 
 // --- SUB-COMPONENTS ---
@@ -36,6 +37,7 @@ import StudentProfileSection from "./StudentProfileSection";
 import StudentTimetableSection from "./StudentTimetableSection";
 import StudentCoursesSection from "./StudentCoursesSection";
 import UniversalNoticePage from "../UniversalNoticePage";
+import ScholarshipSection from "./scholler";
 
 // --- FEATURE COMPONENTS ---
 import ResumeBuilder from "./resume";
@@ -64,6 +66,7 @@ const NAV_ITEMS = [
   { id: "attendance", label: "Attendance", icon: CalendarDays },
   { id: "timetable", label: "Timetable", icon: TableIcon },
   { id: "courses", label: "Courses", icon: BookOpen },
+  { id: "scholarships", label: "Scholarships", icon: Award },
   { id: "performance", label: "Performance", icon: TrendingUp },
   { id: "career", label: "Career & Skills", icon: Briefcase },
   { id: "freelance", label: "Jobs & Hubs", icon: Send },
@@ -684,6 +687,8 @@ const StudentDashboard = () => {
         );
       case "courses":
         return <StudentCoursesSection student={student} theme={theme} />;
+        case "scholarships":
+        return <ScholarshipSection student={student} theme={theme} />;
       case "performance": return <StudentPerformanceSection student={student} />;
       case "career": return <CareerHub theme={theme} />;
       case "freelance":

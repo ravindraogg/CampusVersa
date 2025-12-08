@@ -80,7 +80,6 @@ const FacultySSR = ({ authFetch, theme, pushToast }) => {
           const parsedCache = JSON.parse(cached);
           setData(parsedCache);
           setHasUnsavedChanges(true);
-          pushToast("Restored unsaved draft from local storage", "info");
         } catch (e) { console.error("Cache error", e); }
       }
 

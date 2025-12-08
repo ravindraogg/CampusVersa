@@ -32,39 +32,49 @@ const FacultyKYC = () => {
     }, 1500);
   };
 
-  const handleVerify = async () => {
-    setIsLoading(true);
-    setErrorMsg("");
+const handleVerify = async () => {
+  setIsLoading(true);
+  setErrorMsg("");
 
-    try {
-      const token = localStorage.getItem("facultyToken");
-      
-      const response = await fetch(`${API_URL}/faculty/kyc/verify`, {
-        method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": token // Assumes standard header format, or use Bearer
-        },
-        body: JSON.stringify({ aadharNumber: aadhar, otp }),
-      });
+  const token = localStorage.getItem("facultyToken");
 
-      const data = await response.json();
+  console.log("📤 FRONTEND → Sending to backend:", {
+    url: `${API_URL}/faculty/kyc/verify`,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": token
+    },
+    body: { aadharNumber: aadhar, otp }
+  });
 
-      if (response.ok) {
-        setSuccess(true);
-        // Redirect after delay
-        setTimeout(() => {
-          window.location.href = "/fc/dash";
-        }, 2000);
-      } else {
-        setErrorMsg(data.message || "Verification failed");
-      }
-    } catch (err) {
-      setErrorMsg("Server error.");
-    } finally {
-      setIsLoading(false);
+  try {
+    const response = await fetch(`${API_URL}/faculty/kyc/verify`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": token
+      },
+      body: JSON.stringify({ aadharNumber: aadhar, otp }),
+    });
+
+    const data = await response.json();
+    console.log("📥 FRONTEND ← Response from backend:", data);
+
+    if (response.ok) {
+      setSuccess(true);
+      setTimeout(() => {
+        window.location.href = "/fc/dash";
+      }, 2000);
+    } else {
+      setErrorMsg(data.message || "Verification failed");
     }
-  };
+  } catch (err) {
+    console.error("❌ FRONTEND ERROR:", err);
+    setErrorMsg("Server error.");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   if (success) {
     return (

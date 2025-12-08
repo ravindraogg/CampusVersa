@@ -7,15 +7,17 @@ import {
   Megaphone, History, Eye, UserCheck, UserX, AlertTriangle, Key,
   MessageSquare, ChevronDown, UserPlus, LifeBuoy, CheckCircle2,
   ArrowLeft, GraduationCap, BookOpen, Trophy, TrendingUp, MapPin, Mail, Phone, Globe, PieChart as PieIcon,
-  Linkedin, ExternalLink
+  Linkedin, ExternalLink, ArrowUpDown, Filter, RefreshCw
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
+  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ComposedChart
 } from 'recharts';
 
 // --- CONFIGURATION ---
-const BACKEND_URI = import.meta.env.VITE_BACK_URI || 'http://localhost:5000';
+// Simplified backend URI to avoid import.meta issues in ES2015 environments
+const BACKEND_URI = 'http://localhost:5000';
 const API_BASE_URL = `${BACKEND_URI}/admin`;
 
 // --- COMPONENT: ADVANCED GLOBAL SEARCH ---
@@ -31,6 +33,7 @@ const GlobalSearch = ({ api, onSelectResult }) => {
       if (query.length >= 2) {
         setLoading(true);
         try {
+          // Searches entire DB regardless of local state
           const res = await api.get(`/global-search?query=${query}`);
           setResults(res.data.results || []);
           setShowResults(true);
@@ -57,7 +60,7 @@ const GlobalSearch = ({ api, onSelectResult }) => {
           <input
             type="text"
             className="w-full bg-transparent text-slate-100 p-3 outline-none placeholder-slate-500 font-medium"
-            placeholder="Search by Aadhaar, Name, ID, Code, Email..."
+            placeholder="Search Institutes, Students, Faculty..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => { if (results.length > 0) setShowResults(true); }}
@@ -102,9 +105,11 @@ const GlobalSearch = ({ api, onSelectResult }) => {
                     }`}>{item.type.toUpperCase()}</span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1 flex flex-col gap-0.5">
+                    {/* Maps to Institute Schema */}
                     {item.type === 'Institute' && <span>Code: <span className="text-slate-300 font-mono">{item.data.code}</span> • {item.data.email}</span>}
-                    {item.type === 'Faculty' && <span>FID: <span className="text-slate-300 font-mono">{item.data.FID}</span> • {item.data.department}</span>}
-                    {item.type === 'Student' && <span>SID: <span className="text-slate-300 font-mono">{item.data.SID}</span> • Sem: {item.data.semester}</span>}
+                    {item.type === 'Faculty' && <span>Email: <span className="text-slate-300">{item.data.email}</span></span>}
+                    {/* Maps to Student Schema */}
+                    {item.type === 'Student' && <span>SID: <span className="text-slate-300 font-mono">{item.data.SID}</span> • {item.data.department}</span>}
                   </div>
                 </div>
               </div>
@@ -154,7 +159,15 @@ const AdminPanel = () => {
   const [grievances, setGrievances] = useState([]);
   const [logs, setLogs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Detail View States
   const [selectedInstitute, setSelectedInstitute] = useState(null);
+  const [instituteStats, setInstituteStats] = useState(null); // Holds live counts (students, etc)
+  const [instituteStudents, setInstituteStudents] = useState([]); // Holds actual Student list
+  const [instituteFaculty, setInstituteFaculty] = useState([]); // Holds actual Faculty list
+  const [deptSortConfig, setDeptSortConfig] = useState({ key: 'students', direction: 'desc' });
+  const [deptFilter, setDeptFilter] = useState('');
+
   const [searchDetail, setSearchDetail] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -187,14 +200,77 @@ const AdminPanel = () => {
     return () => clearTimeout(timer);
   }, [activeView, isAuthenticated]);
 
+  // Fetch Data when view changes
+  useEffect(() => {
+    if (activeView === 'institute_students' && selectedInstitute) {
+      fetchInstituteStudents(selectedInstitute._id);
+    }
+    if (activeView === 'institute_faculty' && selectedInstitute) {
+      fetchInstituteFaculty(selectedInstitute._id);
+    }
+  }, [activeView, selectedInstitute]);
+
   const fetchDashboardData = async () => { try { const res = await api.get('/analytics'); setAnalytics(res.data); } catch (err) { loadMockAnalytics(); } };
   const fetchInstitutes = async () => { setIsLoading(true); try { const res = await api.get('/getAllInstitutes'); setInstitutes(res.data); } catch (err) { loadMockInstitutes(); } finally { setIsLoading(false); } };
   const fetchGrievances = async () => { try { const res = await api.get('/grievances'); setGrievances(res.data); } catch (err) { loadMockGrievances(); } };
   const fetchLogs = async () => { try { const res = await api.get('/logs'); setLogs(res.data); } catch (err) { loadMockLogs(); } };
 
+  const fetchInstituteStats = async (instituteId) => {
+    try {
+      const res = await api.get(`/institute/${instituteId}/stats`);
+      
+      // REAL DATA ONLY: No mock fallback for department breakdown
+      let stats = res.data || {};
+      // Ensure arrays exist to prevent crashes
+      if (!stats.departmentBreakdown) stats.departmentBreakdown = [];
+      if (!stats.growthData) stats.growthData = [];
+      if (!stats.departmentData) stats.departmentData = [];
+
+      setInstituteStats(stats);
+    } catch (err) {
+      console.warn("Could not fetch stats", err);
+      setInstituteStats({ 
+        totalStudents: 0, 
+        totalFaculty: 0, 
+        publications: 0,
+        departmentBreakdown: [],
+        growthData: [],
+        departmentData: []
+      });
+    }
+  };
+
+  const fetchInstituteStudents = async (instituteId) => {
+    setIsLoading(true);
+    try {
+      const res = await api.get(`/institute/${instituteId}/students`);
+      setInstituteStudents(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch students", err);
+      setInstituteStudents([]); // No mock data
+      showToast("Error loading students. Backend endpoint might be missing.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchInstituteFaculty = async (instituteId) => {
+    setIsLoading(true);
+    try {
+      const res = await api.get(`/institute/${instituteId}/faculty`);
+      setInstituteFaculty(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch faculty", err);
+      setInstituteFaculty([]); // No mock data
+      showToast("Error loading faculty. Check network or backend route.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Mock Generators...
   const loadMockAnalytics = () => { setAnalytics({ activeInstitutes: 12, pendingApprovals: 5, openGrievances: 3, totalInstitutes: 20, recentActivity: [{ action: 'LOGIN', details: 'Admin User logged in', timestamp: new Date().toISOString() }] }); };
-  const loadMockInstitutes = () => { setInstitutes([{ _id: '1', name: 'MOCK UNIVERSITY', code: 'MOCK', type: 'REGISTERED', status: 'Active' }]); };
+  const loadMockInstitutes = () => { setInstitutes([{ _id: '1', name: 'MOCK UNIVERSITY', code: 'MOCK', type: 'REGISTERED', status: 'Active', email: 'admin@mock.edu', aisheCode: 'U-0001' }]); };
   const loadMockGrievances = () => { setGrievances([]); };
   const loadMockLogs = () => { setLogs([]); };
 
@@ -224,7 +300,6 @@ const AdminPanel = () => {
               <p className="text-slate-400 font-medium">{type === 'Institute' ? data.code : (type === 'Faculty' ? data.designation : `Student - ${data.department}`)}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                  <span className="px-2 py-1 bg-slate-900 rounded text-xs font-mono text-slate-300 border border-white/10">ID: {data.IID || data.FID || data.SID}</span>
-                 {data.kyc?.verified && <span className="px-2 py-1 bg-green-900/30 text-green-400 rounded text-xs border border-green-500/30 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> KYC Verified</span>}
                  {type === 'Institute' && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 rounded text-xs border border-blue-500/30">AISHE: {data.aisheCode}</span>}
               </div>
             </div>
@@ -251,42 +326,14 @@ const AdminPanel = () => {
             </div>
           )}
 
-          {/* 3. FACULTY VIEW */}
-          {type === 'Faculty' && (
-            <div className="grid grid-cols-2 gap-4">
-               <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-2">Professional Profile</h4>
-               <DetailRow label="Department" value={data.department} />
-               <DetailRow label="Designation" value={data.designation} />
-               <DetailRow label="Qualification" value={data.qualification} />
-               <DetailRow label="Experience" value={data.experience} />
-               <DetailRow label="Joining Date" value={data.joinedAt ? new Date(data.joinedAt).toLocaleDateString() : 'N/A'} />
-               <DetailRow label="Status" value="Active Faculty" />
-
-               <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Research & Metrics</h4>
-               <div className="col-span-2 grid grid-cols-3 gap-2">
-                  <div className="p-3 bg-slate-800 rounded text-center"><div className="text-xs text-slate-400">Papers</div><div className="text-lg font-bold text-white">{data.research?.papersPublished || 0}</div></div>
-                  <div className="p-3 bg-slate-800 rounded text-center"><div className="text-xs text-slate-400">Citations</div><div className="text-lg font-bold text-white">{data.research?.citations || 0}</div></div>
-                  <div className="p-3 bg-slate-800 rounded text-center"><div className="text-xs text-slate-400">H-Index</div><div className="text-lg font-bold text-white">{data.research?.hIndex || 0}</div></div>
-               </div>
-
-               <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Contact Info</h4>
-               <DetailRow label="Email" value={data.email} />
-               <DetailRow label="Phone" value={data.phone} />
-               <div className="col-span-2 flex gap-3 mt-2">
-                  {data.socialLinks?.linkedin && <a href={data.socialLinks.linkedin} target="_blank" className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white transition"><Linkedin className="w-4 h-4"/></a>}
-                  {data.socialLinks?.googleScholar && <a href={data.socialLinks.googleScholar} target="_blank" className="p-2 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition"><BookOpen className="w-4 h-4"/></a>}
-               </div>
-            </div>
-          )}
-
-          {/* 4. STUDENT VIEW (Detailed) */}
+          {/* 3. STUDENT VIEW (Based on Student Schema) */}
           {type === 'Student' && (
             <div className="grid grid-cols-2 gap-4">
                <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-2">Academic Identity</h4>
                <DetailRow label="Roll Number" value={data.rollNumber} />
                <DetailRow label="Admission No" value={data.admissionNo} />
+               <DetailRow label="Department" value={data.department} />
                <DetailRow label="Current Semester" value={`Sem ${data.semester}`} />
-               <DetailRow label="Section" value={data.section || 'A'} />
                
                <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Performance Overview</h4>
                <div className="col-span-2 grid grid-cols-2 gap-4">
@@ -298,44 +345,6 @@ const AdminPanel = () => {
                      <div><div className="text-xs text-slate-400 uppercase">Attendance</div><div className="text-2xl font-bold text-blue-400">{data.attendance?.overallPercentage || 0}%</div></div>
                      <Activity className="w-8 h-8 text-blue-500/20"/>
                   </div>
-               </div>
-
-               <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Full Marks History</h4>
-               <div className="col-span-2 space-y-4">
-                  {data.courseEnrollments?.length > 0 ? data.courseEnrollments.map((sem, idx) => (
-                     <div key={idx} className="bg-slate-950/50 rounded-lg border border-white/5 overflow-hidden">
-                        <div className="bg-slate-800 px-4 py-2 text-sm font-bold text-slate-200 border-b border-white/5">
-                           Semester {sem.semester}
-                        </div>
-                        <table className="w-full text-xs text-left">
-                           <thead className="bg-white/5 text-slate-400 font-semibold">
-                              <tr>
-                                 <th className="p-2 pl-4">Subject</th>
-                                 <th className="p-2">Code</th>
-                                 <th className="p-2 text-center">Internals</th>
-                                 <th className="p-2 text-center">External</th>
-                                 <th className="p-2 text-right pr-4">Total</th>
-                              </tr>
-                           </thead>
-                           <tbody className="divide-y divide-white/5 text-slate-300">
-                              {sem.subjects?.map((sub, sIdx) => {
-                                 const internals = (sub.marksDetails?.test1||0) + (sub.marksDetails?.test2||0) + (sub.marksDetails?.test3||0) + (sub.marksDetails?.assignment||0);
-                                 return (
-                                    <tr key={sIdx} className="hover:bg-white/5 transition">
-                                       <td className="p-2 pl-4 font-medium">{sub.courseName}</td>
-                                       <td className="p-2 font-mono text-slate-500">{sub.courseCode}</td>
-                                       <td className="p-2 text-center text-slate-400">{internals}</td>
-                                       <td className="p-2 text-center text-slate-400">{sub.marksDetails?.external || 0}</td>
-                                       <td className="p-2 text-right pr-4 font-bold text-white">{sub.marksObtained || 0}</td>
-                                    </tr>
-                                 );
-                              })}
-                           </tbody>
-                        </table>
-                     </div>
-                  )) : (
-                     <div className="p-4 text-center text-slate-500 bg-slate-800 rounded">No academic records found.</div>
-                  )}
                </div>
             </div>
           )}
@@ -406,7 +415,8 @@ const AdminPanel = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-slate-800/50 p-6 rounded-2xl border border-white/5">
             <h4 className="text-white font-semibold mb-6">System Overview</h4>
-            <div className="h-64">
+            {/* FIX: Ensure specific height for chart container */}
+            <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -433,61 +443,16 @@ const AdminPanel = () => {
             </div>
           </div>
         </div>
-
-        {/* Row 2: Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5 flex flex-col">
-             <h4 className="text-white font-semibold mb-2 flex items-center gap-2">
-                <PieIcon className="w-4 h-4 text-slate-400" /> Institute Distribution
-             </h4>
-             <div className="flex-1 flex items-center justify-center">
-                <div className="w-full h-64 flex items-center justify-between">
-                   <ResponsiveContainer width="100%" height="100%">
-                     <PieChart>
-                       <Pie data={instituteTypeData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                         {instituteTypeData.map((entry, index) => (
-                           <Cell key={`cell-${index}`} fill={TYPE_COLORS[index % TYPE_COLORS.length]} />
-                         ))}
-                       </Pie>
-                       <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }} />
-                       <Legend verticalAlign="bottom" height={36}/>
-                     </PieChart>
-                   </ResponsiveContainer>
-                </div>
-             </div>
-          </div>
-          <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5">
-             <h4 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-slate-400" /> Platform Growth
-             </h4>
-             <div className="h-64">
-               <ResponsiveContainer width="100%" height="100%">
-                 <AreaChart data={registrationTrendData}>
-                   <defs>
-                     <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                       <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                     </linearGradient>
-                   </defs>
-                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                   <XAxis dataKey="month" tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                   <YAxis tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                   <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }} />
-                   <Area type="monotone" dataKey="count" stroke="#10b981" fillOpacity={1} fill="url(#colorCount)" name="New Registrations" />
-                 </AreaChart>
-               </ResponsiveContainer>
-             </div>
-          </div>
-        </div>
       </div>
     );
   };
 
   const renderInstitutes = () => {
+    // Filter local list if needed, but primary search is GlobalSearch
     const filteredInstitutes = institutes.filter(inst =>
       inst.type === 'REGISTERED' &&
-      (inst.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        inst.code.toLowerCase().includes(searchQuery.toLowerCase()))
+      (inst.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       inst.code?.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     return (
@@ -497,10 +462,9 @@ const AdminPanel = () => {
           <div className="flex w-full md:w-auto gap-3">
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-              {/* FIXED: Text Color */}
               <input 
                 type="text" 
-                placeholder="Search Active Institutes..." 
+                placeholder="Filter current list..." 
                 value={searchQuery} 
                 onChange={(e) => setSearchQuery(e.target.value)} 
                 className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2.5 rounded-lg text-slate-100 text-sm focus:border-indigo-500 outline-none" 
@@ -525,6 +489,7 @@ const AdminPanel = () => {
               {filteredInstitutes.map(inst => (
                 <tr key={inst._id} className="hover:bg-white/5 transition-colors">
                   <td className="p-4">
+                    {/* Hyperlink that triggers detailed fetch */}
                     <div onClick={() => openInstituteDetails(inst)} className="font-medium text-white flex items-center gap-2 cursor-pointer hover:text-indigo-400 transition-colors group">
                       {inst.name}
                       <Eye className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500" />
@@ -555,14 +520,41 @@ const AdminPanel = () => {
   const openInstituteDetails = (inst) => {
     setSelectedInstitute(inst);
     setActiveView('institute_details');
+    // Call the backend to get fresh statistics and student info for this ID
+    fetchInstituteStats(inst._id);
+  };
+
+  const handleDeptSort = (key) => {
+    setDeptSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc'
+    }));
   };
 
   const renderInstituteDetails = () => {
     if (!selectedInstitute) return null;
-    const growthData = [ { year: '2020', students: 1200, research: 45 }, { year: '2021', students: 1350, research: 52 }, { year: '2022', students: 1500, research: 68 }, { year: '2023', students: 1800, research: 85 }, { year: '2024', students: 2100, research: 110 } ];
-    const deptData = [ { name: 'Engineering', value: 650 }, { name: 'Management', value: 300 }, { name: 'Science', value: 200 }, { name: 'Arts', value: 150 } ];
+    
+    // Fallback data if fetch fails or is loading
+    const stats = instituteStats || { totalStudents: 0, totalFaculty: 0, publications: 0, departmentBreakdown: [], growthData: [], departmentData: [] };
+    const growthData = stats.growthData;
+    const deptData = stats.departmentData;
+    
+    // Process Department Breakdown Data
+    const deptBreakdown = stats.departmentBreakdown || [];
+    const sortedDepts = [...deptBreakdown]
+      .filter(d => d.name.toLowerCase().includes(deptFilter.toLowerCase()))
+      .sort((a, b) => {
+        const { key, direction } = deptSortConfig;
+        if (a[key] < b[key]) return direction === 'asc' ? -1 : 1;
+        if (a[key] > b[key]) return direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+
     const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899'];
-    const accInfo = selectedInstitute.accreditation?.[0] || { grade: 'N/A', score: 0 };
+    
+    const accInfo = selectedInstitute.accreditation && selectedInstitute.accreditation.length > 0
+      ? selectedInstitute.accreditation[0] 
+      : { grade: 'N/A', score: 0 };
 
     return (
       <div className="space-y-8 animate-in slide-in-from-right duration-300">
@@ -577,34 +569,116 @@ const AdminPanel = () => {
           </div>
         </div>
 
+        {/* --- TOP STATISTICS CARDS --- */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-slate-800/60 border border-white/5 p-5 rounded-2xl flex items-center gap-4">
              <div className="p-3 bg-indigo-500/20 rounded-xl"><Trophy className="w-8 h-8 text-indigo-400" /></div>
-             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">NAAC Grade</div><div className="text-2xl font-bold text-white">{accInfo.grade} <span className="text-sm font-normal text-slate-500">({accInfo.score})</span></div></div>
+             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Accreditation</div><div className="text-2xl font-bold text-white">{accInfo.grade} <span className="text-sm font-normal text-slate-500">({accInfo.score})</span></div></div>
           </div>
+          {/* Clickable Card: Students */}
           <div onClick={() => { setSearchQuery(''); setActiveView('institute_students'); }} className="bg-slate-800/60 border border-white/5 p-5 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-emerald-500/50 hover:bg-slate-800 transition-all group">
              <div className="p-3 bg-emerald-500/20 rounded-xl group-hover:bg-emerald-500/30 transition-colors"><Users className="w-8 h-8 text-emerald-400" /></div>
-             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Students</div><div className="text-2xl font-bold text-white">2,100</div></div>
+             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Students</div><div className="text-2xl font-bold text-white">{stats.totalStudents || 0}</div></div>
           </div>
-          <div className="bg-slate-800/60 border border-white/5 p-5 rounded-2xl flex items-center gap-4">
-             <div className="p-3 bg-amber-500/20 rounded-xl"><GraduationCap className="w-8 h-8 text-amber-400" /></div>
-             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Faculty</div><div className="text-2xl font-bold text-white">145</div></div>
+          {/* Clickable Card: Faculty */}
+          <div onClick={() => { setSearchQuery(''); setActiveView('institute_faculty'); }} className="bg-slate-800/60 border border-white/5 p-5 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-amber-500/50 hover:bg-slate-800 transition-all group">
+             <div className="p-3 bg-amber-500/20 rounded-xl group-hover:bg-amber-500/30 transition-colors"><GraduationCap className="w-8 h-8 text-amber-400" /></div>
+             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Faculty</div><div className="text-2xl font-bold text-white">{selectedInstitute.authorizedFaculty?.length || stats.totalFaculty || 0}</div></div>
           </div>
           <div className="bg-slate-800/60 border border-white/5 p-5 rounded-2xl flex items-center gap-4">
              <div className="p-3 bg-rose-500/20 rounded-xl"><BookOpen className="w-8 h-8 text-rose-400" /></div>
-             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Publications</div><div className="text-2xl font-bold text-white">312</div></div>
+             <div><div className="text-slate-400 text-xs font-bold uppercase tracking-wider">Publications</div><div className="text-2xl font-bold text-white">{stats.publications || 0}</div></div>
           </div>
         </div>
 
+        {/* --- DEPARTMENT ANALYSIS SECTION --- */}
+        <div className="bg-slate-900/50 border border-white/10 rounded-2xl p-6">
+           <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2"><PieIcon className="w-5 h-5 text-indigo-400"/> Departmental Performance Analytics</h3>
+              <div className="relative">
+                 <Filter className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                 <input 
+                    type="text" 
+                    placeholder="Filter Departments..." 
+                    value={deptFilter}
+                    onChange={(e) => setDeptFilter(e.target.value)}
+                    className="bg-slate-800 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-indigo-500 outline-none"
+                 />
+              </div>
+           </div>
+
+           {deptBreakdown.length > 0 ? (
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Department Table */}
+                <div className="lg:col-span-2 bg-slate-800/30 rounded-xl border border-white/5 overflow-hidden">
+                   <table className="w-full text-left">
+                      <thead className="bg-slate-800 text-slate-400 text-xs uppercase font-bold">
+                         <tr>
+                            <th className="p-4 cursor-pointer hover:text-white" onClick={()=>handleDeptSort('name')}>Department <ArrowUpDown className="w-3 h-3 inline"/></th>
+                            <th className="p-4 cursor-pointer hover:text-white" onClick={()=>handleDeptSort('students')}>Students <ArrowUpDown className="w-3 h-3 inline"/></th>
+                            <th className="p-4 cursor-pointer hover:text-white" onClick={()=>handleDeptSort('faculty')}>Faculty <ArrowUpDown className="w-3 h-3 inline"/></th>
+                            <th className="p-4 cursor-pointer hover:text-white" onClick={()=>handleDeptSort('avgCgpa')}>Avg CGPA <ArrowUpDown className="w-3 h-3 inline"/></th>
+                            <th className="p-4 cursor-pointer hover:text-white" onClick={()=>handleDeptSort('researchScore')}>Research <ArrowUpDown className="w-3 h-3 inline"/></th>
+                         </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-sm">
+                         {sortedDepts.map((dept, idx) => (
+                            <tr key={idx} className="hover:bg-white/5 transition-colors">
+                               <td className="p-4 font-bold text-white">{dept.name}</td>
+                               <td className="p-4 text-slate-300">{dept.students}</td>
+                               <td className="p-4 text-slate-300">{dept.faculty}</td>
+                               <td className="p-4 text-emerald-400 font-bold">{dept.avgCgpa}</td>
+                               <td className="p-4 text-indigo-400 font-bold">{dept.researchScore}</td>
+                            </tr>
+                         ))}
+                         {sortedDepts.length === 0 && <tr><td colSpan="5" className="p-6 text-center text-slate-500">No departments match your filter.</td></tr>}
+                      </tbody>
+                   </table>
+                </div>
+
+                {/* Visualization Chart */}
+                {/* FIX: Set specific height to avoid Recharts -1 height warning */}
+                <div className="bg-slate-800/30 rounded-xl border border-white/5 p-4 flex flex-col h-[350px]">
+                   <h4 className="text-slate-400 text-xs font-bold uppercase mb-4 text-center">Student Ratio vs Research Impact</h4>
+                   <div className="flex-1 w-full h-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                         <ComposedChart data={sortedDepts.slice(0, 8)}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <XAxis dataKey="name" tick={{fill: '#94a3b8', fontSize: 10}} interval={0} />
+                            <YAxis yAxisId="left" tick={{fill: '#94a3b8', fontSize: 10}} orientation="left" stroke="#6366f1" />
+                            <YAxis yAxisId="right" tick={{fill: '#94a3b8', fontSize: 10}} orientation="right" stroke="#10b981" />
+                            <Tooltip contentStyle={{backgroundColor: '#0f172a', borderColor: '#334155'}} />
+                            <Legend wrapperStyle={{fontSize: '10px'}} />
+                            <Bar yAxisId="left" dataKey="students" name="Students" barSize={20} fill="#6366f1" radius={[4,4,0,0]} />
+                            <Line yAxisId="right" type="monotone" dataKey="researchScore" name="Research Score" stroke="#10b981" strokeWidth={2} dot={{r:3}} />
+                         </ComposedChart>
+                      </ResponsiveContainer>
+                   </div>
+                </div>
+             </div>
+           ) : (
+             <div className="flex flex-col items-center justify-center p-12 bg-slate-800/30 rounded-xl border border-white/5 border-dashed">
+                <div className="bg-slate-700/50 p-4 rounded-full mb-4">
+                   <FileText className="w-8 h-8 text-slate-400" />
+                </div>
+                <h4 className="text-white font-bold text-lg mb-2">No Department Data Available</h4>
+                <p className="text-slate-400 text-sm text-center max-w-md">
+                   This institute hasn't added any department records yet. Statistics and analytics will appear here once faculty and student data is populated.
+                </p>
+             </div>
+           )}
+        </div>
+
+        {/* --- GROWTH & DISTRIBUTION (Existing Charts) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
            <div className="lg:col-span-2 bg-slate-800/50 p-6 rounded-2xl border border-white/5">
               <h4 className="text-white font-semibold mb-4 border-b border-white/5 pb-2">Institutional Growth Trajectory</h4>
-              <div className="h-64">
+              {/* FIX: Set specific height */}
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={growthData}>
                     <defs>
                       <linearGradient id="colorStudents" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient>
-                      <linearGradient id="colorResearch" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                     <XAxis dataKey="year" tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
@@ -612,16 +686,16 @@ const AdminPanel = () => {
                     <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#fff' }} />
                     <Legend />
                     <Area type="monotone" dataKey="students" stroke="#6366f1" fillOpacity={1} fill="url(#colorStudents)" name="Student Intake" />
-                    <Area type="monotone" dataKey="research" stroke="#10b981" fillOpacity={1} fill="url(#colorResearch)" name="Research Output" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
            </div>
            <div className="bg-slate-800/50 p-6 rounded-2xl border border-white/5 flex flex-col">
-              <h4 className="text-white font-semibold mb-4">Department Distribution</h4>
+              <h4 className="text-white font-semibold mb-4">Distribution</h4>
               <div className="flex-1 flex items-center justify-center">
-                 <div className="w-full h-48 flex items-center justify-between px-8">
-                    <ResponsiveContainer width="50%" height="100%">
+                 {/* FIX: Set specific height */}
+                 <div className="w-full h-48">
+                    <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie data={deptData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                           {deptData.map((entry, index) => (
@@ -639,12 +713,97 @@ const AdminPanel = () => {
     );
   };
 
+  // --- NEW: RENDER FACULTY LIST VIEW ---
+  const renderInstituteFaculty = () => {
+    if (!selectedInstitute) return null;
+
+    const filteredFaculty = instituteFaculty.filter(f => 
+      f.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      f.department?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.designation?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+      <div className="space-y-6 animate-in slide-in-from-right duration-300">
+         <div className="flex items-center gap-4">
+          <button onClick={() => setActiveView('institute_details')} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-full text-white transition-colors"><ArrowLeft className="w-5 h-5" /></button>
+          <div><h2 className="text-2xl font-bold text-white">Faculty Registry</h2><p className="text-slate-400 text-sm">{selectedInstitute.name}</p></div>
+        </div>
+        <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden">
+          <div className="p-4 border-b border-white/5 flex justify-between items-center">
+             <div className="relative w-64">
+               <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+               <input 
+                 type="text" 
+                 placeholder="Search faculty by name, dept..." 
+                 value={searchQuery}
+                 onChange={(e) => setSearchQuery(e.target.value)}
+                 className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2 rounded-lg text-slate-100 text-sm focus:border-indigo-500 outline-none"
+               />
+             </div>
+             <button onClick={() => fetchInstituteFaculty(selectedInstitute._id)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white" title="Refresh List">
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-indigo-400" /> : <RefreshCw className="w-5 h-5"/>}
+             </button>
+          </div>
+          <table className="w-full text-left">
+            <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
+              <tr>
+                <th className="p-4">Faculty Name</th>
+                <th className="p-4">ID / Designation</th>
+                <th className="p-4">Department</th>
+                <th className="p-4">Research Profile</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filteredFaculty.map((fac, idx) => (
+                <tr key={idx} className="hover:bg-white/5 transition-colors">
+                  <td className="p-4">
+                    <div className="font-medium text-white flex items-center gap-2">
+                       <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-xs font-bold">{fac.name[0]}</div>
+                       {fac.name}
+                    </div>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                    <span className="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded border border-white/10">{fac.FID}</span>
+                    <div className="text-xs text-slate-500 mt-1">{fac.designation}</div>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                    {fac.department}
+                  </td>
+                  <td className="p-4 text-slate-300 text-xs">
+                     <div>Papers: <span className="font-bold text-white">{fac.research?.papersPublished || 0}</span></div>
+                     <div>Citations: <span className="font-bold text-white">{fac.research?.citations || 0}</span></div>
+                  </td>
+                  <td className="p-4 text-right">
+                     <button onClick={() => setSearchDetail({ type: 'Faculty', data: fac })} className="text-indigo-400 hover:text-indigo-300 text-sm font-medium hover:underline">View Profile</button>
+                  </td>
+                </tr>
+              ))}
+              {filteredFaculty.length === 0 && !isLoading && (
+                 <tr>
+                    <td colSpan="5" className="p-12 text-center text-slate-500">
+                       <div className="flex flex-col items-center gap-3">
+                          <Users className="w-10 h-10 text-slate-600 mb-2"/>
+                          <p className="text-lg font-semibold text-slate-400">No faculty found</p>
+                          <p className="text-sm max-w-sm">
+                             We couldn't fetch faculty data. This usually means the backend endpoint is missing or the institute has no faculty yet.
+                          </p>
+                          <button onClick={() => fetchInstituteFaculty(selectedInstitute._id)} className="mt-2 text-indigo-400 hover:underline text-sm">Try Again</button>
+                       </div>
+                    </td>
+                 </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   const renderInstituteStudents = () => {
     if (!selectedInstitute) return null;
-    const studentsData = [
-       { id: 1, name: "Aarav Patel", roll: "2023BTCSE001", dept: "Computer Science", year: "2nd", cgpa: "8.9", status: "Active" },
-       { id: 2, name: "Isha Sharma", roll: "2022BTECE045", dept: "Electronics", year: "3rd", cgpa: "9.2", status: "Active" }
-    ];
+    
     return (
       <div className="space-y-6 animate-in slide-in-from-right duration-300">
          <div className="flex items-center gap-4">
@@ -655,30 +814,66 @@ const AdminPanel = () => {
           <div className="p-4 border-b border-white/5 flex justify-between items-center">
              <div className="relative w-64">
                <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-               {/* FIXED: Text Color */}
                <input 
                  type="text" 
-                 placeholder="Search students..." 
+                 placeholder="Search students in this list..." 
                  value={searchQuery}
                  onChange={(e) => setSearchQuery(e.target.value)}
                  className="w-full bg-slate-800 border border-white/10 pl-10 pr-4 py-2 rounded-lg text-slate-100 text-sm focus:border-indigo-500 outline-none"
                />
              </div>
+             <button onClick={() => fetchInstituteStudents(selectedInstitute._id)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white" title="Refresh List">
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-indigo-400" /> : <RefreshCw className="w-5 h-5"/>}
+             </button>
           </div>
           <table className="w-full text-left">
             <thead className="bg-slate-900/50 text-slate-400 text-xs uppercase font-semibold">
-              <tr><th className="p-4">Student Name</th><th className="p-4">Roll Number</th><th className="p-4">Department</th><th className="p-4">Year</th><th className="p-4">Status</th></tr>
+              <tr>
+                <th className="p-4">Student Name</th>
+                <th className="p-4">SID / Roll</th>
+                <th className="p-4">Department</th>
+                <th className="p-4">Academic</th>
+                <th className="p-4">Status</th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {studentsData.map((std, idx) => (
+              {instituteStudents
+                .filter(s => s.name?.toLowerCase().includes(searchQuery.toLowerCase()) || s.SID?.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((std, idx) => (
                 <tr key={idx} className="hover:bg-white/5 transition-colors">
                   <td className="p-4 font-medium text-white">{std.name}</td>
-                  <td className="p-4 text-slate-300 font-mono text-sm">{std.roll}</td>
-                  <td className="p-4 text-slate-300">{std.dept}</td>
-                  <td className="p-4 text-slate-300">{std.year}</td>
-                  <td className="p-4"><span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400">{std.status}</span></td>
+                  <td className="p-4 text-slate-300 font-mono text-sm">
+                    {std.SID}<br/>
+                    <span className="text-xs text-slate-500">{std.rollNumber}</span>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                    {std.department}<br/>
+                    <span className="text-xs text-slate-500">Sem: {std.semester}</span>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                     CGPA: <span className="text-emerald-400 font-bold">{std.academic?.cgpa || '0.00'}</span>
+                  </td>
+                  <td className="p-4">
+                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${std.attendance?.alertLevel === 'Critical' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                        {std.attendance?.alertLevel === 'Critical' ? 'Attendance Alert' : 'Active'}
+                     </span>
+                  </td>
                 </tr>
               ))}
+              {instituteStudents.length === 0 && !isLoading && (
+                 <tr>
+                    <td colSpan="5" className="p-12 text-center text-slate-500">
+                       <div className="flex flex-col items-center gap-3">
+                          <Users className="w-10 h-10 text-slate-600 mb-2"/>
+                          <p className="text-lg font-semibold text-slate-400">No students found</p>
+                          <p className="text-sm max-w-sm">
+                             We couldn't fetch student data. This usually means the backend endpoint is missing or the institute has no students yet.
+                          </p>
+                          <button onClick={() => fetchInstituteStudents(selectedInstitute._id)} className="mt-2 text-indigo-400 hover:underline text-sm">Try Again</button>
+                       </div>
+                    </td>
+                 </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -694,7 +889,6 @@ const AdminPanel = () => {
           <h2 className="text-2xl font-bold text-white flex items-center gap-2"><UserPlus className="w-6 h-6 text-amber-400" /> Joining Requests</h2>
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-            {/* FIXED: Text Color */}
             <input 
               type="text" 
               placeholder="Search Requests..." 
@@ -734,7 +928,6 @@ const AdminPanel = () => {
           </h2>
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-            {/* FIXED: Text Color */}
             <input
               type="text"
               placeholder="Search Tickets..."
@@ -1009,7 +1202,7 @@ const AdminPanel = () => {
             { id: 'tools', label: 'AI Tools', icon: FileCheck },
             { id: 'logs', label: 'Audit Logs', icon: History },
           ].map(item => (
-            <button key={item.id} onClick={() => setActiveView(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeView === item.id || (item.id === 'institutes' && activeView === 'institute_details') ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+            <button key={item.id} onClick={() => setActiveView(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeView === item.id || (item.id === 'institutes' && ['institute_details', 'institute_students', 'institute_faculty'].includes(activeView)) ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
               <item.icon className="w-5 h-5" />{item.label}
             </button>
           ))}
@@ -1018,7 +1211,7 @@ const AdminPanel = () => {
       </aside>
 
       <main className="flex-1 ml-64 p-8 h-screen overflow-y-auto custom-scrollbar">
-        {!['institute_details', 'institute_students'].includes(activeView) && (
+        {!['institute_details', 'institute_students', 'institute_faculty'].includes(activeView) && (
           <header className="flex justify-between items-center mb-8">
             <div><h1 className="text-2xl font-bold text-white capitalize">{activeView.replace('requests', 'Institute Requests')}</h1><p className="text-slate-400 text-sm">System Overview & Controls</p></div>
             <div className="bg-slate-900 border border-white/10 rounded-full px-4 py-2 flex items-center gap-2 shadow-sm"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><span className="text-xs text-emerald-400 font-mono">SYSTEM ONLINE</span></div>
@@ -1029,6 +1222,7 @@ const AdminPanel = () => {
         {activeView === 'institutes' && renderInstitutes()}
         {activeView === 'institute_details' && renderInstituteDetails()}
         {activeView === 'institute_students' && renderInstituteStudents()}
+        {activeView === 'institute_faculty' && renderInstituteFaculty()}
         {activeView === 'requests' && renderRequests()}
         {activeView === 'support' && renderSupport()}
         {activeView === 'grievance' && renderGrievances()}
