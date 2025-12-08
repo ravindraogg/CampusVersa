@@ -1,13 +1,14 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const axios = require("axios");
+const http = require('http');
+const { Server } = require("socket.io"); 
+
 const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID;
 const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY;
-// Optional AI SDKs (only if keys present)
 let GoogleGenerativeAI;
 let OpenAI;
 try {
@@ -39,6 +40,7 @@ const Attendance = require('./models/institute/Attendance');
 const FacultySSR = require('./models/institute/FacultySSR');
 const FacultyForm = require('./models/institute/FacultyForm');
 const FacultyFormResponse = require('./models/institute/FacultyFormResponse');
+const NIRFStats = require('./models/institute/NIRFStats');
 
 const ReminderSchema = new mongoose.Schema({
   facultyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
@@ -55,7 +57,38 @@ const { verifyToken } = require('./middleware/authMiddleware'); // assumes this 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(cors());
+const server = http.createServer(app); // Wrap express
+const io = new Server(server, {
+  cors: {
+    // If you are using Vite on 7860 or 5173, allow it specifically or keep *
+    origin: ["http://localhost:7860", "http://localhost:5173", "*"], 
+    methods: ["GET", "POST"],
+    credentials: false // Matches the client-side 'withCredentials: false'
+  }
+});
+io.on('connection', (socket) => {
+  console.log('⚡ User Connected:', socket.id);
 
+  socket.on('join_room', (data) => {
+    // data: { instituteId, role, department }
+    if (!data.instituteId) return;
+
+    // Join Institute Room
+    socket.join(`INST_${data.instituteId}`);
+    
+    // Join Role Room (e.g., "INST_123_student")
+    if (data.role) socket.join(`INST_${data.instituteId}_${data.role}`);
+    
+    // Join Dept Room (e.g., "INST_123_CSE")
+    if (data.department) socket.join(`INST_${data.instituteId}_${data.department}`);
+    
+    console.log(`Socket ${socket.id} joined rooms for Inst: ${data.instituteId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User Disconnected', socket.id);
+  });
+});
 // -------------------
 // Database Connect
 // -------------------
@@ -1151,15 +1184,43 @@ app.get('/institute/notices', verifyToken, async (req, res) => {
 
 app.post('/institute/notices/add', verifyToken, async (req, res) => {
   try {
-    const doc = new Notice({ ...req.body, instituteId: req.user.id });
+    const instId = req.user.id; // Or resolve if faculty
+    const doc = new Notice({ ...req.body, instituteId: instId });
     await doc.save();
+
+    // EMIT EVENT
+    const eventData = { title: doc.title, type: doc.type, audience: doc.audience };
+    const room = doc.audience === 'Student' ? `INST_${instId}_student` 
+               : doc.audience === 'Faculty' ? `INST_${instId}_faculty` 
+               : `INST_${instId}`; // Global
+               
+    io.to(room).emit('receive_notice', eventData);
+
     res.status(201).json(doc);
   } catch (err) {
-    console.error('/institute/notices/add error:', err);
     res.status(500).json({ error: 'Post failed' });
   }
 });
+// --- server.js ---
 
+// Add this NEW route for Students
+app.get('/student/notices', verifyToken, async (req, res) => {
+  try {
+    // In /student/login, you signed the token with 'instituteId'
+    // We must use THAT id, not the student's own _id
+    const instId = req.user.instituteId;
+
+    if (!instId) {
+      return res.status(400).json({ message: "Institute ID missing from token" });
+    }
+
+    const list = await Notice.find({ instituteId: instId }).sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    console.error('/student/notices error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
 // -------------------
 // Requests (internal) - lightweight
 // -------------------
@@ -1325,7 +1386,176 @@ app.post('/institute/naac/update', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Update failed' });
   }
 });
+app.get('/faculty/nirf/get', verifyToken, async (req, res) => {
+  try {
+    // Find entry where facultyId matches the user
+    let doc = await NIRFStats.findOne({ facultyId: req.user.id });
+    
+    // If no document exists, return a default structure so frontend doesn't break
+    if (!doc) {
+      return res.json({
+        researchPerformance: {
+            publications: { scopus: 0, webOfScience: 0, googleScholar: 0, ici: 0 },
+            citations: { totalCitations: 0, hIndex: 0 },
+            ipr: { patentsFiled: 0, patentsPublished: 0, patentsGranted: 0 },
+            sponsoredResearch: { projectCount: 0, totalFundingAmount: 0 },
+            consultancy: { projectCount: 0, totalAmount: 0 }
+        },
+        other: { booksPublished: 0, phdGuided: 0 }
+      });
+    }
+    res.json(doc);
+  } catch (err) {
+    console.error("NIRF Get Error:", err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
 
+// 2. Update/Save NIRF Data
+app.post('/faculty/nirf/update', verifyToken, async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(req.user.id);
+    const updateData = req.body; 
+
+    const doc = await NIRFStats.findOneAndUpdate(
+      { facultyId: req.user.id },
+      { 
+        $set: { 
+            ...updateData, 
+            instituteId: faculty.instituteId, // Link to institute
+            lastUpdated: Date.now() 
+        } 
+      },
+      { new: true, upsert: true } // Create if it doesn't exist
+    );
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    console.error("NIRF Update Error:", err);
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+app.get('/institute/nirf/sync', verifyToken, async (req, res) => {
+  try {
+    const instId = req.user.id;
+    const academicYear = req.query.year || "2024-2025";
+
+    // 1. Fetch Basic Institute Info
+    const institute = await Institute.findById(instId);
+    const instState = institute.state?.toLowerCase().trim();
+
+    // 2. AGGREGATE FACULTY DATA
+    // We select 'name' specifically to send to frontend
+    const allFaculty = await Faculty.find({ instituteId: instId }).select('name gender qualification experience designation');
+    
+    const facultyStats = {
+      totalFaculty: allFaculty.length,
+      femaleFaculty: allFaculty.filter(f => f.gender === 'Female' || f.name.startsWith('Ms.') || f.name.startsWith('Mrs.') || f.name.startsWith('Dr. (Mrs)')).length,
+      phdCount: allFaculty.filter(f => 
+        (f.qualification && /ph\.?d/i.test(f.qualification)) || 
+        (f.designation && /prof/i.test(f.designation))
+      ).length,
+      avgExp: allFaculty.reduce((acc, f) => acc + (Number(f.experience) || 0), 0) / (allFaculty.length || 1)
+    };
+
+    // 3. AGGREGATE STUDENT DATA
+    const allStudents = await Student.find({ instituteId: instId });
+    const studentStats = {
+      totalEnrolled: allStudents.length,
+      withinState: 0, outsideState: 0, outsideCountry: 0,
+      sociallyChallenged: 0, economicallyBackward: 0,
+      femaleStudents: 0, physicallyChallenged: 0
+    };
+
+    allStudents.forEach(s => {
+      if (s.gender === 'Female') studentStats.femaleStudents++;
+      const sState = s.state?.toLowerCase().trim();
+      const sCountry = s.country?.toLowerCase().trim() || 'india';
+
+      if (sCountry !== 'india') studentStats.outsideCountry++;
+      else if (sState && instState && sState !== instState) studentStats.outsideState++;
+      else studentStats.withinState++;
+
+      if (['SC', 'ST', 'OBC'].includes(s.category)) studentStats.sociallyChallenged++;
+      if (s.isEWS) studentStats.economicallyBackward++;
+      if (s.isPhysicallyChallenged) studentStats.physicallyChallenged++;
+    });
+
+    // 4. METRICS
+    const deptMetrics = await DepartmentMetric.find({ instituteId: instId });
+    const researchStats = { publications: 0, consultancyAmount: 0, projectAmount: 0 };
+    const placementStats = { placed: 0, higherStudies: 0 };
+
+    deptMetrics.forEach(m => {
+      researchStats.publications += (m.publications || 0);
+      researchStats.consultancyAmount += (m.consultancyAmount || 0);
+      researchStats.projectAmount += (m.researchGrants || 0);
+      placementStats.placed += (m.placements || 0);
+      placementStats.higherStudies += (m.higherStudies || 0);
+    });
+
+    // 5. CONSTRUCT RESPONSE
+    const nirfData = {
+      // --- NEW: META DATA FOR HOVER REFERENCES ---
+      meta: {
+        facultyNames: allFaculty.map(f => f.name).sort(), // Sorted alphabetically
+      },
+      // -------------------------------------------
+      studentStrength: {
+        sanctionedIntake: studentStats.totalEnrolled,
+        totalEnrolled: studentStats.totalEnrolled,
+        diversity: {
+          withinState: studentStats.withinState,
+          outsideState: studentStats.outsideState,
+          outsideCountry: studentStats.outsideCountry,
+          economicallyBackward: studentStats.economicallyBackward,
+          sociallyChallenged: studentStats.sociallyChallenged
+        }
+      },
+      facultyDetails: {
+        totalFaculty: facultyStats.totalFaculty,
+        phdCount: facultyStats.phdCount,
+        femaleFaculty: facultyStats.femaleFaculty,
+        experience: {
+          avgTeachingExp: Math.round(facultyStats.avgExp), 
+          avgIndustryExp: 0 
+        }
+      },
+      financialResources: {
+        capitalExpenditure: { library: 0, newEquipment: 0, engineeringWorkshops: 0, otherAssets: 0 },
+        operationalExpenditure: { salaries: 0, maintenance: 0, seminarsConferences: 0 }
+      },
+      researchPerformance: {
+        publications: {
+          scopus: Math.round(researchStats.publications * 0.6),
+          webOfScience: Math.round(researchStats.publications * 0.3),
+          googleScholar: researchStats.publications,
+          ici: 0
+        },
+        citations: { totalCitations: 0, citationsPerPaper: 0 },
+        ipr: { patentsFiled: 0, patentsPublished: 0, patentsGranted: 0, patentsLicensed: 0 },
+        sponsoredResearch: { projectCount: 0, totalFundingAmount: researchStats.projectAmount },
+        consultancy: { projectCount: 0, totalAmount: researchStats.consultancyAmount }
+      },
+      graduationOutcomes: {
+        studentsGraduated: Math.round(studentStats.totalEnrolled * 0.25),
+        placements: { studentsPlaced: placementStats.placed, medianSalary: 0 },
+        higherStudies: placementStats.higherStudies,
+        phdStudentsGraduated: 0
+      },
+      outreachInclusivity: {
+        womenDiversityPercentage: studentStats.totalEnrolled ? ((studentStats.femaleStudents / studentStats.totalEnrolled) * 100).toFixed(2) : 0,
+        physicallyChallengedStudents: studentStats.physicallyChallenged,
+        outreachPrograms: 0
+      }
+    };
+
+    res.json(nirfData);
+
+  } catch (err) {
+    console.error("NIRF Sync Error:", err);
+    res.status(500).json({ error: "Failed to sync data" });
+  }
+});
 // -------------------
 // AI Timetable Generation (Hybrid)
 // -------------------
@@ -2138,10 +2368,10 @@ app.get('/faculty/notices', verifyToken, async (req, res) => {
   }
 });
 
-// 2. Post a New Notice by Faculty
 app.post('/faculty/notices/add', verifyToken, async (req, res) => {
   try {
-    const { title, description, type } = req.body; // type e.g., 'Student', 'General'
+    // ✅ NEW: Extract content
+    const { title, content, type } = req.body; 
 
     const faculty = await Faculty.findById(req.user.id);
     if (!faculty) return res.status(404).json({ message: "Faculty not found" });
@@ -2149,9 +2379,10 @@ app.post('/faculty/notices/add', verifyToken, async (req, res) => {
     const newNotice = new Notice({
       instituteId: faculty.instituteId,
       title,
-      description, // or 'content' depending on your Schema
+      // ✅ NEW: Save content (This matches your Schema)
+      content: content, 
       type: type || 'General',
-      postedBy: `Faculty: ${faculty.name}`, // Tag the author
+      postedBy: `Faculty: ${faculty.name}`,
       createdAt: Date.now()
     });
 
@@ -3245,6 +3476,68 @@ app.post("/api/student-jobs/search", async (req, res) => {
     return res.status(200).json({ freelance: mockJobs, source: "MOCK_ERROR_FALLBACK" });
   }
 });
+app.get('/faculty/my-courses', verifyToken, async (req, res) => {
+  try {
+    const facultyId = req.user.id;
+
+    // Fetch courses where:
+    // A. The facultyId field in Course matches the user
+    // B. OR the Course ID is in the Faculty's 'courses' array (Opt-in logic)
+    
+    // First, get the faculty profile to check the 'courses' array
+    const faculty = await Faculty.findById(facultyId);
+    
+    const query = {
+      $or: [
+        { facultyId: facultyId }, // Assigned as primary instructor
+        { _id: { $in: faculty.courses || [] } } // Opted-in courses
+      ]
+    };
+
+    const myCourses = await Course.find(query).sort({ createdAt: -1 });
+    res.json(myCourses);
+  } catch (err) {
+    console.error('/faculty/my-courses error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
+
+// 2. Get Schedule specifically for this Faculty
+app.get('/faculty/my-schedule', verifyToken, async (req, res) => {
+  try {
+    const facultyId = req.user.id;
+    const faculty = await Faculty.findById(facultyId);
+    
+    // Get all timetables for the institute
+    const allTimetables = await Timetable.find({ instituteId: faculty.instituteId });
+    
+    // Filter slots specifically for this faculty name or ID
+    const mySchedule = {};
+    const facultyName = faculty.name.toLowerCase();
+
+    allTimetables.forEach(tt => {
+      if(tt.schedule) {
+        Object.entries(tt.schedule).forEach(([day, slots]) => {
+          if(!mySchedule[day]) mySchedule[day] = [];
+          
+          if(Array.isArray(slots)) {
+            // Check if faculty name matches loosely or ID matches
+            const relevantSlots = slots.filter(slot => 
+              (slot.faculty && slot.faculty.toLowerCase().includes(facultyName)) ||
+              (slot.facultyId && slot.facultyId.toString() === facultyId)
+            );
+            mySchedule[day].push(...relevantSlots);
+          }
+        });
+      }
+    });
+
+    res.json(mySchedule);
+  } catch (err) {
+    console.error('/faculty/my-schedule error:', err);
+    res.status(500).json({ error: "Fetch failed" });
+  }
+});
 // -------------------
 // Generic Error Handler (fallback)
 // -------------------
@@ -3253,8 +3546,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// -------------------
-// Start Server
-// -------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (AI provider: ${aiProvider || 'none'})`));
+
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (AI provider: ${aiProvider || 'none'})`));

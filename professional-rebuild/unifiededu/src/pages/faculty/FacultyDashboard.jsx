@@ -6,7 +6,7 @@ import {
   CalendarClock, Settings, LayoutDashboard, UserCircle,
   CalendarDays, Megaphone, Send, Briefcase, Phone, Mail, FilePlus
 } from "lucide-react";
-
+import io from 'socket.io-client';
 import FacultyProfile from "./FacultyProfile";
 import FacultyCourses from "./FacultyCourses";
 import FacultyStudent from "./FacultyStudent";
@@ -33,7 +33,7 @@ const NAV_ITEMS = [
   { id: "students", label: "Students", icon: Users },
   { id: "courses", label: "Courses", icon: BookOpen },
   { id: "Evaluation", label: "Evaluation", icon: ClipboardList },
-  { id: "ssr", label: "SSR & NAAC Updates", icon: FileText },
+  { id: "ssr", label: "SSR & NIRF Updates", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -94,12 +94,11 @@ const Spinner = ({ size = 6, color = "currentColor" }) => (
   />
 );
 
-// --- HELPER: Dashboard Line Chart (Calculated from Real Data) ---
+// --- HELPER: Dashboard Line Chart ---
 const DashboardLineChart = ({ data, color = "#2A9D8F" }) => {
   if (!data || data.length === 0) return <div className="w-full h-32 flex items-center justify-center text-xs text-gray-400 italic">No data available</div>;
 
   const width = 300; const height = 100; const padding = 10;
-  // Dynamic max value based on data, or default to 100
   const maxDataVal = Math.max(...data.map(d => d.value)) || 100;
   const maxValue = maxDataVal > 100 ? maxDataVal : 100;
 
@@ -173,6 +172,9 @@ const FacultyDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notification, setNotification] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [myCourses, setMyCourses] = useState([]);
+  const [mySpecificSchedule, setMySpecificSchedule] = useState({});
 
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -180,7 +182,7 @@ const FacultyDashboard = () => {
   const [isPostingNotice, setIsPostingNotice] = useState(false);
   const [notices, setNotices] = useState([]);
   const [reminders, setReminders] = useState([]);
-  const [noticeForm, setNoticeForm] = useState({ title: "", description: "", type: "General" });
+  const [noticeForm, setNoticeForm] = useState({ title: "", content: "", type: "General" });
 
   const [showMyFaculty, setShowMyFaculty] = useState(false);
   const [myFacultyList, setMyFacultyList] = useState([]);
@@ -197,7 +199,10 @@ const FacultyDashboard = () => {
   const [theme, setTheme] = useState(DEFAULT_THEME);
 
   const loadData = useCallback(async () => {
-    if (!faculty) setLoading(true);
+    // Avoid re-fetching if we already have the basic profile, unless strictly needed
+    if (faculty && myCourses.length > 0) return; 
+    
+    setLoading(true);
     try {
       // 1. Fetch Faculty Profile
       const res = await authFetch("/faculty/me");
@@ -218,7 +223,22 @@ const FacultyDashboard = () => {
       const remRes = await authFetch("/faculty/reminders");
       setReminders((await remRes.json()) || []);
 
-      // 3. Fetch Students & CALCULATE REAL CHARTS
+      // 3. AUTO-FETCH: My Specific Courses
+      const coursesRes = await authFetch("/faculty/my-courses");
+      if (coursesRes.ok) {
+        const coursesData = await coursesRes.json();
+        setMyCourses(coursesData);
+      }
+
+      // 4. AUTO-FETCH: My Specific Schedule
+      const scheduleRes = await authFetch("/faculty/my-schedule");
+      if (scheduleRes.ok) {
+        const scheduleData = await scheduleRes.json();
+        setMySpecificSchedule(scheduleData);
+        setMySchedule(scheduleData);
+      }
+
+      // 5. Fetch Students & Calculate Real Charts
       try {
         const stdRes = await authFetch("/institute/students?limit=0");
         const stdData = await stdRes.json();
@@ -226,13 +246,24 @@ const FacultyDashboard = () => {
         if (stdData.data && Array.isArray(stdData.data)) {
           const allStudents = stdData.data;
 
+          // Only consider students enrolled in MY courses
+          const myCourseIds = new Set(myCourses.map(c => c._id));
+          
+          const relevantStudents = allStudents.filter(s => 
+             s.courseEnrollments?.some(sem => 
+               sem.subjects?.some(sub => myCourseIds.has(sub.courseId))
+             )
+          );
+
+          const statsPool = relevantStudents.length > 0 ? relevantStudents : allStudents;
+
           // --- A. Top/Weak Performers ---
-          const withScores = allStudents.filter((s) => s.academic && s.academic.cgpa !== undefined);
+          const withScores = statsPool.filter((s) => s.academic && s.academic.cgpa !== undefined);
           const top = [...withScores].sort((a, b) => b.academic.cgpa - a.academic.cgpa).slice(0, 3);
           const weak = [...withScores].sort((a, b) => a.academic.cgpa - b.academic.cgpa).slice(0, 3);
           setStudentStats({ top, weak });
 
-          // --- B. Real Grade Distribution (Calculated) ---
+          // --- B. Real Grade Distribution ---
           const grades = { O: 0, A: 0, B: 0, C: 0, Fail: 0 };
           withScores.forEach(s => {
             const cp = s.academic.cgpa;
@@ -242,7 +273,6 @@ const FacultyDashboard = () => {
             else if (cp >= 4) grades.C++;
             else grades.Fail++;
           });
-          // Convert to Percentage for Chart
           const totalGraded = withScores.length || 1;
           const chartData = [
             { label: "O", value: Math.round((grades.O / totalGraded) * 100) },
@@ -253,10 +283,10 @@ const FacultyDashboard = () => {
           ];
           setGradesDistribution(chartData);
 
-          // --- C. Real Attendance Distribution (Calculated) ---
+          // --- C. Real Attendance Distribution ---
           const att = { Good: 0, Avg: 0, Low: 0 };
           let totalAtt = 0;
-          allStudents.forEach(s => {
+          statsPool.forEach(s => {
             if (s.attendance && s.attendance.overallPercentage !== undefined) {
               totalAtt++;
               const p = s.attendance.overallPercentage;
@@ -282,7 +312,7 @@ const FacultyDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // Empty dependency array to load once on mount
 
   useEffect(() => {
     if (!faculty) return;
@@ -299,28 +329,31 @@ const FacultyDashboard = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Fetch Schedule (Existing Logic)
   useEffect(() => {
     if (!faculty) return;
-    const fetchTodaysLoad = async () => {
-      if (activeTab === "dashboard" && !mySchedule) {
-        try {
-          const res = await authFetch("/institute/timetables");
-          const allTimetables = await res.json();
-          if (allTimetables.length > 0) {
-            const latest = allTimetables[0];
-            const mySlots = {};
-            Object.entries(latest.schedule).forEach(([day, slots]) => {
-              const relevantSlots = slots.filter(slot => slot.faculty && slot.faculty.toLowerCase().includes(faculty.name.toLowerCase()));
-              if (relevantSlots.length > 0) mySlots[day] = relevantSlots;
-            });
-            setMySchedule(mySlots);
-          }
-        } catch (e) { console.error(e); }
-      }
-    };
-    fetchTodaysLoad();
-  }, [activeTab, faculty, mySchedule]);
+
+    const newSocket = io(API_URL);
+    
+    newSocket.emit('join_room', {
+      instituteId: faculty.instituteId,
+      role: 'faculty',
+      department: faculty.department
+    });
+
+    newSocket.on('receive_notice', (data) => {
+      setUnreadCount(prev => prev + 1);
+      showToast(`New Notice: ${data.title}`, "info");
+    });
+
+    return () => newSocket.disconnect();
+  }, [faculty]);
+
+  // Fetch Schedule (Existing Logic - Updated to use auto-fetched schedule)
+  useEffect(() => {
+    if (activeTab === "dashboard" && !mySchedule && Object.keys(mySpecificSchedule).length > 0) {
+       setMySchedule(mySpecificSchedule);
+    }
+  }, [activeTab, mySchedule, mySpecificSchedule]);
 
   const handleLogout = () => setShowLogoutModal(true);
   const confirmLogout = () => { localStorage.removeItem("facultyToken"); window.location.href = "/fc/auth"; };
@@ -344,7 +377,7 @@ const FacultyDashboard = () => {
       const res = await authFetch("/faculty/notices/add", { method: "POST", body: JSON.stringify(noticeForm) });
       if (res.ok) {
         const newNotice = await res.json(); setNotices([newNotice, ...notices]);
-        setNoticeForm({ title: "", description: "", type: "General" }); showToast("Notice Posted!");
+        setNoticeForm({ title: "", content: "", type: "General" }); showToast("Notice Posted!");
       } else { showToast("Failed to post notice", "error"); }
     } catch (err) { showToast("Server Error", "error"); } finally { setIsPostingNotice(false); }
   };
@@ -355,134 +388,218 @@ const FacultyDashboard = () => {
   };
 
   const renderDashboard = () => {
+    // Use dynamic schedule state
+    const todayDay = new Date().toLocaleDateString("en-US", { weekday: "long" }); 
+    const todaysClasses = mySpecificSchedule[todayDay] ? mySpecificSchedule[todayDay].length : 0;
+
     return (
       <div className="animate-in fade-in duration-500 grid grid-cols-1 lg:grid-cols-4 gap-6 pb-10">
-        {/* Welcome Header */}
+        
+        {/* --- Welcome Header --- */}
         <div className="lg:col-span-4 bg-gradient-to-r from-gray-50 to-white p-6 rounded-[2rem] border border-gray-100 flex items-center justify-between shadow-sm">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Welcome back, {faculty?.name.split(" ")[0]}</h2>
             <p className="text-gray-500">Here's the realtime status of the {faculty?.department} department.</p>
           </div>
           <div className="hidden md:block">
-            <span className="text-xs font-mono text-gray-400 bg-gray-100 px-3 py-1 rounded-full">{new Date().toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+            <span className="text-xs font-mono text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+              {new Date().toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </span>
           </div>
         </div>
 
-        {/* Left Column */}
+        {/* --- Left Column (Stats & Charts) --- */}
         <div className="lg:col-span-3 flex flex-col gap-6">
-          {/* Reminders */}
+          
+          {/* Reminders Widget */}
           <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2"><Bell className="w-5 h-5 text-yellow-500" /> Upcoming Reminders</h3>
-              <button onClick={() => setActiveTab("timetable")} className="text-xs font-bold text-blue-600 hover:underline">Manage Schedule</button>
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-yellow-500" /> Upcoming Reminders
+              </h3>
+              <button onClick={() => setActiveTab("timetable")} className="text-xs font-bold text-blue-600 hover:underline">
+                Manage Schedule
+              </button>
             </div>
-            {reminders.length === 0 ? <p className="text-sm text-gray-400 italic py-2">No active reminders.</p> : (
+            {reminders.length === 0 ? (
+              <p className="text-sm text-gray-400 italic py-2">No active reminders.</p>
+            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {reminders.slice(0, 4).map((r) => (
                   <div key={r._id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl border border-yellow-100">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white rounded-lg shadow-sm text-yellow-600 font-bold text-xs flex flex-col items-center min-w-[3rem]"><span className="uppercase">{r.day ? r.day.substring(0, 3) : "N/A"}</span></div>
-                      <div className="overflow-hidden"><p className="text-sm font-bold text-gray-800 truncate">{r.courseName}</p><p className="text-xs text-gray-500 truncate">{r.time} • {r.message}</p></div>
+                      <div className="p-2 bg-white rounded-lg shadow-sm text-yellow-600 font-bold text-xs flex flex-col items-center min-w-[3rem]">
+                        <span className="uppercase">{r.day ? r.day.substring(0, 3) : "N/A"}</span>
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-sm font-bold text-gray-800 truncate">{r.courseName}</p>
+                        <p className="text-xs text-gray-500 truncate">{r.time} • {r.message}</p>
+                      </div>
                     </div>
-                    <button onClick={() => handleDeleteReminder(r._id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-white rounded-full transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteReminder(r._id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-white rounded-full transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* REAL DATA CHARTS */}
+          {/* Real Data Charts */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Attendance Chart */}
             <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="font-bold text-gray-700 flex items-center gap-2"><Users className="w-4 h-4 text-gray-400" /> Attendance Overview</h4>
+                <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-400" /> Attendance Overview
+                </h4>
                 <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded font-bold">Realtime</span>
               </div>
-              {/* Uses Real Attendance Data */}
               <DashboardLineChart data={attendanceDistribution} color={theme.primary} />
             </div>
 
+            {/* Grade Distribution Chart */}
             <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="font-bold text-gray-700 flex items-center gap-2"><Award className="w-4 h-4 text-gray-400" /> CGPA Distribution</h4>
+                <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                  <Award className="w-4 h-4 text-gray-400" /> CGPA Distribution
+                </h4>
                 <span className="text-xs text-gray-400">All Students</span>
               </div>
-              {/* Uses Real Grades Data */}
               <BarChart data={gradesDistribution} color={theme.secondary} />
             </div>
           </div>
 
-          {/* Students Stats (Real) */}
+          {/* Student Performance Lists */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Top Performers */}
             <div className="bg-green-50 p-6 rounded-[2rem] border border-green-100 relative overflow-hidden">
               <div className="flex justify-between items-center mb-4 relative z-10">
-                <h4 className="font-bold text-green-800 flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Top Performers</h4>
+                <h4 className="font-bold text-green-800 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" /> Top Performers
+                </h4>
                 <span className="bg-white text-green-700 text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">Top 3 CGPA</span>
               </div>
               <div className="space-y-3 relative z-10">
-                {studentStats.top.length === 0 ? <p className="text-xs text-green-700 italic">No academic data available.</p> : studentStats.top.map((s, i) => (
-                  <div key={s._id || i} className="flex items-center justify-between bg-white/60 p-3 rounded-xl backdrop-blur-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-green-200 text-green-700 flex items-center justify-center font-bold text-xs uppercase">{s.name ? s.name[0] : "?"}</div>
-                      <div className="overflow-hidden"><p className="text-sm font-bold text-gray-800 leading-none truncate w-32">{s.name}</p><p className="text-[10px] text-gray-500 mt-0.5">{s.year} Year</p></div>
+                {studentStats.top.length === 0 ? (
+                  <p className="text-xs text-green-700 italic">No academic data available.</p>
+                ) : (
+                  studentStats.top.map((s, i) => (
+                    <div key={s._id || i} className="flex items-center justify-between bg-white/60 p-3 rounded-xl backdrop-blur-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-200 text-green-700 flex items-center justify-center font-bold text-xs uppercase">
+                          {s.name ? s.name[0] : "?"}
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-sm font-bold text-gray-800 leading-none truncate w-32">{s.name}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">{s.year} Year</p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-extrabold text-green-600">
+                        {s.academic?.cgpa?.toFixed(2) || "N/A"} <span className="text-[10px]">CGPA</span>
+                      </span>
                     </div>
-                    <span className="text-sm font-extrabold text-green-600">{s.academic?.cgpa?.toFixed(2) || "N/A"} <span className="text-[10px]">CGPA</span></span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
+            {/* Needs Attention */}
             <div className="bg-red-50 p-6 rounded-[2rem] border border-red-100 relative overflow-hidden">
               <div className="flex justify-between items-center mb-4 relative z-10">
-                <h4 className="font-bold text-red-800 flex items-center gap-2"><TrendingDown className="w-5 h-5" /> Needs Attention</h4>
+                <h4 className="font-bold text-red-800 flex items-center gap-2">
+                  <TrendingDown className="w-5 h-5" /> Needs Attention
+                </h4>
                 <span className="bg-white text-red-700 text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">Lowest 3 CGPA</span>
               </div>
               <div className="space-y-3 relative z-10">
-                {studentStats.weak.length === 0 ? <p className="text-xs text-red-700 italic">No students require attention.</p> : studentStats.weak.map((s, i) => (
-                  <div key={s._id || i} className="flex items-center justify-between bg-white/60 p-3 rounded-xl backdrop-blur-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-red-200 text-red-700 flex items-center justify-center font-bold text-xs uppercase">{s.name ? s.name[0] : "?"}</div>
-                      <div className="overflow-hidden"><p className="text-sm font-bold text-gray-800 leading-none truncate w-32">{s.name}</p><p className="text-[10px] text-gray-500 mt-0.5">{s.year} Year</p></div>
+                {studentStats.weak.length === 0 ? (
+                  <p className="text-xs text-red-700 italic">No students require attention.</p>
+                ) : (
+                  studentStats.weak.map((s, i) => (
+                    <div key={s._id || i} className="flex items-center justify-between bg-white/60 p-3 rounded-xl backdrop-blur-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-200 text-red-700 flex items-center justify-center font-bold text-xs uppercase">
+                          {s.name ? s.name[0] : "?"}
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-sm font-bold text-gray-800 leading-none truncate w-32">{s.name}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">{s.year} Year</p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-extrabold text-red-600">
+                        {s.academic?.cgpa?.toFixed(2) || "N/A"} <span className="text-[10px]">CGPA</span>
+                      </span>
                     </div>
-                    <span className="text-sm font-extrabold text-red-600">{s.academic?.cgpa?.toFixed(2) || "N/A"} <span className="text-[10px]">CGPA</span></span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Sidebar */}
+        {/* --- Right Sidebar (Profile, Quick Links, Load) --- */}
         <div className="lg:col-span-1 flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 mb-2 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setActiveTab("profile")}>
+          {/* Profile Card */}
+          <div 
+            className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 mb-2 cursor-pointer hover:bg-gray-50 transition-colors" 
+            onClick={() => setActiveTab("profile")}
+          >
             <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center border-2 overflow-hidden" style={{ borderColor: theme.primary }}>
-              {faculty?.profilePic ? <img src={faculty.profilePic} alt="Profile" className="w-full h-full object-cover" /> : <span className="text-lg font-bold text-gray-400">{faculty?.name?.charAt(0)}</span>}
+              {faculty?.profilePic ? (
+                <img src={faculty.profilePic} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-lg font-bold text-gray-400">{faculty?.name?.charAt(0)}</span>
+              )}
             </div>
-            <div className="overflow-hidden"><h3 className="font-bold text-gray-800 truncate">{faculty?.name}</h3><p className="text-xs text-gray-500 truncate">{faculty?.designation}</p></div>
+            <div className="overflow-hidden">
+              <h3 className="font-bold text-gray-800 truncate">{faculty?.name}</h3>
+              <p className="text-xs text-gray-500 truncate">{faculty?.designation}</p>
+            </div>
             <div className="ml-auto"><ChevronRight className="w-5 h-5 text-gray-600" /></div>
           </div>
 
+          {/* HOD View (Conditional) */}
           {faculty?.designation === "Head of the Department" && (
             <div onClick={handleMyFacultyClick} className="p-4 rounded-4xl border shadow-md flex items-center gap-4 cursor-pointer transition-all active:scale-95 group" style={{ backgroundColor: "white", borderColor: theme.secondary }}>
-              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white/10 transition-colors"><Briefcase className="w-6 h-6 text-black" /></div>
-              <div><h3 className="font-bold text-black">My Faculty</h3><p className="text-xs text-gray-800 opacity-90">{faculty?.department} Dept.</p></div>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white/10 transition-colors">
+                <Briefcase className="w-6 h-6 text-black" />
+              </div>
+              <div>
+                <h3 className="font-bold text-black">My Faculty</h3>
+                <p className="text-xs text-gray-800 opacity-90">{faculty?.department} Dept.</p>
+              </div>
               <div className="ml-auto bg-white/10 p-2 rounded-full"><ChevronRight className="w-5 h-5 text-grey-300" /></div>
             </div>
           )}
 
+          {/* Form Builder Link */}
           <div onClick={() => { setSettingsDefaultTab("forms"); setActiveTab("settings"); }} className="p-4 rounded-[2rem] border shadow-sm flex items-center gap-4 cursor-pointer transition-all active:scale-95 hover:shadow-md bg-white border-blue-100 group">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-blue-50 text-blue-600 transition-colors group-hover:text-white"><FilePlus className="w-6 h-6" style={{ color: theme.primary }} /></div>
-            <div><h3 className="font-bold text-gray-800">Form Builder</h3><p className="text-xs text-gray-500">Create Surveys & Feedback</p></div>
-            <div className="ml-auto bg-gray-50 p-2 rounded-full group-hover:bg-blue-50"><ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-500" /></div>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-blue-50 text-blue-600 transition-colors group-hover:text-white">
+              <FilePlus className="w-6 h-6" style={{ color: theme.primary }} />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">Form Builder</h3>
+              <p className="text-xs text-gray-500">Create Surveys & Feedback</p>
+            </div>
+            <div className="ml-auto bg-gray-50 p-2 rounded-full group-hover:bg-blue-50">
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
+            </div>
           </div>
 
+          {/* Today's Load (Dynamic) */}
           <div className="bg-orange-50 p-5 rounded-[2rem] border border-orange-100 relative overflow-hidden">
-            <div className="absolute right-[-20px] top-[-20px] opacity-10"><CalendarClock className="w-24 h-24 text-orange-600" /></div>
+            <div className="absolute right-[-20px] top-[-20px] opacity-10">
+              <CalendarClock className="w-24 h-24 text-orange-600" />
+            </div>
             <p className="text-orange-600 text-sm font-bold uppercase mb-1 relative z-10">Today's Load</p>
             <h3 className="text-4xl font-extrabold text-orange-900 relative z-10">
-              {mySchedule && mySchedule[new Date().toLocaleDateString("en-US", { weekday: "Long" })] ? mySchedule[new Date().toLocaleDateString("en-US", { weekday: "Long" })].length : 0}
+              {todaysClasses}
               <span className="text-lg ml-1">Classes</span>
             </h3>
+            <p className="text-xs text-orange-700 mt-2 relative z-10 font-medium">
+               Across {myCourses.length} Active Courses
+            </p>
           </div>
         </div>
       </div>
@@ -511,8 +628,23 @@ const FacultyDashboard = () => {
         {showNotices && (
           <div className="absolute top-0 right-0 z-50 w-96 h-full bg-white border-l border-gray-100 shadow-2xl p-6 animate-in slide-in-from-right overflow-y-auto rounded-r-[3rem] flex flex-col">
             <div className="flex justify-between items-center mb-6 shrink-0"><h3 className="font-bold text-xl text-gray-800 flex items-center gap-2"><Bell className="w-5 h-5" style={{ color: theme.primary }} /> Notices Board</h3><button onClick={() => setShowNotices(false)} className="p-2 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors"><X className="w-5 h-5 text-gray-500" /></button></div>
-            <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-200 shrink-0"><h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><Megaphone className="w-4 h-4 text-orange-500" /> Post New Update</h4><form onSubmit={handlePostNotice} className="space-y-3"><input className="w-full p-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500" placeholder="Title..." value={noticeForm.title} onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })} required /><textarea className="w-full p-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500 resize-none h-20" placeholder="Details..." value={noticeForm.description} onChange={(e) => setNoticeForm({ ...noticeForm, description: e.target.value })} required /><div className="flex gap-2"><select className="flex-1 p-2 rounded-xl border border-gray-200 text-xs font-bold outline-none" value={noticeForm.type} onChange={(e) => setNoticeForm({ ...noticeForm, type: e.target.value })}><option value="General">General</option><option value="Student">For Students</option><option value="Urgent">Urgent</option></select><button type="submit" disabled={isPostingNotice} className="px-4 py-2 bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1 hover:opacity-80">{isPostingNotice ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Post</button></div></form></div>
-            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-1"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Recent Updates</h4>{notices.map((n, i) => (<div key={i} className="p-4 bg-white rounded-2xl border border-gray-100 hover:border-blue-200 shadow-sm transition-all group"><div className="flex justify-between items-start mb-2"><span className={`text-[10px] font-bold text-white px-2 py-1 rounded-md ${n.type === "Urgent" ? "bg-red-500" : "bg-gray-400"}`} style={{ backgroundColor: n.type !== "Urgent" ? theme.secondary : undefined }}>{n.type || "General"}</span><p className="text-[10px] text-gray-400 font-medium flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {new Date(n.createdAt).toLocaleDateString()}</p></div><p className="text-sm font-bold text-gray-800 leading-snug">{n.title}</p>{n.description && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{n.description}</p>}{n.postedBy && <p className="text-[10px] text-gray-400 mt-2 italic border-t border-gray-50 pt-2">- {n.postedBy}</p>}</div>))}{notices.length === 0 && <div className="text-center text-gray-400 py-10">No recent notices found.</div>}</div>
+            <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-200 shrink-0"><h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><Megaphone className="w-4 h-4 text-orange-500" /> Post New Update</h4>
+            <form onSubmit={handlePostNotice} className="space-y-3">
+              <input className="w-full p-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500" placeholder="Title..." value={noticeForm.title} onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })} required />
+              <textarea 
+                className="w-full p-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500 min-h-[80px]" 
+                placeholder="Details..." 
+                value={noticeForm.content} 
+                onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })} 
+                required 
+              />
+              <div className="flex gap-2">
+                <select className="flex-1 p-2 rounded-xl border border-gray-200 text-xs font-bold outline-none" value={noticeForm.type} onChange={(e) => setNoticeForm({ ...noticeForm, type: e.target.value })}><option value="General">General</option></select>
+                <button type="submit" disabled={isPostingNotice} className="px-4 py-2 bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1 hover:opacity-80">{isPostingNotice ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Post</button>
+              </div>
+            </form>
+            </div>
+            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-1"><h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Recent Updates</h4>{notices.map((n, i) => (<div key={i} className="p-4 bg-white rounded-2xl border border-gray-100 hover:border-blue-200 shadow-sm transition-all group"><div className="flex justify-between items-start mb-2"><span className={`text-[10px] font-bold text-white px-2 py-1 rounded-md ${n.type === "Urgent" ? "bg-red-500" : "bg-gray-400"}`} style={{ backgroundColor: n.type !== "Urgent" ? theme.secondary : undefined }}>{n.type || "General"}</span><p className="text-[10px] text-black-400 font-medium flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {new Date(n.createdAt).toLocaleDateString()}</p></div><p className="text-sm font-bold text-gray-800 leading-snug">{n.title}</p>{n.content && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{n.content}</p>}{n.postedBy && <p className="text-[10px] text-gray-400 mt-2 italic border-t border-gray-50 pt-2">- {n.postedBy}</p>}</div>))}{notices.length === 0 && <div className="text-center text-gray-400 py-10">No recent notices found.</div>}</div>
           </div>
         )}
         {showLogoutModal && <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"><div className="bg-white rounded-[2rem] shadow-2xl p-6 max-w-sm w-full border border-gray-100"><div className="flex flex-col items-center text-center gap-4"><div className="w-14 h-14 rounded-full bg-red-50 text-red-500 flex items-center justify-center border-4 border-white shadow-sm"><LogOut className="w-6 h-6 ml-1" /></div><div><h3 className="text-xl font-bold text-gray-900">Logging Out</h3><p className="text-sm text-gray-500 mt-2">You are about to sign out of the Institute Portal. Do you wish to continue?</p></div><div className="grid grid-cols-2 gap-3 w-full mt-2"><button onClick={() => setShowLogoutModal(false)} className="px-4 py-3 rounded-xl bg-gray-50 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors">Cancel</button><button onClick={confirmLogout} className="px-4 py-3 rounded-xl bg-red-500 text-white font-bold text-sm hover:bg-red-600 transition-colors shadow-lg shadow-red-200">Confirm Logout</button></div></div></div></div>}

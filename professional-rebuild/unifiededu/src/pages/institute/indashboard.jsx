@@ -22,11 +22,7 @@ import {
   BellOff,
   Eye, 
   EyeOff,
-  Hash,
   Shield,
-  FileText,
-  CalendarDays,
-  Edit3,
   BookOpen,
   Lock,
   ShieldCheck,
@@ -45,7 +41,7 @@ import DepartmentPage from "./DepartmentPage";
 import FacultyPage from "./FacultyPage";
 import StudentPage from "./StudentPage";
 import RequestAdminPage from "./RequestAdminPage";
-import NaacPage from "./NaacPage";
+import NIRFPage from "./NIRFPage"; // <--- CHANGED: Imported NIRFPage
 import NoticePage from "./NoticePage"; 
 import TimetableManager from "./Timetable"; 
 import CoursesPage from "./CoursesPage";
@@ -149,6 +145,7 @@ const InstituteDashboard = () => {
   const [showNotificationsModal, setShowNotificationsModal] = useState(false); 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
   // Data State 
   const [institute, setInstitute] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -180,7 +177,7 @@ const InstituteDashboard = () => {
     address: "",
     state: "",
     pincode: "",
-    naacGrade: "",
+    naacGrade: "", // Kept in state for existing data, but UI will focus on NIRF mostly
     logoBase64: null,
     previewUrl: null,
   });
@@ -238,7 +235,8 @@ const InstituteDashboard = () => {
     // Load Access Data when tab is switched
     if (activeTab === "settings" && settingsTab === "access") loadAccessControlData();
   }, [activeTab, settingsTab]);
-   useEffect(() => {
+   
+  useEffect(() => {
     if (institute) {
       document.title = `${institute.code || "Institute"} | CampusVersa`;
       if (institute.logo) {
@@ -252,6 +250,7 @@ const InstituteDashboard = () => {
       }
     }
   }, [institute]);
+
   const loadDashboardStats = async () => {
     setDashboardLoading(true);
     try {
@@ -287,6 +286,7 @@ const InstituteDashboard = () => {
   const saveProfileFull = async () => {
     setIsPageLoading(true);
     try {
+      // Keep NAAC grade logic for backward compatibility if needed, but display NIRF on dashboard
       const accreditationData = editForm.naacGrade 
         ? [{ type: 'NAAC', grade: editForm.naacGrade, status: true }] 
         : [];
@@ -310,25 +310,15 @@ const InstituteDashboard = () => {
       const data = await response.json();
       
       if (data.success) {
-        // 1. Update Institute Data locally
         setInstitute(data.data);
-
-        // 2. FORCE UPDATE THEME STATE 
-        // This ensures the sidebar changes color immediately without a refresh
         if (data.data.themeColorPrimary) {
           setCurrentTheme((prev) => ({
             ...prev,
-            // Sidebar Background
             primary: data.data.themeColorPrimary,
-            // Dark mode variant (usually same as primary for simple themes)
             dark: data.data.themeColorPrimary,
-            // Sidebar Text Color (Mapped from 'secondary' output of AI)
-            textOnPrimary: data.data.themeColorSecondary || "#FFFFFF", 
-            // Optional: You can keep your accent color (secondary) or update it too
-            // secondary: data.data.themeColorSecondary || prev.secondary
+            textOnPrimary: data.data.themeColorSecondary || "#FFFFFF",
           }));
         }
-
         showToast("Profile & Theme updated!", "success");
       } else {
         throw new Error(data.message);
@@ -365,15 +355,12 @@ const InstituteDashboard = () => {
     }
   };
 
-  // --- ACCESS CONTROL ACTIONS (UPDATED) ---
+  // --- ACCESS CONTROL ACTIONS ---
   const loadAccessControlData = async () => {
-    // We need to fetch two things:
-    // 1. Currently Authorized Users
-    // 2. All Faculty (to show the "available to grant" list)
     try {
         const [authRes, allRes] = await Promise.all([
             authFetch("/institute/access-control/users"),
-            authFetch("/institute/faculty") // Uses your existing faculty endpoint
+            authFetch("/institute/faculty")
         ]);
 
         if (authRes.ok && allRes.ok) {
@@ -381,12 +368,8 @@ const InstituteDashboard = () => {
             const allFacultyData = await allRes.json();
             
             setAccessUsers(authorizedData);
-
-            // Filter: Available = All Faculty - Authorized Faculty
-            // We use a Set of IDs for O(1) lookup
             const authorizedIds = new Set(authorizedData.map(u => u._id));
             const available = allFacultyData.filter(f => !authorizedIds.has(f._id));
-            
             setAvailableFaculty(available);
         }
     } catch(e) { 
@@ -404,7 +387,7 @@ const InstituteDashboard = () => {
       });
       if(res.ok) {
         showToast("Access granted successfully", "success");
-        loadAccessControlData(); // Reload lists
+        loadAccessControlData(); 
         setFacultySearch("");
       }
     } catch(err) { showToast("Failed to grant access", "error"); }
@@ -421,19 +404,19 @@ const InstituteDashboard = () => {
       });
       if(res.ok) {
         showToast("Access revoked", "success");
-        loadAccessControlData(); // Reload lists
+        loadAccessControlData(); 
       }
     } catch(err) { showToast("Failed to revoke access", "error"); }
     finally { setIsPageLoading(false); }
   };
 
-  // Filter available faculty based on search input
   const filteredAvailableFaculty = availableFaculty.filter(f => 
     f.name.toLowerCase().includes(facultySearch.toLowerCase()) || 
     f.email.toLowerCase().includes(facultySearch.toLowerCase()) ||
     (f.department && f.department.toLowerCase().includes(facultySearch.toLowerCase()))
   );
-const handleLogout = () => {
+
+  const handleLogout = () => {
     setShowLogoutModal(true);
   };
 
@@ -448,17 +431,8 @@ const handleLogout = () => {
   };
 
   // --- RENDER SECTIONS ---
-// indashboard.jsx
 
   const renderDashboardHome = () => {
-    // 1. Extract NAAC Data safely from the institute profile
-    const naacData = institute?.accreditation && institute.accreditation.length > 0 
-      ? institute.accreditation[0] 
-      : null;
-
-    // 2. Check if NAAC is Active (Status is true)
-    const showNaacCard = naacData && naacData.status === true;
-
     return (
       <div className="animate-in fade-in duration-500 pb-6">
         <SectionHeader 
@@ -481,24 +455,14 @@ const handleLogout = () => {
             theme={currentTheme.secondary} 
           />
           
-          {/* --- 3. CONDITIONAL NAAC CARD --- */}
-          {showNaacCard ? (
-            <StatCard 
-              title="NAAC Accredited" 
-              value={naacData.grade || "N/A"} // Show Grade (e.g. A++)
-              icon={CheckCircle} 
-              theme={currentTheme.secondary} 
-            />
-          ) : (
-            // Optional: Show a placeholder or nothing if not accredited
-            <StatCard 
-              title="Accreditation" 
-              value="Not Active" 
-              icon={Shield} 
-              color="gray" // You might need to handle this color prop in StatCard
-              theme={{ primary: "#9ca3af", secondary: "#d1d5db" }} 
-            />
-          )}
+          {/* --- UPDATED: NIRF STATUS CARD (Replaced NAAC) --- */}
+          <StatCard 
+            title="NIRF Status" 
+            value="Data Draft" 
+            icon={BarChart3} 
+            color="secondary"
+            theme={currentTheme.secondary} 
+          />
 
           <StatCard 
             title="AI Optimizations" 
@@ -509,7 +473,7 @@ const handleLogout = () => {
           />
         </div>
 
-        {/* ... Rest of the dashboard (Recent Notices, Quick Actions) ... */}
+        {/* ... Rest of the dashboard ... */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2">
             <div className="flex justify-between items-center mb-6">
@@ -537,6 +501,7 @@ const handleLogout = () => {
       </div>
     );
   };
+  
   const renderSettingsSection = () => (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-6 relative">
       <SectionHeader title="Institute Settings" subtitle="Manage profile, security, and team access" />
@@ -569,7 +534,6 @@ const handleLogout = () => {
         {settingsTab === 'profile' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row items-start gap-8">
-              {/* Logo Upload */}
               <div className="shrink-0 group relative self-center md:self-start">
                  <div className="w-32 h-32 rounded-full bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden">
                     {editForm.previewUrl ? (
@@ -584,7 +548,6 @@ const handleLogout = () => {
                  </label>
               </div>
 
-              {/* Basic Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 flex-1 w-full">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Institute Name</label>
@@ -619,7 +582,6 @@ const handleLogout = () => {
               </div>
             </div>
 
-            {/* Address & Accreditation */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 border-t border-gray-100 pt-6">
                <div className="md:col-span-3"><h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400"/> Location & Details</h4></div>
                
@@ -685,8 +647,6 @@ const handleLogout = () => {
                 <p className="text-sm text-gray-500 mt-1">Keep your institute account secure.</p>
              </div>
              <div className="space-y-4">
-                
-                {/* Current Password */}
                 <div className="relative">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
                    <div className="relative">
@@ -707,7 +667,6 @@ const handleLogout = () => {
                    </div>
                 </div>
 
-                {/* New Password */}
                 <div className="relative">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
                    <div className="relative">
@@ -728,7 +687,6 @@ const handleLogout = () => {
                    </div>
                 </div>
 
-                {/* Confirm Password */}
                 <div className="relative">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New Password</label>
                    <div className="relative">
@@ -760,16 +718,14 @@ const handleLogout = () => {
           </div>
         )}
 
-        {/* --- 3. TEAM ACCESS TAB (UPDATED) --- */}
+        {/* --- 3. TEAM ACCESS TAB --- */}
         {settingsTab === 'access' && (
           <div className="space-y-8 animate-in fade-in">
-             {/* Info Box */}
              <div className="bg-blue-50 p-4 rounded-xl flex items-start gap-3 text-blue-800 text-sm border border-blue-100">
                 <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
                 <p>Manage access to the Institute Dashboard. Granting access allows faculty members to manage students, notices, and view departmental metrics.</p>
              </div>
 
-             {/* 1. Authorized Admins Section */}
              <div>
                 <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                     Authorized Administrators <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">{accessUsers.length}</span>
@@ -808,14 +764,12 @@ const handleLogout = () => {
 
              <div className="h-px bg-gray-100"></div>
 
-             {/* 2. Available Faculty Section */}
              <div>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <h4 className="font-bold text-gray-800 flex items-center gap-2">
                         Faculty Directory <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{filteredAvailableFaculty.length}</span>
                     </h4>
                     
-                    {/* Search Bar */}
                     <div className="relative w-full md:w-64">
                         <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                         <input 
@@ -995,13 +949,13 @@ const handleLogout = () => {
             )}
           </div>
           <div>
-                   <h1 className="text-white font-extrabold text-xl leading-none tracking-tight">
-                     {institute.code || "INST"}
-                   </h1>
-                   <p className="text-[10px] opacity-90 uppercase tracking-widest font-bold mt-1"style={{color:currentTheme.textOnPrimary}}>
-                     Institute Portal
-                   </p>
-                 </div>
+             <h1 className="text-white font-extrabold text-xl leading-none tracking-tight">
+               {institute?.code || "INST"}
+             </h1>
+             <p className="text-[10px] opacity-90 uppercase tracking-widest font-bold mt-1"style={{color:currentTheme.textOnPrimary}}>
+               Institute Portal
+             </p>
+           </div>
         </div>
         
         {/* Right Action Icons: Bell & Logout */}
@@ -1040,7 +994,10 @@ const handleLogout = () => {
             { id: "dept-metrics", label: "Manage Department", icon: BarChart3 },
             { id: "courses", label: "Manage Courses", icon: BookOpen },
             { id: "data-tracking", label: "Manage Student", icon: ClipboardList },
-            { id: "naac", label: "NAAC Monitoring", icon: CheckCircle },
+            
+            // --- UPDATED SIDEBAR ITEM ---
+            { id: "nirf", label: "NIRF Data Entry", icon: BarChart3 }, 
+            
             { id: "requests", label: "Requests to Admin", icon: Send },
             { id: "notices", label: "Notices & Alerts", icon: Bell },
             { id: "ai-timetable", label: "AI Timetable", icon: Cpu },
@@ -1055,9 +1012,9 @@ const handleLogout = () => {
         {/* RIGHT CONTENT: Full Height, Internal Scroll Logic */}
         <div className="flex-1 rounded-3xl bg-white p-7 shadow-[0_8px_50px_rgba(0,0,0,0.22)] h-full flex flex-col overflow-hidden relative">
           
-          {/* Scroll wrapper for normal pages */}
-          {activeTab === "naac" ? (
-            <NaacPage
+          {/* Main Content Switch */}
+          {activeTab === "nirf" ? (
+            <NIRFPage
               authFetch={authFetch}
               theme={currentTheme}
               institute={institute}

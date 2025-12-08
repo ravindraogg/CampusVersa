@@ -20,6 +20,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.0.0",
     "node-fetch": "^3.3.2",
-    "openai": "^6.9.1"
+    "openai": "^6.9.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   }
 }

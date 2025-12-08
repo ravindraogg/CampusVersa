@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { io } from "socket.io-client"; // Socket Import
 import {
   LayoutDashboard,
   CalendarDays,
@@ -24,7 +25,8 @@ import {
   Table as TableIcon,
   Menu,
   X,
-  Settings
+  Settings,
+  Megaphone // Added for Notices
 } from "lucide-react";
 
 // --- SUB-COMPONENTS ---
@@ -33,6 +35,7 @@ import StudentPerformanceSection from "./StudentPerformanceSection";
 import StudentProfileSection from "./StudentProfileSection";
 import StudentTimetableSection from "./StudentTimetableSection";
 import StudentCoursesSection from "./StudentCoursesSection";
+import UniversalNoticePage from "../UniversalNoticePage"; // Import your Notice Page
 
 // --- FEATURE COMPONENTS ---
 import ResumeBuilder from "./resume";
@@ -54,9 +57,10 @@ const DEFAULT_THEME = {
   textOnPrimary: "#FFFFFF",
 };
 
-// --- NAVIGATION CONFIGURATION ---
+// --- NAVIGATION CONFIGURATION (Added Notices) ---
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "notices", label: "Notices", icon: Megaphone }, // New Tab
   { id: "attendance", label: "Attendance", icon: CalendarDays },
   { id: "timetable", label: "Timetable", icon: TableIcon },
   { id: "courses", label: "Courses", icon: BookOpen },
@@ -65,7 +69,7 @@ const NAV_ITEMS = [
   { id: "freelance", label: "Jobs & Hubs", icon: Send },
 ];
 
-// --- HELPER: VTU Grading Logic (Client Side) ---
+// --- HELPER: VTU Grading Logic ---
 const getGradePoint = (marks) => {
   if (marks >= 90) return 10;
   if (marks >= 80) return 9;
@@ -184,8 +188,7 @@ const CareerHub = ({ theme }) => {
   );
 };
 
-// --- HELPER: Dashboard Line Chart (REPLACES BAR CHART) ---
-// This uses SVG to draw connected lines for a better "Trend" visual
+// --- HELPER: Dashboard Line Chart ---
 const DashboardLineChart = ({ data, color = "#6366f1" }) => {
   if (!data || data.length === 0) {
     return (
@@ -195,57 +198,38 @@ const DashboardLineChart = ({ data, color = "#6366f1" }) => {
     );
   }
 
-  // Configuration
   const width = 300;
   const height = 100;
   const padding = 10;
-  const maxValue = 100; // Assuming SGPA is converted to percentage
+  const maxValue = 100;
 
-  // Calculate coordinates
   const points = data.map((item, index) => {
     const x = (index / (data.length - 1 || 1)) * (width - 2 * padding) + padding;
     const y = height - ((item.value || 0) / maxValue) * (height - 2 * padding) - padding;
     return { x, y, ...item };
   });
 
-  // Create SVG Path 'd' attribute
   const pathD = points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ");
-
-  // Create Area fill path (closes the loop at the bottom)
   const areaD = `${pathD} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
 
   return (
     <div className="w-full h-40 md:h-48 flex flex-col justify-end mt-4">
       <div className="relative w-full h-full">
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
-          {/* Defs for Gradient */}
           <defs>
             <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.2" />
               <stop offset="100%" stopColor={color} stopOpacity="0" />
             </linearGradient>
           </defs>
-
-          {/* Grid Lines */}
           <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#f3f4f6" strokeWidth="1" />
           <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="#f3f4f6" strokeWidth="1" strokeDasharray="4" />
-
-          {/* Area Fill */}
           <path d={areaD} fill="url(#chartGradient)" />
-
-          {/* Connect Line */}
           <path d={pathD} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Data Points */}
           {points.map((p, i) => (
             <g key={i} className="group">
-              {/* Invisible large circle for easier hovering */}
               <circle cx={p.x} cy={p.y} r="8" fill="transparent" className="cursor-pointer" />
-
-              {/* Visible Circle */}
               <circle cx={p.x} cy={p.y} r="3" fill="#fff" stroke={color} strokeWidth="2" className="pointer-events-none" />
-
-              {/* Tooltip */}
               <foreignObject x={p.x - 30} y={p.y - 35} width="60" height="30" className="overflow-visible opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                 <div className="flex justify-center">
                   <span className="bg-gray-800 text-white text-[10px] px-2 py-1 rounded shadow-lg whitespace-nowrap">
@@ -257,8 +241,6 @@ const DashboardLineChart = ({ data, color = "#6366f1" }) => {
           ))}
         </svg>
       </div>
-
-      {/* X-Axis Labels */}
       <div className="flex justify-between px-1 mt-1">
         {points.map((p, i) => (
           <div key={i} className="text-[9px] text-gray-400 font-medium text-center" style={{ width: '40px' }}>
@@ -285,7 +267,7 @@ const authFetch = async (path, opts = {}) => {
   return res;
 };
 
-// --- DESKTOP NAV COMPONENT (CENTERED) ---
+// --- DESKTOP NAV COMPONENT ---
 const DesktopNav = ({ activeTab, setActiveTab, theme }) => {
   const getButtonStyle = (isActive) => ({
     backgroundColor: isActive
@@ -297,7 +279,7 @@ const DesktopNav = ({ activeTab, setActiveTab, theme }) => {
 
   return (
     <div
-      className="hidden md:flex h-full rounded-[2rem] shadow-sm items-center px-2 transition-all duration-300"
+      className="hidden md:flex h-full rounded-[2rem] shadow-sm items-center px-2 transition-all duration-300 overflow-x-auto no-scrollbar"
       style={{ backgroundColor: theme.primary }}
     >
       <div className="flex items-center gap-1 p-1">
@@ -317,8 +299,8 @@ const DesktopNav = ({ activeTab, setActiveTab, theme }) => {
   );
 };
 
-// --- HEADER ACTIONS (RIGHT SIDE) ---
-const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobileMenu, setOpenMobileMenu }) => {
+// --- HEADER ACTIONS (UPDATED WITH RED DOT LOGIC) ---
+const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobileMenu, setOpenMobileMenu, unreadCount, setUnreadCount }) => {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -331,22 +313,32 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleNotificationClick = () => {
+    setActiveTab('notices');
+    setUnreadCount(0); // Clear red dot when clicked
+  };
+
   return (
     <div className="flex items-center gap-3 h-full">
 
       {/* --- DESKTOP VIEW ACTIONS --- */}
       <div className="hidden md:flex items-center gap-3 h-full">
 
-        {/* Notification & Settings Group (The "Notification Card") */}
+        {/* Notification & Settings Group */}
         <div className="h-full px-2 rounded-[2rem] shadow-sm flex items-center justify-center gap-1 bg-white border border-gray-100 hover:bg-gray-50 transition-colors">
-          {/* Bell Button */}
-          <button className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+          {/* Bell Button with Red Dot */}
+          <button
+            onClick={handleNotificationClick}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors relative"
+          >
             <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+               <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full animate-pulse"></span>
+            )}
           </button>
 
           <div className="w-px h-6 bg-gray-200 mx-1"></div>
 
-          {/* Settings Button */}
           <button
             onClick={() => setActiveTab('settings')}
             className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"
@@ -356,7 +348,6 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
           </button>
         </div>
 
-        {/* Logout Button */}
         <button
           onClick={handleLogout}
           className="h-full px-6 rounded-[2rem] shadow-sm flex items-center justify-center gap-2 bg-white border border-gray-100 hover:bg-red-50 text-gray-700 font-bold text-sm group"
@@ -369,12 +360,16 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
       {/* --- MOBILE VIEW ACTIONS --- */}
       <div className="md:hidden flex items-center gap-2 relative" ref={menuRef}>
         <div className="h-12 rounded-2xl flex items-center p-1.5 shadow-sm border border-gray-100 bg-white">
-          {/* 1. Notification Icon */}
-          <button className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500">
+          <button 
+             onClick={handleNotificationClick}
+             className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 relative"
+          >
             <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+            )}
           </button>
 
-          {/* 2. Settings Icon (Added inside the card) */}
           <button
             onClick={() => setActiveTab('settings')}
             className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"
@@ -384,7 +379,6 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
 
           <div className="w-px h-5 bg-gray-200 mx-1"></div>
 
-          {/* 3. Hamburger Trigger */}
           <button
             onClick={() => setOpenMobileMenu(!openMobileMenu)}
             className="h-9 px-3 rounded-xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-sm transition-transform active:scale-95"
@@ -394,7 +388,6 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
           </button>
         </div>
 
-        {/* Mobile Dropdown Menu */}
         {openMobileMenu && (
           <div
             className="absolute top-14 right-0 z-50 w-64 rounded-2xl shadow-xl p-2 animate-in fade-in slide-in-from-top-2 origin-top-right backdrop-blur-sm"
@@ -455,6 +448,69 @@ const StudentDashboard = () => {
   const [subjectWiseData, setSubjectWiseData] = useState([]);
   const [availableTimetables, setAvailableTimetables] = useState([]);
 
+  // --- SOCKET STATES ---
+  const [socket, setSocket] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [noticeRefreshTrigger, setNoticeRefreshTrigger] = useState(0);
+
+  // --- SOCKET CONNECTION EFFECT ---
+  useEffect(() => {
+    if (!student || !institute) return;
+
+    // 1. Connect to Backend URL
+   const newSocket = io(API_URL, {
+      transports: ['websocket', 'polling'], // Allow fallback
+      withCredentials: false
+    });
+    
+    setSocket(newSocket);
+
+    // Debugging connection
+    newSocket.on("connect", () => {
+      console.log("✅ Socket Connected with ID:", newSocket.id);
+    });
+
+    newSocket.on("connect_error", (err) => {
+      console.error("❌ Socket Connection Error:", err.message);
+    });
+
+    newSocket.emit('join_room', {
+      instituteId: institute._id,
+      role: 'student',
+      department: student.department
+    });
+
+    // 3. Listen for Notices
+    newSocket.on('receive_notice', (data) => {
+      console.log("Socket: New Notice", data);
+      setUnreadCount(prev => prev + 1);
+      setToastMsg({ 
+        title: "New Notice", 
+        msg: data.title, 
+        type: data.type === 'Urgent' ? 'alert' : 'info' 
+      });
+      // Trigger notice page refresh
+      setNoticeRefreshTrigger(prev => prev + 1);
+    });
+
+    // 4. Listen for Marks/Exam Alerts
+    newSocket.on('receive_alert', (data) => {
+      console.log("Socket: Alert", data);
+      setUnreadCount(prev => prev + 1);
+      setToastMsg({ 
+        title: data.title || "Alert", 
+        msg: data.message, 
+        type: "alert" 
+      });
+    });
+
+    // Cleanup
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [student, institute]);
+
   // --- DATA LOADING ---
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -473,11 +529,11 @@ const StudentDashboard = () => {
         }));
       }
 
+      // ... (Existing attendance/marks logic retained for compatibility) ...
       try {
         const attRes = await authFetch("/student/attendance/full");
         if (attRes.ok) {
           const attFullData = await attRes.json();
-
           let totalClasses = 0;
           let totalPresent = 0;
           const liveSubjects = attFullData.map(record => {
@@ -489,25 +545,19 @@ const StudentDashboard = () => {
             };
           });
           setSubjectWiseData(liveSubjects);
-
           const liveOverall = totalClasses > 0 ? (totalPresent / totalClasses) * 100 : 0;
-
+          
           let calculatedResults = [];
           let sumSiCi = 0;
           let sumCiTotal = 0;
-
           const creditMap = {};
           attFullData.forEach(r => {
-            if (r.courseId && r.courseId._id) {
-              creditMap[r.courseId._id] = r.courseId.credits || 3;
-            }
+             if (r.courseId && r.courseId._id) creditMap[r.courseId._id] = r.courseId.credits || 3;
           });
-
           if (currentStudent.courseEnrollments) {
             currentStudent.courseEnrollments.forEach(semData => {
               let semCreditsTotal = 0;
               let semProduct = 0;
-
               semData.subjects.forEach(sub => {
                 const credits = creditMap[sub.courseId] || 3;
                 let finalMarks = sub.marksObtained || 0;
@@ -517,48 +567,32 @@ const StudentDashboard = () => {
                   const external = m.external / 2;
                   finalMarks = internal + external;
                 }
-
                 const gp = getGradePoint(finalMarks);
                 if (gp > 0 || finalMarks >= 0) {
                   semCreditsTotal += credits;
                   semProduct += (credits * gp);
                 }
               });
-
               if (semCreditsTotal > 0) {
                 const sgpa = semProduct / semCreditsTotal;
-                calculatedResults.push({
-                  semester: semData.semester,
-                  sgpa: parseFloat(sgpa.toFixed(2))
-                });
+                calculatedResults.push({ semester: semData.semester, sgpa: parseFloat(sgpa.toFixed(2)) });
                 sumSiCi += (sgpa * semCreditsTotal);
                 sumCiTotal += semCreditsTotal;
               }
             });
           }
-
           const calculatedCGPA = sumCiTotal > 0 ? (sumSiCi / sumCiTotal).toFixed(2) : "0.00";
-
           currentStudent = {
             ...currentStudent,
-            attendance: {
-              ...currentStudent.attendance,
-              overallPercentage: liveOverall
-            },
-            academic: {
-              ...currentStudent.academic,
-              cgpa: calculatedCGPA,
-              creditsEarned: sumCiTotal,
-              semesterResults: calculatedResults
-            }
+            attendance: { ...currentStudent.attendance, overallPercentage: liveOverall },
+            academic: { ...currentStudent.academic, cgpa: calculatedCGPA, creditsEarned: sumCiTotal, semesterResults: calculatedResults }
           };
-
           setStudent(currentStudent);
 
           const sortedResults = [...calculatedResults].sort((a, b) => Number(a.semester) - Number(b.semester));
           const perfData = sortedResults.map(sem => ({
             label: `Sem ${sem.semester}`,
-            value: (sem.sgpa / 10) * 100, // Converting 10-point scale to 100 for graph
+            value: (sem.sgpa / 10) * 100, 
             tooltip: `SGPA: ${sem.sgpa}`
           }));
           setPerformanceChartData(perfData);
@@ -607,6 +641,14 @@ const StudentDashboard = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Auto-Dismiss Toast
+  useEffect(() => {
+    if (toastMsg) {
+      const timer = setTimeout(() => setToastMsg(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMsg]);
+
   const handleLogout = () => {
     setIsMobileMenuOpen(false);
     setShowLogoutModal(true);
@@ -619,6 +661,18 @@ const StudentDashboard = () => {
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard": return renderDashboardOverview();
+      case "notices": // New Case for Notices
+        return (
+          <div className="animate-in fade-in h-full">
+            <UniversalNoticePage 
+               role="student" 
+               authFetch={authFetch} 
+               theme={theme} 
+               pushToast={(msg, type) => setToastMsg({title: type === 'error' ? 'Error' : 'Success', msg, type})} 
+               key={noticeRefreshTrigger} // Forces refresh when socket triggers
+            />
+          </div>
+        );
       case "attendance": return <StudentAttendanceSection student={student} />;
       case "timetable":
         return (
@@ -643,10 +697,8 @@ const StudentDashboard = () => {
     }
   };
 
-  // --- RENDER DASHBOARD OVERVIEW ---
   const renderDashboardOverview = () => (
     <div className="animate-in fade-in duration-500 grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6 pb-20 md:pb-10">
-
       {/* 1. Welcome Header */}
       <div className="lg:col-span-4 bg-gradient-to-r from-gray-50 to-white p-5 md:p-6 rounded-[2rem] border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm relative overflow-hidden gap-4">
         <div className="relative z-10">
@@ -668,13 +720,10 @@ const StudentDashboard = () => {
         )}
       </div>
 
-      {/* 2. Left Column (Main Stats & Charts) - Span 3 */}
+      {/* 2. Left Column */}
       <div className="lg:col-span-3 flex flex-col gap-4 md:gap-6 order-2 md:order-1">
-
         {/* Quick Stats Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-
-          {/* CGPA CARD */}
           <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-green-50 rounded-full text-green-600"><GraduationCap className="w-4 h-4 md:w-5 md:h-5" /></div>
@@ -685,8 +734,6 @@ const StudentDashboard = () => {
               <p className="text-[9px] md:text-[10px] text-green-600 font-bold">Cumulative</p>
             </div>
           </div>
-
-          {/* Attendance Card */}
           <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-4 h-4 md:w-5 md:h-5" /></div>
@@ -697,8 +744,6 @@ const StudentDashboard = () => {
               <p className="text-[9px] md:text-[10px] text-gray-400">Overall Avg</p>
             </div>
           </div>
-
-          {/* Credits Card */}
           <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-orange-50 rounded-full text-orange-600"><ListTodo className="w-4 h-4 md:w-5 md:h-5" /></div>
@@ -709,8 +754,6 @@ const StudentDashboard = () => {
               <p className="text-[9px] md:text-[10px] text-orange-500 font-bold">Earned</p>
             </div>
           </div>
-
-          {/* Courses Card */}
           <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-purple-50 rounded-full text-purple-600"><BookOpen className="w-4 h-4 md:w-5 md:h-5" /></div>
@@ -727,20 +770,15 @@ const StudentDashboard = () => {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-
-          {/* SUBJECT ATTENDANCE CARD */}
           <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px] md:min-h-[300px]">
             <div className="flex justify-between items-center mb-4">
               <h4 className="font-bold text-gray-700 text-sm md:text-base flex items-center gap-2">
                 <CalendarDays className="w-4 h-4 text-gray-400" /> Subject Attendance
               </h4>
-              <span className={`text-[10px] md:text-xs px-2 py-1 rounded font-bold ${student?.attendance?.overallPercentage >= 75 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
-                }`}>
+              <span className={`text-[10px] md:text-xs px-2 py-1 rounded font-bold ${student?.attendance?.overallPercentage >= 75 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"}`}>
                 {student?.attendance?.overallPercentage >= 75 ? "Good" : "Low"}
               </span>
             </div>
-
-            {/* List View */}
             <div className="space-y-4 overflow-y-auto flex-1 custom-scrollbar pr-2">
               {subjectWiseData.length > 0 ? (
                 subjectWiseData.map((subj, idx) => (
@@ -766,8 +804,6 @@ const StudentDashboard = () => {
               )}
             </div>
           </div>
-
-          {/* Performance Trend Chart */}
           <div className="bg-white p-5 md:p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full min-h-[250px] md:min-h-[300px]">
             <div className="flex justify-between items-center mb-2">
               <h4 className="font-bold text-gray-700 text-sm md:text-base flex items-center gap-2">
@@ -775,16 +811,13 @@ const StudentDashboard = () => {
               </h4>
               <span className="text-[10px] md:text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded font-bold">SGPA/Sem</span>
             </div>
-            {/* UPDATED: Uses Line Chart for better connectedness */}
             <DashboardLineChart data={performanceChartData} color="#6366f1" />
           </div>
         </div>
       </div>
 
-      {/* 3. Right Column (Sidebar) - Span 1 */}
+      {/* 3. Right Column */}
       <div className="lg:col-span-1 flex flex-col gap-4 order-1 md:order-2">
-
-        {/* Profile Card */}
         <div
           className="bg-white p-3 md:p-4 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={() => setActiveTab("settings")}
@@ -802,7 +835,6 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        {/* Schedule */}
         <div className="bg-orange-50 p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-orange-100 relative overflow-hidden">
           <div className="absolute right-[-20px] top-[-20px] opacity-10">
             <CalendarDays className="w-20 h-20 md:w-24 md:h-24 text-orange-600" />
@@ -816,7 +848,6 @@ const StudentDashboard = () => {
           </p>
         </div>
 
-        {/* Recent Activity */}
         <div className="bg-white p-4 md:p-5 rounded-[2rem] border border-gray-100 shadow-sm hidden md:block">
           <h4 className="font-bold text-gray-800 text-xs md:text-sm mb-3 flex items-center gap-2">
             <History className="w-4 h-4 text-gray-400" /> Recent Attendance
@@ -850,11 +881,25 @@ const StudentDashboard = () => {
 
   return (
     <div className="h-[100dvh] w-screen bg-[#F8F9FC] p-3 md:p-6 flex flex-col gap-4 md:gap-6 overflow-hidden font-sans antialiased relative">
+      
+      {/* --- TOAST NOTIFICATION (SOCKET) --- */}
+      {toastMsg && (
+        <div className="fixed bottom-6 right-6 z-[100] bg-gray-900 text-white pl-4 pr-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right-10 fade-in border border-gray-800 max-w-sm">
+          <div className={`p-2 rounded-full ${toastMsg.type === 'alert' ? 'bg-red-500' : 'bg-blue-500'}`}>
+            {toastMsg.type === 'alert' ? <AlertCircle className="w-5 h-5 text-white" /> : <Bell className="w-5 h-5 text-white" />}
+          </div>
+          <div>
+            <h4 className="font-bold text-sm tracking-wide">{toastMsg.title}</h4>
+            <p className="text-xs opacity-80 mt-0.5 line-clamp-2">{toastMsg.msg}</p>
+          </div>
+          <button onClick={() => setToastMsg(null)} className="ml-auto text-gray-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
-      {/* HEADER SECTION: Responsive Layout */}
+      {/* HEADER SECTION */}
       <div className="shrink-0 flex items-center justify-between gap-4 h-18 md:h-18 relative z-50">
-
-        {/* Left: Logo (FIXED SIZE on Mobile) */}
         <div className="h-full px-3 md:px-6 rounded-2xl md:rounded-[2rem] flex items-center gap-2 md:gap-4 shadow-lg shadow-gray-200/50 min-w-fit" style={{ backgroundColor: theme.primary, color: theme.white }}>
           <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center p-1 border-2 border-white/30 shrink-0">
             {institute?.logo ? <img src={institute.logo} alt="Logo" className="w-full h-full object-contain p-1" /> : <GraduationCap className="w-6 h-6 text-white" />}
@@ -865,12 +910,11 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        {/* Center: Desktop Navigation (Absolute Center Removed -> Flex) */}
         <div className="hidden md:flex items-center justify-center flex-1 mx-4 h-full">
           <DesktopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
         </div>
 
-        {/* Right: Actions (Nav + Settings + Bell) */}
+        {/* Right Actions with Red Dot Support */}
         <HeaderActions
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -878,6 +922,8 @@ const StudentDashboard = () => {
           handleLogout={handleLogout}
           openMobileMenu={isMobileMenuOpen}
           setOpenMobileMenu={setIsMobileMenuOpen}
+          unreadCount={unreadCount}
+          setUnreadCount={setUnreadCount}
         />
       </div>
 
@@ -912,11 +958,3 @@ const StudentDashboard = () => {
 };
 
 export default StudentDashboard;
-
-
-
-
-
-
-
-
