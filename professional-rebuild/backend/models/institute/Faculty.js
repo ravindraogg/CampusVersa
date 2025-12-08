@@ -5,18 +5,18 @@ const FacultySchema = new mongoose.Schema({
   instituteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Institute', required: true },
   FID: { type: String, required: true, unique: true }, 
   name: { type: String, required: true },
-  
+
   // Contact Info
   email: { type: String },
   phone: { type: String },
-  
+
   // Professional Info
   designation: { type: String },
   department: { type: String, required: true },
-  position: { type: String }, // Administrative position if any
+  position: { type: String },
   workingHours: { type: String },
-  joiningDate: { type: Date }, // Explicit joining date field
-  
+  joiningDate: { type: Date },
+
   // Auth & UI
   profilePic: { type: String }, 
   loginId: { type: String },
@@ -33,13 +33,15 @@ const FacultySchema = new mongoose.Schema({
     kycType: { type: String, default: null },
     aadharLast4: { type: String, default: null } 
   },
+
   courses: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
-  // --- EXPANDED: Professional Overview ---
-  qualification: { type: String }, // e.g., "Ph.D. in Data Science"
-  experience: { type: String }, // e.g., "12 Years"
-  specialization: [String], // e.g., ["Machine Learning", "IoT"]
-  
-  // --- EXPANDED: Research Metrics (For Dashboard Stats) ---
+
+  // Professional Overview
+  qualification: { type: String },
+  experience: { type: String }, // overall years from your existing field
+  specialization: [String],
+
+  // Research Metrics
   research: {
     papersPublished: { type: Number, default: 0 },
     citations: { type: Number, default: 0 },
@@ -49,15 +51,28 @@ const FacultySchema = new mongoose.Schema({
     patents: { type: Number, default: 0 }
   },
 
-  // --- EXPANDED: Social & External Links ---
+  // Social Links
   socialLinks: {
     linkedin: String,
     googleScholar: String,
     website: String
   },
 
-  // --- EXPANDED: Performance/Appraisal ---
-  aparScore: { type: String, default: "0/10" }, // Annual Performance Appraisal Report
+  // Appraisal
+  aparScore: { type: String, default: "0/10" },
+
+  // NEW: Previous Work & Academic Background
+  workHistory: [
+    {
+      instituteName: { type: String }, // previous institute or university
+      role: { type: String }, // Lecturer, Assistant Professor, etc.
+      duration: { type: String }, // "2015-2019"
+      experienceYears: { type: Number }, // numeric years from that institute
+      description: { type: String } // optional brief notes
+    }
+  ],
+
+  totalExperienceYears: { type: Number, default: 0 }, // numeric overall experience
 
   joinedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }

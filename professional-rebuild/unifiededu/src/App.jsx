@@ -17,7 +17,8 @@ import StudentExamCalendarSection from './pages/student/StudentExamCalendarSecti
 import StudentCareerSection from './pages/student/StudentCareerSection'
 import Resume from './pages/student/resume'
 import Roadmap from './pages/student/roadmap'
-import StudentKyc from './pages/student/StudentKYC'
+import StudentKYC from "/src/pages/student/StudentKYC";
+
 
 function App() {
 
@@ -40,7 +41,7 @@ function App() {
         <Route path="/student/career-booster" element={<StudentCareerSection />} />
         <Route path="/student/resume" element={<Resume />} />
         <Route path="/student/roadmap" element={<Roadmap />} />
-        <Route path="/student/kyc" element={<StudentKyc />} />
+        <Route path="/student/kyc" element={<StudentKYC />} />
 
       </Routes>
     </BrowserRouter>

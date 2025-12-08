@@ -1490,152 +1490,72 @@ app.post('/institute/notices/add', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Post failed' });
   }
 });
-// --- server.js ---
+
 app.get('/admin/global-search', verifyToken, async (req, res) => {
   try {
     const { query } = req.query;
     if (!query || query.length < 2) return res.json({ results: [] });
 
-    const regex = new RegExp(query, 'i'); // case-insensitive partial match
+    const regex = new RegExp(query, 'i');
     let results = [];
 
-    // ======================================================
     // 1. SEARCH INSTITUTES
-    // ======================================================
     const institutes = await Institute.find({
-      $or: [
-        { name: regex },
-        { code: regex },
-        { aisheCode: regex },
-        { email: regex },
-        { IID: regex }
-      ]
+      $or: [{ name: regex }, { code: regex }, { aisheCode: regex }]
     }).lean().limit(5);
 
     for (const inst of institutes) {
-      const faculty = await Faculty.find({ instituteId: inst._id }).lean();
-      const students = await Student.find({ instituteId: inst._id }).lean();
-      const departments = await Department.find({ instituteId: inst._id }).lean();
-      const courses = await Course.find({ instituteId: inst._id }).lean();
-
+      // Just basic counts for preview
+      const facultyCount = await Faculty.countDocuments({ instituteId: inst._id });
+      const studentCount = await Student.countDocuments({ instituteId: inst._id });
+      
       results.push({
         type: 'Institute',
         data: inst,
-        faculty,
-        departments,
-        students,
-        courses
+        stats: { facultyCount, studentCount }
       });
     }
 
-    // ======================================================
-    // 2. SEARCH FACULTY (with Aadhaar lookup)
-    // ======================================================
-    const facultyAadhaarDocs = await Aadhaar.find({
-      userType: 'Faculty',
-      aadhaarNumber: regex
-    }).select('userId');
-    const facultyAadhaarIds = facultyAadhaarDocs.map(doc => doc.userId);
-
+    // 2. SEARCH FACULTY (Rich Data Fetch)
     const faculties = await Faculty.find({
-      $or: [
-        { name: regex },
-        { FID: regex },
-        { email: regex },
-        { _id: { $in: facultyAadhaarIds } }
-      ]
-    }).lean().limit(5);
+      $or: [{ name: regex }, { FID: regex }, { email: regex }]
+    })
+    .populate('instituteId', 'name code') // Get Institute Name
+    .lean()
+    .limit(5);
 
     for (const f of faculties) {
-      const institute = await Institute.findById(f.instituteId).lean();
-      const department = await Department.findOne({
-        instituteId: f.instituteId,
-        name: f.department
-      }).lean();
-      const ssr = await FacultySSR.findOne({ facultyId: f._id }).lean();
-
-      // Faculty Courses
-      let courses = [];
-      for (const courseId of f.courses || []) {
-        const course = await Course.findById(courseId)
-          .populate('enrolledStudents')
-          .lean();
-        courses.push({
-          course,
-          students: course?.enrolledStudents || []
-        });
-      }
-
+      // Return the FULL faculty object. 
+      // The schema now includes 'education', 'workHistory', 'awards', 'memberships'
+      // .lean() ensures we get all of it.
+      
       results.push({
         type: 'Faculty',
-        data: f,
-        institute,
-        department,
-        ssr,
-        courses
+        data: f, 
+        institute: f.instituteId, // Populated data
+        educationSummary: f.education?.length > 0 ? f.education[0].degree : 'N/A'
       });
     }
 
-    // ======================================================
-    // 3. SEARCH STUDENTS (with Aadhaar lookup)
-    // ======================================================
-// ======================================================
-// 3. SEARCH STUDENTS (with Aadhaar lookup)
-// ======================================================
-const studentAadhaarDocs = await Aadhaar.find({
-  userType: 'Student',
-  aadhaarNumber: regex
-}).select('userId');
-const studentAadhaarIds = studentAadhaarDocs.map(doc => doc.userId);
+    // 3. SEARCH STUDENTS
+    const students = await Student.find({
+      $or: [{ name: regex }, { SID: regex }, { rollNumber: regex }, { email: regex }]
+    })
+    .populate('instituteId', 'name code')
+    .lean()
+    .limit(5);
 
-const students = await Student.find({
-  $or: [
-    { name: regex },
-    { SID: regex },
-    { rollNumber: regex },
-    { admissionNo: regex },
-    { email: regex },
-    { _id: { $in: studentAadhaarIds } }
-  ]
-}).lean().limit(5);
-
-for (const s of students) {
-  const institute = await Institute.findById(s.instituteId).lean();
-
-  const department = await Department.findOne({
-    instituteId: s.instituteId,
-    name: s.department
-  }).lean();
-
-  // Full course + faculty merge
-  const enrolledCourses = [];
-  for (const sem of s.courseEnrollments || []) {
-    for (const sub of sem.subjects || []) {
-      const course = await Course.findById(sub.courseId).lean();
-      const faculty = await Faculty.findById(sub.facultyId).lean();
-      
-      enrolledCourses.push({
-        course,
-        faculty,
-        subjectDetails: sub
+    for (const s of students) {
+      results.push({
+        type: 'Student',
+        data: s,
+        institute: s.instituteId,
+        // Calculate basic stats for preview
+        cgpa: s.academic?.cgpa || 0,
+        backlogs: 0 // logic to calc backlogs if needed
       });
     }
-  }
 
-  // FINAL PUSH WITH CGPA
-  results.push({
-    type: "Student",
-    data: {
-      ...s,
-      cgpa: s.academic?.cgpa || 0,
-      semesterResults: s.academic?.semesterResults || [],
-      creditsEarned: s.academic?.creditsEarned || 0
-    },
-    institute,
-    department,
-    enrolledCourses
-  });
-}
     res.json({ results });
 
   } catch (err) {
@@ -1643,7 +1563,6 @@ for (const s of students) {
     res.status(500).json({ error: 'Search failed' });
   }
 });
-
 // Add this NEW route for Students
 app.get('/student/notices', verifyToken, async (req, res) => {
   try {

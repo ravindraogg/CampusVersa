@@ -5,7 +5,7 @@ const StudentSchema = new mongoose.Schema({
   SID: { type: String, required: true }, 
   name: { type: String, required: true },
   
-  // Basic Info
+  // --- BASIC INFO ---
   rollNumber: { type: String }, 
   email: { type: String },
   phone: { type: String },
@@ -15,13 +15,36 @@ const StudentSchema = new mongoose.Schema({
   year: { type: String }, 
   semester: { type: String, required: true },
   profilePic: { type: String },
-  password: { type: String }, // Make sure not to duplicate keys like in your snippet
+  password: { type: String },
+
+  // --- PREVIOUS EDUCATION ---
+  previousEducation: {
+    primary: {
+      schoolName: { type: String },
+      board: { type: String },      // e.g., CBSE, ICSE, State Board
+      marks: { type: String },      // String used to handle %, CGPA or Grades
+      city: { type: String },
+      state: { type: String },
+      yearOfPassing: { type: String } // Optional: Good to have
+    },
+    secondary: {
+      schoolName: { type: String },
+      board: { type: String },
+      marks: { type: String },
+      city: { type: String },
+      state: { type: String },
+      yearOfPassing: { type: String } // Optional: Good to have
+    }
+  },
+
+  // --- KYC ---
   kyc: {
     verified: { type: Boolean, default: false },
     kycType: { type: String, default: null }, // e.g., 'aadhar'
     aadharLast4: { type: String, default: null } 
   },
-  // --- ACADEMIC ---
+
+  // --- ACADEMIC (Current Institute) ---
   academic: {
     cgpa: { type: Number, default: 0 }, 
     semesterResults: [{
@@ -49,15 +72,16 @@ const StudentSchema = new mongoose.Schema({
         external: { type: Number, default: 0 } 
       },
 
-      // Calculated Total (Optional: You can calculate this on the fly if preferred)
+      // Calculated Total
       marksObtained: { type: Number, default: 0 } 
     }]
   }],
+  
   attendance: {
     overallPercentage: { type: Number, default: 0 },
-    alertLevel: { type: String, enum: ['Safe', 'Warning', 'Critical'], default: 'Safe' }},
+    alertLevel: { type: String, enum: ['Safe', 'Warning', 'Critical'], default: 'Safe' }
+  },
 
-  
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

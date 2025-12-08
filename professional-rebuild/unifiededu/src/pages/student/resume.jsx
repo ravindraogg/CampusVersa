@@ -14,8 +14,6 @@ import {
   Save,
   Edit3
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
 const UnifiedResumeBuilder = () => {
   // Refs
@@ -300,49 +298,27 @@ const UnifiedResumeBuilder = () => {
     alert('Resume saved successfully!');
   };
 
-  const handleDownload = async () => {
-    const element = resumeRef.current;
-    
-    try {
-      // Generate canvas from the resume preview
-      const canvas = await html2canvas(element);
-      const imgData = canvas.toDataURL('image/png');
-      
-      // Calculate dimensions for PDF
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 295; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      // Create PDF
-      const pdf = new jsPDF('p', 'mm');
-      let heightLeft = imgHeight;
-      let position = 0;
-      
-      // Add image to PDF
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      
-      // Add additional pages if needed
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-      
-      // Save PDF
-      pdf.save(`${resumeData.personalInfo.fullName || 'resume'}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
-    }
+  const handleDownload = () => {
+    // Use window.print() for native, robust PDF generation
+    // The CSS @media print block and print: utility classes handle hiding the UI
+    window.print();
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-8xl mx-auto px-4">
+    <div className="min-h-screen bg-gray-50 py-8 print:bg-white print:p-0">
+      <style>{`
+        @media print {
+          @page { margin: 0; }
+          body { 
+            background: white; 
+            -webkit-print-color-adjust: exact; 
+          }
+        }
+      `}</style>
+      
+      <div className="max-w-8xl mx-auto px-4 print:max-w-none print:px-0 print:mx-0 print:w-full">
         {/* Header */}
-        <div className="bg-white rounded-3xl shadow-sm p-6 mb-8">
+        <div className="bg-white rounded-3xl shadow-sm p-6 mb-8 print:hidden">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">AI Resume Builder</h1>
@@ -374,9 +350,9 @@ const UnifiedResumeBuilder = () => {
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex flex-col lg:flex-row gap-8 print:block">
           {/* Form Section - Left Side */}
-          <div className="lg:w-1/2 space-y-8">
+          <div className="lg:w-1/2 space-y-8 print:hidden">
             {/* Personal Information */}
             <div className="bg-white rounded-3xl shadow-sm p-6">
               <div className="flex items-center gap-3 mb-6">
@@ -885,12 +861,12 @@ const UnifiedResumeBuilder = () => {
           </div>
 
           {/* Preview Section - Right Side */}
-          <div className="lg:w-1/2">
-            <div className="bg-white rounded-3xl shadow-sm p-6 sticky top-8">
-              <h2 className="text-xl font-bold text-gray-800 mb-6">Live Preview</h2>
+          <div className="lg:w-1/2 print:w-full print:absolute print:top-0 print:left-0 print:m-0">
+            <div className="bg-white rounded-3xl shadow-sm p-6 sticky top-8 print:static print:p-0 print:shadow-none">
+              <h2 className="text-xl font-bold text-gray-800 mb-6 print:hidden">Live Preview</h2>
               
               {/* Resume Preview Card */}
-              <div ref={resumeRef} className="bg-white border border-gray-300 rounded-2xl p-8 min-h-[800px]">
+              <div ref={resumeRef} className="bg-white border border-gray-300 rounded-2xl p-8 min-h-[800px] print:border-none print:min-h-0 print:p-0 print:shadow-none">
                 {/* Personal Info Preview */}
                 <div className="text-center mb-8">
                   <h1 className="text-3xl font-bold text-gray-800">
@@ -1074,7 +1050,7 @@ const UnifiedResumeBuilder = () => {
                 </div>
               </div>
               
-              <div className="mt-6">
+              <div className="mt-6 print:hidden">
                 <h3 className="font-medium text-gray-800 mb-3">Tips for a great resume:</h3>
                 <ul className="text-sm text-gray-600 space-y-2">
                   <li className="flex items-start">

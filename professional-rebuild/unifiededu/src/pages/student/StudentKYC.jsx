@@ -22,7 +22,7 @@ const StudentKYC = () => {
 
   const handleSendOtp = () => {
     if (aadhar.length !== 12) {
-      setErrorMsg("Please enter a valid 12-digit Aadhaar number.");
+      setErrorMsg("Please enter a valid 12-digit Apaar number.");
       return;
     }
     setIsLoading(true);
@@ -103,7 +103,7 @@ const StudentKYC = () => {
         {step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
                 <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Aadhaar Number</label>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Apaar Number</label>
                     <div className="relative">
                         <ShieldCheck className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
                         <input 
@@ -158,4 +158,4 @@ const StudentKYC = () => {
   );
 };
 
-export default StudentKYC;
+export default StudentKYC;  

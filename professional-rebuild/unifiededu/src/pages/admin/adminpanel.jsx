@@ -279,6 +279,7 @@ const AdminPanel = () => {
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
 
   // --- BIG RENDERER: GLOBAL SEARCH DETAIL POPUP (RICH DETAILS) ---
+// --- BIG RENDERER: GLOBAL SEARCH DETAIL POPUP (RICH DETAILS) ---
   const renderSearchResultModal = () => {
     if (!searchDetail) return null;
     const { type, data } = searchDetail;
@@ -325,7 +326,89 @@ const AdminPanel = () => {
             </div>
           )}
 
-          {/* 3. STUDENT VIEW (Based on Student Schema) */}
+          {/* 3. FACULTY VIEW (Detailed) */}
+         {/* 3. FACULTY VIEW (Detailed per JSON Request) */}
+          {type === 'Faculty' && (
+            <div className="grid grid-cols-2 gap-4">
+              <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-2">
+                Professional Profile
+              </h4>
+
+              {/* Basic Details */}
+              <DetailRow label="FID" value={data.FID} />
+              <DetailRow label="Designation" value={data.designation} />
+              <DetailRow label="Department" value={data.department} />
+              <DetailRow label="Working Hours" value={data.workingHours} />
+              <DetailRow label="Joining Date" value={data.joiningDate ? new Date(data.joiningDate).toLocaleDateString() : 'N/A'} />
+              <DetailRow label="APAR Score" value={<span className="text-emerald-400 font-bold">{data.aparScore || 'N/A'}</span>} />
+
+              <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">
+                Qualifications & Experience
+              </h4>
+              <DetailRow label="Qualification" value={data.qualification} fullWidth />
+              <DetailRow label="Experience" value={`${data.experience} (Total: ${data.totalExperienceYears || 0} Yrs)`} />
+              <DetailRow label="Specialization" value={Array.isArray(data.specialization) ? data.specialization.join(', ') : data.specialization} />
+
+              {/* Research Metrics */}
+              <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">
+                Research & Impact
+              </h4>
+              <div className="col-span-2 grid grid-cols-4 gap-2 bg-slate-800/50 p-3 rounded-lg border border-white/5 text-center">
+                 <div><div className="text-xs text-slate-400 uppercase">Papers</div><div className="text-xl font-bold text-white">{data.research?.papersPublished || 0}</div></div>
+                 <div><div className="text-xs text-slate-400 uppercase">Citations</div><div className="text-xl font-bold text-white">{data.research?.citations || 0}</div></div>
+                 <div><div className="text-xs text-slate-400 uppercase">h-Index</div><div className="text-xl font-bold text-white">{data.research?.hIndex || 0}</div></div>
+                 <div><div className="text-xs text-slate-400 uppercase">Projects</div><div className="text-xl font-bold text-white">{data.research?.projectsGuided || 0}</div></div>
+              </div>
+
+              {/* Compliance & KYC */}
+              <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">
+                 Compliance Status
+              </h4>
+              <div className="col-span-2 flex gap-4">
+                 <div className={`px-3 py-2 rounded border ${data.kyc?.verified || data.kyc_verified ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'} flex items-center gap-2 text-sm font-bold`}>
+                    {data.kyc?.verified || data.kyc_verified ? <CheckCircle2 className="w-4 h-4"/> : <AlertTriangle className="w-4 h-4"/>} 
+                    KYC Verified ({data.kyc?.kycType || data.kyc_type})
+                 </div>
+                 <div className={`px-3 py-2 rounded border ${data.ssrStatus === 'Completed' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-slate-800 border-white/10 text-slate-400'} flex items-center gap-2 text-sm font-bold`}>
+                    <FileCheck className="w-4 h-4"/> SSR: {data.ssrStatus || 'Pending'}
+                 </div>
+              </div>
+
+              {/* Work History */}
+              <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">
+                Previous Work History
+              </h4>
+              {/* Handling both Array (Schema) and String (JSON Request) formats */}
+              <div className="col-span-2 p-3 bg-slate-800/50 rounded border border-white/5 text-sm text-slate-300">
+                 {Array.isArray(data.workHistory) ? (
+                    data.workHistory.map((w, i) => (
+                       <div key={i} className="mb-1 pb-1 border-b border-white/5 last:border-0">
+                          <span className="text-white font-medium">{w.instituteName}</span> - {w.role} ({w.duration})
+                       </div>
+                    ))
+                 ) : (
+                    data.workHistory || "No history provided."
+                 )}
+              </div>
+              
+              {/* Contact */}
+              <div className="col-span-2 pt-4 flex justify-between items-center border-t border-white/5 mt-2">
+                 <div className="flex gap-4 text-sm">
+                    {data.phone && <span className="flex items-center gap-1 text-slate-400"><Phone className="w-3 h-3"/> {data.phone}</span>}
+                    {data.email && <span className="flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3"/> {data.email}</span>}
+                 </div>
+                 {(data.socialLinks?.linkedin || data.linkedin) && (
+                    <a href={data.socialLinks?.linkedin || data.linkedin} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-sm font-bold">
+                       <Linkedin className="w-4 h-4"/> LinkedIn
+                    </a>
+                 )}
+              </div>
+
+            </div>
+          )}
+
+          {/* 4. STUDENT VIEW (Detailed) */}
+         {/* 3. STUDENT VIEW (Updated with Previous Education) */}
           {type === 'Student' && (
             <div className="grid grid-cols-2 gap-4">
                <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-2">Academic Identity</h4>
@@ -334,6 +417,35 @@ const AdminPanel = () => {
                <DetailRow label="Department" value={data.department} />
                <DetailRow label="Current Semester" value={`Sem ${data.semester}`} />
                
+               {/* --- NEW: PREVIOUS EDUCATION SECTION --- */}
+               <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Previous Education History</h4>
+               
+               {/* Primary Education */}
+               <div className="col-span-2 md:col-span-1 p-3 bg-slate-800/50 rounded-lg border border-white/5">
+                 <h5 className="text-emerald-400 text-xs font-bold uppercase mb-2">Primary (10th/Matric)</h5>
+                 <div className="space-y-2">
+                   <DetailRow label="School" value={data.previousEducation?.primary?.schoolName} />
+                   <div className="grid grid-cols-2 gap-2">
+                     <DetailRow label="Board" value={data.previousEducation?.primary?.board} />
+                     <DetailRow label="Marks" value={data.previousEducation?.primary?.marks} />
+                   </div>
+                   <DetailRow label="Location" value={`${data.previousEducation?.primary?.city || ''}, ${data.previousEducation?.primary?.state || ''}`} />
+                 </div>
+               </div>
+
+               {/* Secondary Education */}
+               <div className="col-span-2 md:col-span-1 p-3 bg-slate-800/50 rounded-lg border border-white/5">
+                 <h5 className="text-indigo-400 text-xs font-bold uppercase mb-2">Secondary (12th/Diploma)</h5>
+                 <div className="space-y-2">
+                   <DetailRow label="School" value={data.previousEducation?.secondary?.schoolName} />
+                   <div className="grid grid-cols-2 gap-2">
+                     <DetailRow label="Board" value={data.previousEducation?.secondary?.board} />
+                     <DetailRow label="Marks" value={data.previousEducation?.secondary?.marks} />
+                   </div>
+                   <DetailRow label="Location" value={`${data.previousEducation?.secondary?.city || ''}, ${data.previousEducation?.secondary?.state || ''}`} />
+                 </div>
+               </div>
+
                <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Performance Overview</h4>
                <div className="col-span-2 grid grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-800 rounded border border-white/5 flex items-center justify-between">
@@ -1187,8 +1299,7 @@ const AdminPanel = () => {
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex overflow-hidden">
       <aside className="w-64 border-r border-white/5 bg-slate-900/50 flex flex-col h-screen fixed z-10 backdrop-blur-sm">
         <div className="p-6 border-b border-white/5 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-600/50">CV</div>
-          <span className="font-bold text-white tracking-tight">CampusVersa | Admin/GOV</span>
+          <span className="font-bold text-white tracking-tight text-3xl">Admin | GOV</span>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {[
