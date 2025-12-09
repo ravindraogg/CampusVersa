@@ -1498,7 +1498,13 @@ app.get('/admin/global-search', verifyToken, async (req, res) => {
 
     const regex = new RegExp(query, 'i');
     let results = [];
+    const studentAadhaarDocs = await Aadhaar.find({
+      userType: 'Student',
+      aadhaarNumber: regex
+    }).select('userId');
+    const studentAadhaarIds = studentAadhaarDocs.map(doc => doc.userId);
 
+    
     // 1. SEARCH INSTITUTES
     const institutes = await Institute.find({
       $or: [{ name: regex }, { code: regex }, { aisheCode: regex }]
@@ -1538,12 +1544,17 @@ app.get('/admin/global-search', verifyToken, async (req, res) => {
     }
 
     // 3. SEARCH STUDENTS
-    const students = await Student.find({
-      $or: [{ name: regex }, { SID: regex }, { rollNumber: regex }, { email: regex }]
-    })
-    .populate('instituteId', 'name code')
-    .lean()
-    .limit(5);
+   const students = await Student.find({
+      $or: [
+        { name: regex },
+        { SID: regex },
+        { rollNumber: regex },
+        { admissionNo: regex },
+        { email: regex },
+        { apaarId: regex }, // <--- ADDED: Search by APAAR ID
+        { _id: { $in: studentAadhaarIds } }
+      ]
+    }).lean().limit(5);
 
     for (const s of students) {
       results.push({

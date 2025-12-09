@@ -34,10 +34,15 @@ const GlobalSearch = ({ api, onSelectResult }) => {
         try {
           // Searches entire DB regardless of local state
           const res = await api.get(`/global-search?query=${query}`);
+          
+          // 👇 NEW: Console Log the results to inspect them
+          console.log("🔍 Search Query:", query);
+          console.log("📦 API Response:", res.data.results);
+
           setResults(res.data.results || []);
           setShowResults(true);
         } catch (err) {
-          console.error("Search error", err);
+          console.error("❌ Search error", err);
           setResults([]); 
         } finally {
           setLoading(false);
@@ -59,7 +64,7 @@ const GlobalSearch = ({ api, onSelectResult }) => {
           <input
             type="text"
             className="w-full bg-transparent text-slate-100 p-3 outline-none placeholder-slate-500 font-medium"
-            placeholder="Search Institutes, Students, Faculty..."
+            placeholder="Search by Name, SID, APAAR ID, or Faculty ID..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => { if (results.length > 0) setShowResults(true); }}
@@ -104,11 +109,22 @@ const GlobalSearch = ({ api, onSelectResult }) => {
                     }`}>{item.type.toUpperCase()}</span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1 flex flex-col gap-0.5">
-                    {/* Maps to Institute Schema */}
                     {item.type === 'Institute' && <span>Code: <span className="text-slate-300 font-mono">{item.data.code}</span> • {item.data.email}</span>}
+                    
                     {item.type === 'Faculty' && <span>Email: <span className="text-slate-300">{item.data.email}</span></span>}
-                    {/* Maps to Student Schema */}
-                    {item.type === 'Student' && <span>SID: <span className="text-slate-300 font-mono">{item.data.SID}</span> • {item.data.department}</span>}
+                    
+                    {item.type === 'Student' && (
+                      <div className="flex flex-col gap-0.5">
+                        <span>SID: <span className="text-slate-300 font-mono">{item.data.SID}</span> • {item.data.department}</span>
+                        {/* Show APAAR ID in dropdown if available */}
+                        {item.data.apaarId && (
+                           <span className="text-[10px] text-indigo-300 font-mono flex items-center gap-1">
+                             <span className="uppercase font-bold tracking-wider text-indigo-400">APAAR:</span> 
+                             {item.data.apaarId}
+                           </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -348,7 +364,7 @@ const AdminPanel = () => {
               <DetailRow label="Qualification" value={data.qualification} fullWidth />
               <DetailRow label="Experience" value={`${data.experience} (Total: ${data.totalExperienceYears || 0} Yrs)`} />
               <DetailRow label="Specialization" value={Array.isArray(data.specialization) ? data.specialization.join(', ') : data.specialization} />
-
+              
               {/* Research Metrics */}
               <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">
                 Research & Impact
@@ -419,7 +435,10 @@ const AdminPanel = () => {
                
                {/* --- NEW: PREVIOUS EDUCATION SECTION --- */}
                <h4 className="col-span-2 text-white font-bold border-b border-white/10 pb-2 mt-4">Previous Education History</h4>
-               
+               <div className="col-span-2 bg-gradient-to-r from-indigo-900/40 to-slate-900 border border-indigo-500/30 p-3 rounded-lg flex justify-between items-center mb-2">
+                  <span className="text-indigo-300 font-bold uppercase text-xs tracking-wider">APAAR ID (ABC ID)</span>
+                  <span className="text-white font-mono font-bold text-lg">{data.apaarId || 'N/A'}</span>
+               </div>
                {/* Primary Education */}
                <div className="col-span-2 md:col-span-1 p-3 bg-slate-800/50 rounded-lg border border-white/5">
                  <h5 className="text-emerald-400 text-xs font-bold uppercase mb-2">Primary (10th/Matric)</h5>

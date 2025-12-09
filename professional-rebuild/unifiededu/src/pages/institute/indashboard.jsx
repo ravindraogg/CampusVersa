@@ -33,7 +33,8 @@ import {
   MapPin,
   Globe,
   Phone,
-  UserCheck
+  UserCheck,
+  PieChart
 } from "lucide-react";
 
 // Sub-page Components
@@ -41,7 +42,7 @@ import DepartmentPage from "./DepartmentPage";
 import FacultyPage from "./FacultyPage";
 import StudentPage from "./StudentPage";
 import RequestAdminPage from "./RequestAdminPage";
-import NIRFPage from "./NIRFPage"; // <--- CHANGED: Imported NIRFPage
+import NIRFPage from "./NIRFPage"; 
 import NoticePage from "./NoticePage"; 
 import TimetableManager from "./Timetable"; 
 import CoursesPage from "./CoursesPage";
@@ -58,6 +59,25 @@ const DEFAULT_THEME = {
   textMain: "#1F2937",
   textMuted: "#6B7280",
 };
+
+// --- MOCK DATA DEFINITIONS ---
+const STUDENT_MOCK_DATA = [
+    { label: 'CSE', value: 520 },
+    { label: 'ECE', value: 380 },
+    { label: 'EEE', value: 240 },
+    { label: 'MECH', value: 310 },
+    { label: 'CIVIL', value: 190 },
+    { label: 'MBA', value: 120 }
+];
+
+const FACULTY_MOCK_DATA = [
+    { label: 'CSE', value: 48 },
+    { label: 'ECE', value: 35 },
+    { label: 'EEE', value: 22 },
+    { label: 'MECH', value: 28 },
+    { label: 'CIVIL', value: 18 },
+    { label: 'MBA', value: 10 }
+];
 
 // --- Helpers ---
 const authFetch = async (path, opts = {}) => {
@@ -87,6 +107,53 @@ const Spinner = ({ size = 6, color = "white" }) => (
     }}
   />
 );
+
+// --- UPDATED Simple Chart Component ---
+const SimpleBarChart = ({ data = [], color, height = "150px" }) => {
+    // 1. Calculate max value safely
+    const values = data.map(d => d.value);
+    const maxVal = values.length > 0 ? Math.max(...values) : 100;
+    
+    // 2. Fallback color if prop is missing
+    const barColor = color || "#3B82F6"; 
+
+    return (
+      <div className="w-full">
+        <div className="flex items-end gap-2 sm:gap-4 w-full" style={{ height }}>
+            {data.map((item, i) => {
+                // Prevent division by zero
+                const heightPct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+                
+                return (
+                    <div key={i} className="flex-1 flex flex-col items-center group relative h-full justify-end">
+                        {/* Tooltip on Hover */}
+                        <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 text-white text-[10px] py-1 px-2 rounded z-10 whitespace-nowrap pointer-events-none">
+                            <span className="font-bold">{item.label}</span>: {item.value}
+                        </div>
+                        
+                        {/* Bar Track (Light Background) */}
+                        <div className="w-full bg-gray-100 rounded-t-md relative overflow-hidden flex items-end h-full">
+                             {/* The Actual Colored Bar */}
+                             <div 
+                                style={{ height: `${heightPct}%`, backgroundColor: barColor }} 
+                                className="w-full rounded-t-md transition-all duration-500 ease-out hover:brightness-110"
+                             ></div>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+        {/* X-Axis Labels */}
+        <div className="flex items-start gap-2 sm:gap-4 w-full mt-3 border-t border-gray-100 pt-2">
+            {data.map((item, i) => (
+                <div key={i} className="flex-1 text-center">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase truncate" title={item.label}>{item.label}</p>
+                </div>
+            ))}
+        </div>
+      </div>
+    );
+};
 
 const StatCard = ({
   title,
@@ -177,7 +244,7 @@ const InstituteDashboard = () => {
     address: "",
     state: "",
     pincode: "",
-    naacGrade: "", // Kept in state for existing data, but UI will focus on NIRF mostly
+    naacGrade: "", 
     logoBase64: null,
     previewUrl: null,
   });
@@ -232,7 +299,6 @@ const InstituteDashboard = () => {
   useEffect(() => {
     if (activeTab === "dashboard") loadDashboardStats();
     if (activeTab === "notices" && noticesList === null) loadNotices();
-    // Load Access Data when tab is switched
     if (activeTab === "settings" && settingsTab === "access") loadAccessControlData();
   }, [activeTab, settingsTab]);
    
@@ -286,7 +352,6 @@ const InstituteDashboard = () => {
   const saveProfileFull = async () => {
     setIsPageLoading(true);
     try {
-      // Keep NAAC grade logic for backward compatibility if needed, but display NIRF on dashboard
       const accreditationData = editForm.naacGrade 
         ? [{ type: 'NAAC', grade: editForm.naacGrade, status: true }] 
         : [];
@@ -455,7 +520,6 @@ const InstituteDashboard = () => {
             theme={currentTheme.secondary} 
           />
           
-          {/* --- UPDATED: NIRF STATUS CARD (Replaced NAAC) --- */}
           <StatCard 
             title="NIRF Status" 
             value="NOT AFFILIATED" 
@@ -473,7 +537,52 @@ const InstituteDashboard = () => {
           />
         </div>
 
-        {/* ... Rest of the dashboard ... */}
+        {/* --- ANALYTICS SECTION WITH GRAPHS (FIXED COLORS) --- */}
+        <div className="mb-8">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-gray-400"/> Analytic Overview
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Student Comparison Graph */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h4 className="font-bold text-gray-800">Student Distribution</h4>
+                            <p className="text-xs text-gray-500">Total students per department</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                            <Users className="w-5 h-5"/>
+                        </div>
+                    </div>
+                    {/* Passed explicit color fallback if theme not ready */}
+                    <SimpleBarChart 
+                        data={STUDENT_MOCK_DATA} 
+                        color={currentTheme.secondary || "#7D5AFE"} 
+                        height="180px"
+                    />
+                </div>
+
+                {/* Faculty Comparison Graph */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h4 className="font-bold text-gray-800">Faculty Distribution</h4>
+                            <p className="text-xs text-gray-500">Teaching staff per department</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-green-50 text-green-600">
+                            <Building2 className="w-5 h-5"/>
+                        </div>
+                    </div>
+                    {/* Passed explicit color fallback if theme not ready */}
+                    <SimpleBarChart 
+                        data={FACULTY_MOCK_DATA} 
+                        color={currentTheme.primary || "#66BB6A"} 
+                        height="180px"
+                    />
+                </div>
+            </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2">
             <div className="flex justify-between items-center mb-6">
@@ -506,7 +615,6 @@ const InstituteDashboard = () => {
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-6 relative">
       <SectionHeader title="Institute Settings" subtitle="Manage profile, security, and team access" />
       
-      {/* Settings Navigation Tabs */}
       <div className="flex gap-2 mb-6 border-b border-gray-100 pb-1 overflow-x-auto">
         {[
           { id: 'profile', label: 'General Profile', icon: Building2 },
@@ -530,7 +638,6 @@ const InstituteDashboard = () => {
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 max-w-4xl">
         
-        {/* --- 1. PROFILE TAB --- */}
         {settingsTab === 'profile' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row items-start gap-8">
@@ -636,7 +743,6 @@ const InstituteDashboard = () => {
           </div>
         )}
 
-        {/* --- 2. SECURITY TAB --- */}
         {settingsTab === 'security' && (
           <div className="max-w-md mx-auto py-4 animate-in fade-in">
              <div className="text-center mb-8">
@@ -718,7 +824,6 @@ const InstituteDashboard = () => {
           </div>
         )}
 
-        {/* --- 3. TEAM ACCESS TAB --- */}
         {settingsTab === 'access' && (
           <div className="space-y-8 animate-in fade-in">
              <div className="bg-blue-50 p-4 rounded-xl flex items-start gap-3 text-blue-800 text-sm border border-blue-100">
@@ -958,7 +1063,7 @@ const InstituteDashboard = () => {
            </div>
         </div>
         
-        {/* Right Action Icons: Bell & Logout */}
+        {/* Right Action Icons */}
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setShowNotificationsModal(true)}
@@ -971,45 +1076,61 @@ const InstituteDashboard = () => {
               <span className="absolute top-3 right-5 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
             )}
           </button>
-
-          <button 
-            onClick={handleLogout}
-            className="rounded-2xl px-6 py-4 flex items-center gap-6 hover:bg-gray-50 transition-colors cursor-pointer" 
-            style={{ backgroundColor: "transparent" }}
-            title="Logout"
-          >
-            <LogOut className="w-6 h-6" style={{ color: currentTheme.primary }} />
-          </button>
         </div>
       </div>
 
       {/* 3. MAIN ROW: Fills Remaining Height */}
       <div className="flex gap-6 flex-1 min-h-0">
         
-        {/* SIDEBAR: Full Height, Internal Scroll */}
-        <div className="rounded-4xl p-5 shadow-sm flex flex-col gap-3 h-full overflow-y-auto custom-scrollbar" style={{ backgroundColor: currentTheme.primary, width: "fit-content", minWidth: "220px" }}>
-          {[
-            { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-            { id: "faculty", label: "Manage Faculty", icon: Users },
-            { id: "dept-metrics", label: "Manage Department", icon: BarChart3 },
-            { id: "courses", label: "Manage Courses", icon: BookOpen },
-            { id: "data-tracking", label: "Manage Student", icon: ClipboardList },
-            
-            // --- UPDATED SIDEBAR ITEM ---
-            { id: "nirf", label: "NIRF Data Entry", icon: BarChart3 }, 
-            
-            { id: "requests", label: "Requests to Admin", icon: Send },
-            { id: "notices", label: "Notices & Alerts", icon: Bell },
-            { id: "ai-timetable", label: "AI Timetable", icon: Cpu },
-            { id: "settings", label: "Settings", icon: Settings },
-          ].map((item) => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} className="flex items-center px-4 py-3 rounded-xl text-left transition-all w-full" style={{ color: currentTheme.textOnPrimary, backgroundColor: activeTab === item.id ? currentTheme.textOnPrimary + "25" : "transparent" }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = activeTab === item.id ? currentTheme.textOnPrimary + "30" : currentTheme.textOnPrimary + "20"; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = activeTab === item.id ? currentTheme.textOnPrimary + "25" : "transparent"; }}>
-              <item.icon className="w-5 h-5" /><span className="ml-3 text-sm">{item.label}</span>
-            </button>
-          ))}
+        {/* SIDEBAR */}
+        <div 
+          className="rounded-4xl p-5 shadow-sm flex flex-col justify-between h-full" 
+          style={{ backgroundColor: currentTheme.primary, width: "fit-content", minWidth: "220px" }}
+        >
+          {/* Navigation Items */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-3">
+            {[
+              { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+              { id: "faculty", label: "Manage Faculty", icon: Users },
+              { id: "dept-metrics", label: "Manage Department", icon: BarChart3 },
+              { id: "courses", label: "Manage Courses", icon: BookOpen },
+              { id: "data-tracking", label: "Manage Student", icon: ClipboardList },
+              { id: "nirf", label: "NIRF Data Entry", icon: BarChart3 }, 
+              { id: "requests", label: "Requests to Admin", icon: Send },
+              { id: "notices", label: "Notices & Alerts", icon: Bell },
+              { id: "ai-timetable", label: "AI Timetable", icon: Cpu },
+              { id: "settings", label: "Settings", icon: Settings },
+            ].map((item) => (
+              <button 
+                key={item.id} 
+                onClick={() => setActiveTab(item.id)} 
+                className="flex items-center px-4 py-3 rounded-xl text-left transition-all w-full shrink-0" 
+                style={{ 
+                  color: currentTheme.textOnPrimary, 
+                  backgroundColor: activeTab === item.id ? currentTheme.textOnPrimary + "25" : "transparent" 
+                }} 
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = activeTab === item.id ? currentTheme.textOnPrimary + "30" : currentTheme.textOnPrimary + "20"; }} 
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = activeTab === item.id ? currentTheme.textOnPrimary + "25" : "transparent"; }}
+              >
+                <item.icon className="w-5 h-5" /><span className="ml-3 text-sm">{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Logout Button */}
+          <div className="mt-4 pt-4 border-t border-white/20">
+             <button 
+               onClick={handleLogout} 
+               className="flex items-center px-4 py-3 rounded-xl text-left transition-all w-full hover:bg-red-500/20 group"
+               style={{ color: currentTheme.textOnPrimary }}
+             >
+                <LogOut className="w-5 h-5 group-hover:text-red-100" />
+                <span className="ml-3 text-sm font-medium group-hover:text-red-100">Logout</span>
+             </button>
+          </div>
         </div>
 
-        {/* RIGHT CONTENT: Full Height, Internal Scroll Logic */}
+        {/* RIGHT CONTENT */}
         <div className="flex-1 rounded-3xl bg-white p-7 shadow-[0_8px_50px_rgba(0,0,0,0.22)] h-full flex flex-col overflow-hidden relative">
           
           {/* Main Content Switch */}
