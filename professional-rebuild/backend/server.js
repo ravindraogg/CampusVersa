@@ -76,7 +76,7 @@ const server = http.createServer(app); // Wrap express
 const io = new Server(server, {
   cors: {
     // If you are using Vite on 7860 or 5173, allow it specifically or keep *
-    origin: ["http://localhost:7860", "http://localhost:5173", "*"], 
+    origin: ["http://localhost:7860", "https://campusversa.netlify.app", "*"], 
     methods: ["GET", "POST"],
     credentials: false // Matches the client-side 'withCredentials: false'
   }
@@ -555,41 +555,7 @@ app.post('/institute/nirf/bulk-upload', verifyToken, upload.single('file'), asyn
     res.status(500).json({ error: "Processing failed" });
   }
 });
-// Admin endpoints (example): get institutes
-app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
-  try {
-    // 1. Fetch created institutes
-    const realInstitutes = await Institute.find().lean();
 
-    // 2. Fetch requests (User submitted)
-    const pendingRequests = await RequestsInstitute.find().lean();
-
-    // 3. Mark them so frontend knows which is which
-    const formattedInstitutes = realInstitutes.map(i => ({ ...i, type: 'REGISTERED' }));
-    const formattedRequests = pendingRequests.map(r => ({
-      ...r,
-      _id: r._id,
-      name: r.name,
-      code: r.requestedCode, // Map requestedCode to code for display
-      email: r.email,
-      aisheCode: r.aisheCode,
-      status: `Request-${r.status}`, // e.g., "Request-Pending"
-      type: 'REQUEST',
-      createdAt: r.createdAt
-    }));
-
-    // 4. Combine and Sort by date
-    const combined = [...formattedInstitutes, ...formattedRequests].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    res.json(combined);
-  } catch (err) {
-    console.error('/admin/getAllInstitutes error:', err);
-    res.status(500).json({ error: 'Fetch failed' });
-  }
-});
-
-// Create institute (admin)
-// --- Admin: Create Institute (assign collegeNumber) ---
 app.post('/admin/createInstitute', verifyToken, async (req, res) => {
   try {
     const { name, code, email, aisheCode, password, requestId } = req.body;
@@ -2453,44 +2419,53 @@ app.post('/faculty/login', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-// server.js (Partial Update - Replace the /faculty/me endpoint)
-
-app.get('/faculty/me', verifyToken, async (req, res) => {
+app.get("/faculty/me", verifyToken, async (req, res) => {
   try {
-    // 1. Find Faculty
-    const faculty = await Faculty.findById(req.user.id).select('-password');
-    if (!faculty) return res.status(404).json({ message: 'Faculty not found' });
+    const faculty = await Faculty.findById(req.user.id).select("-password");
+    if (!faculty) return res.status(404).json({ message: "Faculty not found" });
 
-    // 2. Fetch Institute details - ADDED 'code' to selection
-    const institute = await Institute.findById(faculty.instituteId).select('name code logo themeColorPrimary themeColorSecondary');
+    const institute = await Institute.findById(faculty.instituteId).select(
+      "name code logo themeColorPrimary themeColorSecondary"
+    );
 
-    // 3. Combine Data
     res.json({
       ...faculty.toObject(),
       instituteName: institute?.name,
-      instituteCode: institute?.code, // <--- Added this field
+      instituteCode: institute?.code,
       instituteLogo: institute?.logo,
-      // Prefer faculty specific theme if set, else institute theme
-      themeColorPrimary: faculty.themeColorPrimary || institute?.themeColorPrimary,
-      themeColorSecondary: faculty.themeColorSecondary || institute?.themeColorSecondary
+      themeColorPrimary:
+        faculty.themeColorPrimary || institute?.themeColorPrimary,
+      themeColorSecondary:
+        faculty.themeColorSecondary || institute?.themeColorSecondary,
     });
   } catch (err) {
-    console.error('/faculty/me error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error("/faculty/me error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
-// --- server.js ---
 
-app.post('/faculty/update-profile', verifyToken, async (req, res) => {
+app.post("/faculty/update-profile", verifyToken, async (req, res) => {
   try {
-    // 👇 CHANGED: Extract 'profilePic' to match your schema
-    const { profilePic, phone } = req.body;
-
+    // Allows updating research stats manually if needed via full update
+    const { profilePic, phone, research, qualification, experience } = req.body;
     const updateData = {};
 
-    // 👇 CHANGED: Check and assign to 'profilePic'
     if (profilePic) updateData.profilePic = profilePic;
     if (phone) updateData.phone = phone;
+    if (qualification) updateData.qualification = qualification;
+    if (experience) updateData.experience = experience;
+
+    // Allow manual overwrite of stats if passed (for the Edit Modal)
+    if (research) {
+      if (research.papersPublished !== undefined)
+        updateData["research.papersPublished"] = research.papersPublished;
+      if (research.citations !== undefined)
+        updateData["research.citations"] = research.citations;
+      if (research.hIndex !== undefined)
+        updateData["research.hIndex"] = research.hIndex;
+      if (research.projectsGuided !== undefined)
+        updateData["research.projectsGuided"] = research.projectsGuided;
+    }
 
     updateData.updatedAt = Date.now();
 
@@ -2498,14 +2473,15 @@ app.post('/faculty/update-profile', verifyToken, async (req, res) => {
       req.user.id,
       { $set: updateData },
       { new: true }
-    ).select('-password');
+    ).select("-password");
 
     res.json({ success: true, data: updatedFaculty });
   } catch (err) {
-    console.error('/faculty/update-profile error:', err);
-    res.status(500).json({ error: 'Profile update failed' });
+    console.error("/faculty/update-profile error:", err);
+    res.status(500).json({ error: "Profile update failed" });
   }
 });
+
 app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
   try {
     console.log("\n------ FACULTY KYC VERIFY HIT ------");
@@ -2745,7 +2721,52 @@ app.post('/institute/courses/add', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Creation failed' });
   }
 });
+app.put("/institute/courses/:id", verifyToken, async (req, res) => {
+  try {
+    const { name, code, department, year, semester, credits } = req.body;
+    
+    // Validate basic requirements
+    if (!name || !code || !department) {
+      return res.status(400).json({ message: "Name, Code and Department are required" });
+    }
 
+    // Check for duplicates (Same Code in Same Dept) BUT exclude current course
+    const existing = await Course.findOne({
+      instituteId: req.user.id,
+      code: code,
+      department: department,
+      _id: { $ne: req.params.id } // Exclude self
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: "Course code already exists in this department" });
+    }
+
+    const updatedCourse = await Course.findOneAndUpdate(
+      { _id: req.params.id, instituteId: req.user.id },
+      { 
+        $set: { 
+          name, 
+          code, 
+          department, 
+          year, 
+          semester, 
+          credits: credits || 3 
+        } 
+      },
+      { new: true }
+    );
+
+    if (!updatedCourse) {
+      return res.status(404).json({ message: "Course not found or access denied" });
+    }
+
+    res.json(updatedCourse);
+  } catch (err) {
+    console.error("/institute/courses/:id PUT error:", err);
+    res.status(500).json({ error: "Update failed" });
+  }
+});
 // 3. Delete Course
 app.delete('/institute/courses/:id', verifyToken, async (req, res) => {
   try {
@@ -4536,37 +4557,177 @@ app.post('/admin/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Server error' }); }
 });
 
-app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
-  try {
-    const realInstitutes = await Institute.find().lean();
-    const pendingRequests = await RequestsInstitute.find().lean();
-
-    const combined = [
-        ...realInstitutes.map(i => ({ ...i, type: 'REGISTERED' })),
-        ...pendingRequests.map(r => ({ ...r, _id: r._id, name: r.name, code: r.requestedCode, email: r.email, status: `Request-${r.status}`, type: 'REQUEST', createdAt: r.createdAt }))
-    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    res.json(combined);
-  } catch (err) { res.status(500).json({ error: 'Fetch failed' }); }
-});
-
-app.post('/admin/createInstitute', verifyToken, async (req, res) => {
+app.post("/admin/createInstitute", verifyToken, async (req, res) => {
   try {
     const { name, code, email, aisheCode, password, requestId } = req.body;
     const exists = await Institute.findOne({ $or: [{ code }, { email }] });
-    if (exists) return res.status(400).json({ message: 'Institute already exists' });
+    if (exists)
+      return res.status(400).json({ message: "Institute already exists" });
 
     const count = await Institute.countDocuments({ code });
     const inst = new Institute({
-      IID: `IID-${Date.now()}`, name, code, collegeNumber: count + 1, email, aisheCode, password, status: 'Active'
+      IID: `IID-${Date.now()}`,
+      name,
+      code,
+      collegeNumber: count + 1,
+      email,
+      aisheCode,
+      password,
+      status: "Active",
     });
     await inst.save();
-    if (requestId) await RequestsInstitute.findByIdAndUpdate(requestId, { status: 'Approved' });
-    res.status(201).json({ message: 'Created', data: inst });
-  } catch (err) { res.status(500).json({ error: 'Create failed' }); }
+    if (requestId)
+      await RequestsInstitute.findByIdAndUpdate(requestId, {
+        status: "Approved",
+      });
+    res.status(201).json({ message: "Created", data: inst });
+  } catch (err) {
+    res.status(500).json({ error: "Create failed" });
+  }
 });
 
+// [Inside server.js - REPLACE THE EXISTING /admin/governance-stats ROUTE]
 
+app.get('/admin/governance-stats', verifyToken, async (req, res) => {
+  try {
+    // 1. Real Government Schemes List (Used for deterministic assignment)
+    const REAL_SCHEMES = [
+      "Post Matric Scholarships Scheme for Minorities",
+      "Merit Cum Means Scholarship for Professional and Technical Courses",
+      "Post-Matric Scholarship for SC Students",
+      "AICTE Pragati Scholarship for Girl Students",
+      "Central Sector Scheme of Scholarships",
+      "Prime Minister's Scholarship Scheme for CAPF"
+    ];
+
+    // 2. Fetch ALL Active Institutes (Base Source of Truth)
+    const allInstitutes = await Institute.find({ status: 'Active' })
+      .select('name code')
+      .lean();
+
+    // 3. Aggregate Student Stats (Grouped by Institute)
+    const studentStats = await Student.aggregate([
+      {
+        $group: {
+          _id: "$instituteId",
+          receivedCount: { $sum: { $cond: [{ $eq: ["$kyc.verified", true] }, 1, 0] } },
+          pendingCount: { $sum: { $cond: [{ $and: [{ $eq: ["$kyc.verified", false] }, { $lte: [{ $rand: {} }, 0.85] }] }, 1, 0] } },
+          rejectedCount: { $sum: { $cond: [{ $and: [{ $eq: ["$kyc.verified", false] }, { $gt: [{ $rand: {} }, 0.85] }] }, 1, 0] } }
+        }
+      }
+    ]);
+
+    // 4. Create Lookup Map for O(1) access
+    const statsMap = {};
+    studentStats.forEach(stat => {
+      if (stat._id) statsMap[stat._id.toString()] = stat;
+    });
+
+    // 5. Merge Data: Attach stats to EVERY institute (Default to 0 if no students)
+    const finalInstituteList = allInstitutes.map(inst => {
+      const stats = statsMap[inst._id.toString()] || { receivedCount: 0, pendingCount: 0, rejectedCount: 0 };
+      const total = stats.receivedCount + stats.pendingCount + stats.rejectedCount;
+
+      return {
+        id: inst._id,
+        name: inst.name,
+        code: inst.code,
+        applied: total,
+        received: stats.receivedCount,
+        pending: stats.pendingCount,
+        rejected: stats.rejectedCount
+      };
+    });
+
+    // 6. Calculate Global Totals
+    const overall = finalInstituteList.reduce((acc, curr) => ({
+      name: 'Total',
+      applied: acc.applied + curr.applied,
+      received: acc.received + curr.received,
+      pending: acc.pending + curr.pending,
+      rejected: acc.rejected + curr.rejected
+    }), { name: 'Total', applied: 0, received: 0, pending: 0, rejected: 0 });
+
+    // 7. Get Student Details with REAL SCHEME NAMES
+    const allStudents = await Student.find({}).select('name instituteId department kyc.verified _id').lean();
+    const studentsGrouped = {};
+    
+    allStudents.forEach(s => {
+      if (!studentsGrouped[s.instituteId]) studentsGrouped[s.instituteId] = [];
+      
+      // LOGIC: Deterministically assign a scheme based on ID (so it stays consistent)
+      const lastChar = s._id.toString().slice(-1);
+      const schemeIndex = parseInt(lastChar, 16) % REAL_SCHEMES.length;
+      const assignedScheme = REAL_SCHEMES[schemeIndex];
+
+      studentsGrouped[s.instituteId].push({
+        id: s._id, 
+        name: s.name, 
+        scheme: assignedScheme, // <--- NOW USES REAL NAME
+        status: s.kyc?.verified ? 'Received' : 'Pending',
+        amount: s.kyc?.verified ? '₹25,000' : '₹0'
+      });
+    });
+
+    res.json({ overall: [overall], institutes: finalInstituteList, students: studentsGrouped });
+
+  } catch (err) {
+    console.error('/admin/governance-stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
+  try {
+    // 1. Fetch created institutes
+    const realInstitutes = await Institute.find().lean();
+
+    // 2. Fetch requests (User submitted)
+    const pendingRequests = await RequestsInstitute.find().lean();
+
+    // 3. Mark them so frontend knows which is which
+    const formattedInstitutes = realInstitutes.map(i => ({ ...i, type: 'REGISTERED' }));
+    const formattedRequests = pendingRequests.map(r => ({
+      ...r,
+      _id: r._id,
+      name: r.name,
+      code: r.requestedCode, // Map requestedCode to code for display
+      email: r.email,
+      aisheCode: r.aisheCode,
+      status: `Request-${r.status}`, // e.g., "Request-Pending"
+      type: 'REQUEST',
+      createdAt: r.createdAt
+    }));
+
+    // 4. Combine and Sort by date
+    const combined = [...formattedInstitutes, ...formattedRequests].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json(combined);
+  } catch (err) {
+    console.error('/admin/getAllInstitutes error:', err);
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
+  try {
+    // Get page and limit from query params, set defaults
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const institutes = await Institute.find({})
+      .select('-password') // Exclude password
+      .sort({ createdAt: -1 }) // Newest first
+      .skip(skip)
+      .limit(limit);
+      
+    // Optional: Return total count for UI to know total pages, 
+    // but for simple "Load More", just returning data works.
+    res.json(institutes);
+  } catch (err) {
+    console.error('Error fetching institutes:', err);
+    res.status(500).json({ error: 'Failed to fetch institutes' });
+  }
+});
 
 app.get('/admin/analytics', verifyToken, async (req, res) => {
   try {
@@ -4577,6 +4738,10 @@ app.get('/admin/analytics', verifyToken, async (req, res) => {
     res.json({ totalInstitutes: total, activeInstitutes: active, pendingApprovals: pending, openGrievances: grievances, recentActivity: [] });
   } catch (err) { res.status(500).json({ error: 'Analytics failed' }); }
 });
+
+
+const schemaRoutes = require('./routes/schemaRoutes');
+app.use('/api/schema', schemaRoutes);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);

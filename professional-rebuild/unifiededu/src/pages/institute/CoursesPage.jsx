@@ -1,30 +1,39 @@
 import React, { useState, useEffect } from "react";
 import { 
   BookOpen, Plus, Trash2, Search, Filter, Layers, 
-  Calendar, Hash, CheckCircle, Loader2, Upload
+  Calendar, Hash, CheckCircle, Loader2, Upload, Edit, X
 } from "lucide-react";
+
 const API_URL = import.meta.env.VITE_BACK_URI;
+
 const CoursesPage = ({ authFetch, theme, pushToast }) => {
   const [courses, setCourses] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Edit State
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   // Form State
-  const [formData, setFormData] = useState({
+  const initialFormState = {
     name: "",
     code: "",
     department: "",
     year: "1st",
     semester: "1",
     credits: 3
-  });
+  };
+  const [formData, setFormData] = useState(initialFormState);
 
   // Filters
   const [filterDept, setFilterDept] = useState("All");
 
-  // --- NEW: BULK UPLOAD STATE ---
+  // Bulk Upload State
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkFile, setBulkFile] = useState(null);
   const [isUploadingBulk, setIsUploadingBulk] = useState(false);
@@ -37,18 +46,15 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      // Fetch Courses
       const courseRes = await authFetch("/institute/courses");
       const courseData = await courseRes.json();
       setCourses(Array.isArray(courseData) ? courseData : []);
 
-      // Fetch Departments (for the dropdown)
       const deptRes = await authFetch("/institute/departments");
       const deptData = await deptRes.json();
       setDepartments(Array.isArray(deptData) ? deptData : []);
       
-      // Set default department for form if available
-      if (deptData.length > 0) {
+      if (deptData.length > 0 && !isEditMode) {
         setFormData(prev => ({ ...prev, department: deptData[0].code }));
       }
     } catch (error) {
@@ -59,24 +65,67 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
     }
   };
 
+  // --- HANDLERS ---
+
+  const openAddModal = () => {
+    setIsEditMode(false);
+    setEditingId(null);
+    setFormData({
+      ...initialFormState,
+      department: departments.length > 0 ? departments[0].code : ""
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (course) => {
+    setIsEditMode(true);
+    setEditingId(course._id);
+    setFormData({
+      name: course.name,
+      code: course.code,
+      department: course.department,
+      year: course.year,
+      semester: course.semester,
+      credits: course.credits || 3
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    
     try {
-      const res = await authFetch("/institute/courses/add", {
-        method: "POST",
+      const url = isEditMode 
+        ? `/institute/courses/${editingId}` 
+        : "/institute/courses/add";
+      
+      const method = isEditMode ? "PUT" : "POST";
+
+      const res = await authFetch(url, {
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
       });
       
       const data = await res.json();
+      
       if (res.ok) {
-        pushToast({ message: "Course added successfully", type: "success" });
-        setCourses([...courses, data]);
+        pushToast({ 
+          message: isEditMode ? "Course updated successfully" : "Course added successfully", 
+          type: "success" 
+        });
+        
+        if (isEditMode) {
+          setCourses(courses.map(c => c._id === editingId ? data : c));
+        } else {
+          setCourses([...courses, data]);
+        }
+        
         setIsModalOpen(false);
-        setFormData({ ...formData, name: "", code: "" }); // Reset text fields
+        setFormData(initialFormState);
       } else {
-        pushToast({ message: data.message || "Failed to add course", type: "error" });
+        pushToast({ message: data.message || "Operation failed", type: "error" });
       }
     } catch (error) {
       pushToast({ message: "Server error", type: "error" });
@@ -98,8 +147,6 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
     }
   };
 
-  // --- NEW FUNCTION: HANDLE BULK UPLOAD ---
-// --- NEW FUNCTION: HANDLE BULK UPLOAD ---
   const handleBulkUpload = async () => {
     if (!bulkFile) {
       pushToast({ type: "error", message: "Please select a file first" });
@@ -110,7 +157,6 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
       const formData = new FormData();
       formData.append("file", bulkFile);
 
-      // 1. ROBUST TOKEN RETRIEVAL
       const token = localStorage.getItem('instituteToken') || 
                     localStorage.getItem('authToken') || 
                     localStorage.getItem('token');
@@ -123,9 +169,7 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
 
       const res = await fetch(`${API_URL}/institute/courses/bulk-upload`, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Authorization": `Bearer ${token}` },
         body: formData,
       });
       const data = await res.json();
@@ -146,7 +190,6 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
     }
   };
 
-  // Filter Logic
   const filteredCourses = filterDept === "All" 
     ? courses 
     : courses.filter(c => c.department === filterDept);
@@ -165,17 +208,16 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
         </div>
         
         <div className="flex gap-3">
-          {/* BULK UPLOAD BUTTON */}
           <button
             onClick={() => setShowBulkModal(true)}
-            className="px-5 py-2.5 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
-            style={{ backgroundColor: theme.primary, color: 'white' }}
+            className="px-5 py-2.5 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-2 text-white"
+            style={{ backgroundColor: theme.primary }}
           >
             <Upload className="w-5 h-5" /> Upload
           </button>
 
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={openAddModal}
             className="px-5 py-2.5 rounded-xl text-white font-medium shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
             style={{ backgroundColor: theme.primary }}
           >
@@ -226,7 +268,7 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
                    <span className="px-2 py-1 rounded bg-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
                      {course.department}
                    </span>
-                   <span className="text-xs font-bold" style={{ color: 'white' }}>
+                   <span className="text-xs font-bold px-2 py-1 rounded-full text-white" style={{ backgroundColor: theme.primary }}>
                      {course.year} Year
                    </span>
                 </div>
@@ -240,13 +282,23 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
                 <span className="flex items-center gap-1"><Layers className="w-3 h-3"/> {course.credits} Credits</span>
               </div>
 
-              <button 
-                onClick={() => handleDelete(course._id)}
-                className="absolute bottom-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors"
-                title="Delete Course"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {/* ACTION BUTTONS */}
+              <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button 
+                  onClick={() => openEditModal(course)}
+                  className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Edit Course"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => handleDelete(course._id)}
+                  className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete Course"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -258,7 +310,9 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-gray-800">Bulk Upload Courses</h3>
-              <button onClick={() => setShowBulkModal(false)} className="text-gray-400 hover:text-red-500">✕</button>
+              <button onClick={() => setShowBulkModal(false)} className="text-gray-400 hover:text-red-500">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-gray-50 hover:bg-blue-50 transition-colors">
@@ -275,8 +329,8 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
               />
               <label 
                 htmlFor="courseBulkInput" 
-                className="px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-transform active:scale-95"
-                style={{ backgroundColor: theme.primary, color: 'white' }}
+                className="px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-transform active:scale-95 text-white"
+                style={{ backgroundColor: theme.primary }}
               >
                 Choose File
               </label>
@@ -292,8 +346,8 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
               <button 
                 onClick={handleBulkUpload} 
                 disabled={isUploadingBulk || !bulkFile}
-                className="w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-50"
-                style={{ backgroundColor: theme.primary, color: 'white' }}
+                className="w-full py-3 rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-50 text-white"
+                style={{ backgroundColor: theme.primary }}
               >
                 {isUploadingBulk ? <Loader2 className="w-5 h-5 animate-spin" /> : "Start Upload"}
               </button>
@@ -302,11 +356,21 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
         </div>
       )}
 
-      {/* Add Course Modal */}
+      {/* Add/Edit Course Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95">
-            <h3 className="text-xl font-bold text-gray-800 mb-6">Add New Course</h3>
+          <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 relative">
+            
+            <button 
+              onClick={() => setIsModalOpen(false)} 
+              className="absolute top-6 right-6 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-xl font-bold text-gray-800 mb-6">
+              {isEditMode ? "Edit Course" : "Add New Course"}
+            </h3>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -394,7 +458,7 @@ const CoursesPage = ({ authFetch, theme, pushToast }) => {
                   style={{ backgroundColor: theme.primary }}
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin"/>}
-                  Save Course
+                  {isEditMode ? "Update Course" : "Save Course"}
                 </button>
               </div>
             </form>

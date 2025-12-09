@@ -6,10 +6,6 @@ import {
   Trello, Slack, Figma, Database, Cloud, Terminal, Layout
 } from 'lucide-react';
 
-// Custom color palette
-const primaryColor = '#7D5AFE';
-const secondaryColor = '#66BB6A';
-
 // Tools Data with comprehensive details
 const collaborationTools = [
   {
@@ -285,83 +281,87 @@ const collaborationTools = [
 ];
 
 // Sidebar Component
-const Sidebar = ({ selectedTool, setSelectedTool }) => (
-  <motion.div 
-    initial={{ x: -100, opacity: 0 }}
-    animate={{ x: 0, opacity: 1 }}
-    transition={{ duration: 0.5 }}
-    // LIGHT THEME EDIT: Changed from bg-slate-900 to bg-white
-    className="w-72 bg-white p-6 flex flex-col shadow-2xl rounded-3xl m-4 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto border border-gray-100"
-  >
+const Sidebar = ({ selectedTool, setSelectedTool, theme }) => {
+  const primaryColor = theme?.primary || '#7D5AFE';
+
+  return (
     <motion.div 
-      className="mb-8"
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.2 }}
+      initial={{ x: -100, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      // Responsive Update: Changed width and positioning
+      className="w-full md:w-72 bg-white p-4 md:p-6 flex flex-col shadow-lg md:shadow-2xl rounded-none md:rounded-3xl m-0 md:m-4 md:sticky md:top-4 md:h-[calc(100vh-2rem)] border-b md:border border-gray-100 z-10"
     >
-      <div className="flex items-center space-x-3 mb-2">
-        <motion.div 
-          className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-purple-600 to-indigo-600 shadow-lg" 
-          style={{ background: primaryColor }}
-          whileHover={{ scale: 1.1, rotate: 10 }}
-        >
-          <Code className="w-6 h-6 text-white" />
-        </motion.div>
-        <div>
-          <h1 className="text-xl font-extrabold text-gray-800">ProjectCollab</h1>
-          <p className="text-xs text-gray-500">Master collaboration tools</p>
+      <motion.div 
+        className="mb-6 md:mb-8"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
+        <div className="flex items-center space-x-3 mb-2">
+          <motion.div 
+            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0" 
+            style={{ backgroundColor: primaryColor }}
+            whileHover={{ scale: 1.1, rotate: 10 }}
+          >
+            <Code className="w-6 h-6 text-white" />
+          </motion.div>
+          <div>
+            <h1 className="text-xl font-extrabold text-gray-800">ProjectCollab</h1>
+            <p className="text-xs text-gray-500">Master collaboration tools</p>
+          </div>
         </div>
+      </motion.div>
+
+      <div className="flex md:flex-col overflow-x-auto md:overflow-visible space-x-2 md:space-x-0 md:space-y-2 flex-1 pb-2 md:pb-0 hide-scrollbar">
+        <p className="text-xs font-semibold uppercase text-gray-400 pl-3 pt-2 pb-2 hidden md:block">Collaboration Tools</p>
+        {collaborationTools.map((tool, index) => (
+          <motion.button
+            key={tool.id}
+            onClick={() => setSelectedTool(tool.id)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 + index * 0.1 }}
+            className={`flex-shrink-0 md:w-full flex items-center space-x-2 md:space-x-3 p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 group relative overflow-hidden ${
+              selectedTool === tool.id
+                ? 'text-white font-semibold shadow-md md:shadow-xl'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-gray-100 md:border-transparent'
+            }`}
+            style={selectedTool === tool.id ? { backgroundColor: primaryColor } : {}}
+          >
+            {selectedTool === tool.id && (
+              <motion.div
+                layoutId="activeTool"
+                className="absolute inset-0 bg-white/10 hidden md:block"
+                initial={false}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              />
+            )}
+            <tool.icon className={`w-5 h-5 relative z-10 flex-shrink-0 ${selectedTool === tool.id ? 'text-white' : 'text-gray-400'}`} />
+            <div className="md:flex-1 text-left relative z-10">
+              <span className="block text-sm font-semibold whitespace-nowrap">{tool.name}</span>
+              <span className={`text-xs hidden md:block ${selectedTool === tool.id ? 'text-white/80' : 'text-gray-400'}`}>{tool.category}</span>
+            </div>
+            {selectedTool === tool.id && <ChevronRight className="w-4 h-4 relative z-10 text-white hidden md:block" />}
+          </motion.button>
+        ))}
+      </div>
+
+      <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200 hidden md:block">
+        <p className="text-xs text-gray-500 mb-2">Need Help?</p>
+        <a href="#support" className="text-sm font-medium hover:text-gray-800 flex items-center space-x-1" style={{ color: primaryColor }}>
+          <BookOpen className="w-4 h-4" />
+          <span>View Documentation</span>
+        </a>
       </div>
     </motion.div>
-
-    <div className="space-y-2 flex-1">
-      <p className="text-xs font-semibold uppercase text-gray-400 pl-3 pt-2 pb-2">Collaboration Tools</p>
-      {collaborationTools.map((tool, index) => (
-        <motion.button
-          key={tool.id}
-          onClick={() => setSelectedTool(tool.id)}
-          initial={{ x: -20, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.3 + index * 0.1 }}
-          whileHover={{ scale: 1.03, x: 5 }}
-          whileTap={{ scale: 0.98 }}
-          className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
-            selectedTool === tool.id
-              ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold shadow-xl'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-          }`}
-        >
-          {selectedTool === tool.id && (
-            <motion.div
-              layoutId="activeTool"
-              className="absolute inset-0 bg-white/10"
-              initial={false}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            />
-          )}
-          <tool.icon className={`w-5 h-5 relative z-10 ${selectedTool === tool.id ? 'text-white' : 'text-gray-400 group-hover:text-purple-600'}`} />
-          <div className="flex-1 text-left relative z-10">
-            <span className="block text-sm font-semibold">{tool.name}</span>
-            <span className={`text-xs ${selectedTool === tool.id ? 'text-purple-100' : 'text-gray-400'}`}>{tool.category}</span>
-          </div>
-          {selectedTool === tool.id && <ChevronRight className="w-4 h-4 relative z-10 text-white" />}
-        </motion.button>
-      ))}
-    </div>
-
-    <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-      <p className="text-xs text-gray-500 mb-2">Need Help?</p>
-      <a href="#support" className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center space-x-1">
-        <BookOpen className="w-4 h-4" />
-        <span>View Documentation</span>
-      </a>
-    </div>
-  </motion.div>
-);
+  );
+};
 
 // Tool Detail Component
-const ToolDetail = ({ tool }) => {
+const ToolDetail = ({ tool, theme }) => {
   const [activeStep, setActiveStep] = useState(0);
+  const primaryColor = theme?.primary || '#7D5AFE';
 
   return (
     <motion.div 
@@ -370,7 +370,7 @@ const ToolDetail = ({ tool }) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.3 }}
-      className="p-6 pt-4 space-y-6"
+      className="p-4 md:p-6 pt-4 space-y-6"
     >
       <style>{`
         @keyframes fadeIn {
@@ -378,6 +378,8 @@ const ToolDetail = ({ tool }) => {
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       {/* Banner Section */}
@@ -390,17 +392,17 @@ const ToolDetail = ({ tool }) => {
         <img 
           src={tool.banner} 
           alt={`${tool.name} banner`}
-          className="w-full h-64 object-cover"
+          className="w-full h-48 md:h-64 object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end">
-          <div className="p-8 text-white w-full">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end">
+          <div className="p-6 md:p-8 text-white w-full">
             <div className="flex items-center space-x-4 mb-3">
-              <div className={`p-3 rounded-xl ${tool.color}`}>
-                <tool.icon className="w-8 h-8 text-white" />
+              <div className={`p-2 md:p-3 rounded-xl ${tool.color}`}>
+                <tool.icon className="w-6 h-6 md:w-8 md:h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold">{tool.name}</h1>
-                <p className="text-sm text-gray-200">{tool.category}</p>
+                <h1 className="text-2xl md:text-4xl font-bold">{tool.name}</h1>
+                <p className="text-xs md:text-sm text-gray-200">{tool.category}</p>
               </div>
             </div>
           </div>
@@ -412,12 +414,12 @@ const ToolDetail = ({ tool }) => {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100"
+        className="bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-gray-100"
       >
         <h2 className="text-2xl font-bold text-gray-800 mb-4">Overview</h2>
-        <p className="text-gray-600 text-lg leading-relaxed mb-6">{tool.description}</p>
+        <p className="text-gray-600 text-base md:text-lg leading-relaxed mb-6">{tool.description}</p>
         
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {tool.features.map((feature, idx) => (
             <motion.div 
               key={idx} 
@@ -425,9 +427,9 @@ const ToolDetail = ({ tool }) => {
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.3 + idx * 0.05 }}
               whileHover={{ scale: 1.05, boxShadow: "0 4px 15px rgba(125, 90, 254, 0.2)" }}
-              className="flex items-center space-x-2 p-3 bg-purple-50 rounded-xl border border-purple-100 cursor-default"
+              className="flex items-center space-x-2 p-3 bg-gray-50 rounded-xl border border-gray-100 cursor-default"
             >
-              <CheckCircle className="w-4 h-4 text-purple-600 flex-shrink-0" />
+              <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} />
               <span className="text-sm font-medium text-gray-700">{feature}</span>
             </motion.div>
           ))}
@@ -440,7 +442,7 @@ const ToolDetail = ({ tool }) => {
             rel="noopener noreferrer"
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
-            className="flex items-center space-x-2 px-5 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-700 transition duration-200 shadow-sm"
+            className="flex items-center space-x-2 px-5 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-700 transition duration-200 shadow-sm w-full md:w-auto justify-center"
           >
             <ExternalLink className="w-4 h-4" />
             <span>Official Docs</span>
@@ -453,25 +455,26 @@ const ToolDetail = ({ tool }) => {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.3 }}
-        className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100"
+        className="bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-gray-100"
       >
         <h2 className="text-2xl font-bold text-gray-800 mb-6">Step-by-Step Guide</h2>
         
-        {/* Step Progress Indicator */}
-        <div className="flex items-center mb-8 overflow-x-auto pb-2">
+        {/* Step Progress Indicator - Scrollable on mobile */}
+        <div className="flex items-center mb-8 overflow-x-auto pb-2 hide-scrollbar">
           {tool.steps.map((step, idx) => (
             <React.Fragment key={idx}>
               <motion.button
                 onClick={() => setActiveStep(idx)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all duration-300 shadow-md ${
+                className={`flex-shrink-0 flex items-center space-x-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all duration-300 shadow-md ${
                   activeStep === idx
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold'
+                    ? 'text-white font-semibold'
                     : activeStep > idx
                     ? 'bg-green-100 text-green-700 hover:bg-green-200'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
+                style={activeStep === idx ? { backgroundColor: primaryColor } : {}}
               >
                 <span className="font-bold">{idx + 1}</span>
                 <span className="text-sm font-medium hidden sm:inline">{step.title}</span>
@@ -484,36 +487,36 @@ const ToolDetail = ({ tool }) => {
         </div>
 
         {/* Active Step Content */}
-        <div className="border-l-4 border-purple-600 pl-6 py-4 bg-purple-50 rounded-r-xl">
+        <div className="border-l-4 pl-4 md:pl-6 py-4 bg-gray-50 rounded-r-xl" style={{ borderColor: primaryColor }}>
           <h3 className="text-xl font-bold text-gray-800 mb-2">
             Step {activeStep + 1}: {tool.steps[activeStep].title}
           </h3>
           <p className="text-gray-600 mb-3">{tool.steps[activeStep].description}</p>
-          <p className="text-gray-700 leading-relaxed bg-white p-4 rounded-lg border border-purple-100 shadow-inner">
+          <p className="text-gray-700 leading-relaxed bg-white p-4 rounded-lg border border-gray-100 shadow-inner">
             {tool.steps[activeStep].details}
           </p>
         </div>
 
         {/* Navigation Buttons */}
-        <div className="flex justify-between mt-6">
+        <div className="flex justify-between mt-6 gap-4">
           <motion.button
             onClick={() => setActiveStep(Math.max(0, activeStep - 1))}
             disabled={activeStep === 0}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 shadow-sm"
+            className="flex-1 md:flex-none px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 shadow-sm text-center"
           >
-            Previous Step
+            Previous
           </motion.button>
           <motion.button
             onClick={() => setActiveStep(Math.min(tool.steps.length - 1, activeStep + 1))}
             disabled={activeStep === tool.steps.length - 1}
             whileHover={{ scale: activeStep === tool.steps.length - 1 ? 1 : 1.05 }}
             whileTap={{ scale: activeStep === tool.steps.length - 1 ? 1 : 0.95 }}
-            className="px-5 py-2.5 rounded-xl text-white font-medium transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+            className="flex-1 md:flex-none px-5 py-2.5 rounded-xl text-white font-medium transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md text-center"
             style={{ backgroundColor: activeStep === tool.steps.length - 1 ? '#9CA3AF' : primaryColor }}
           >
-            {activeStep === tool.steps.length - 1 ? 'Completed!' : 'Next Step'}
+            {activeStep === tool.steps.length - 1 ? 'Completed!' : 'Next'}
           </motion.button>
         </div>
       </motion.div>
@@ -525,7 +528,7 @@ const ToolDetail = ({ tool }) => {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100"
+          className="bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-gray-100"
         >
           <div className="flex items-center space-x-2 mb-4">
             <Play className="w-6 h-6 text-red-600" />
@@ -553,10 +556,10 @@ const ToolDetail = ({ tool }) => {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-3xl shadow-xl p-8 border-2 border-purple-200"
+          className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl shadow-xl p-6 md:p-8 border-2 border-gray-200"
         >
           <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center space-x-2">
-            <Layout className="w-6 h-6 text-purple-600" />
+            <Layout className="w-6 h-6" style={{ color: primaryColor }} />
             <span>Pro Tips</span>
           </h2>
           <div className="space-y-3">
@@ -569,8 +572,8 @@ const ToolDetail = ({ tool }) => {
                 whileHover={{ scale: 1.02, x: 5 }}
                 className="flex items-start space-x-3 p-4 bg-white rounded-xl shadow-sm border border-gray-100"
               >
-                <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                <p className="text-gray-700">{tip}</p>
+                <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: primaryColor }} />
+                <p className="text-gray-700 text-sm md:text-base">{tip}</p>
               </motion.div>
             ))}
           </div>
@@ -581,24 +584,24 @@ const ToolDetail = ({ tool }) => {
 };
 
 // Main App Component (Renamed)
-const ProjectColab = () => {
+const ProjectColab = ({ theme }) => {
   const [selectedTool, setSelectedTool] = useState('github');
 
   const currentTool = collaborationTools.find(tool => tool.id === selectedTool);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-purple-50 to-indigo-50 font-sans">
+    <div className="min-h-screen bg-gray-50 font-sans">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
       `}</style>
       
-      <div className="flex">
-        <Sidebar selectedTool={selectedTool} setSelectedTool={setSelectedTool} />
+      <div className="flex flex-col md:flex-row">
+        <Sidebar selectedTool={selectedTool} setSelectedTool={setSelectedTool} theme={theme} />
         
         <div className="flex-1 min-w-0 overflow-hidden">
           <AnimatePresence mode="wait">
-            {currentTool && <ToolDetail tool={currentTool} />}
+            {currentTool && <ToolDetail tool={currentTool} theme={theme} />}
           </AnimatePresence>
         </div>
       </div>

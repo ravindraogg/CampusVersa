@@ -18,12 +18,14 @@ import {
   Edit,
   X,
   Save,
+  Plus,
+  Minus
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+// Use localhost fallback to prevent 'import.meta' errors if environment vars aren't set
+const API_URL = "http://localhost:5000";
 
 // Helper Component for Section Header
-// UPDATED: Now accepts 'theme' prop to style the button
 const SectionHeader = ({ title, subtitle, onEdit, theme }) => (
   <div className="mb-6 border-b border-gray-100 pb-4 flex justify-between items-end">
     <div>
@@ -45,6 +47,46 @@ const SectionHeader = ({ title, subtitle, onEdit, theme }) => (
   </div>
 );
 
+// Updated StatCard: Buttons on Left, Always Visible
+const StatCard = ({ label, value, icon: Icon, colorClass, statKey, onUpdate, theme }) => (
+  <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 relative overflow-hidden group hover:shadow-md transition-shadow">
+    <div
+      className={`p-4 rounded-full ${colorClass} bg-opacity-10 text-${
+        colorClass.split("-")[1]
+      }-600`}
+    >
+      <Icon className="w-8 h-8" />
+    </div>
+    <div className="z-10 flex-1">
+      <div className="flex items-center gap-3">
+        {/* Incremental Controls - Left Aligned & Always Visible */}
+        <div className="flex flex-col gap-1 mr-1">
+           <button 
+             onClick={() => onUpdate(statKey, 1)}
+             className="p-1 rounded-md bg-gray-50 hover:bg-green-50 text-gray-400 hover:text-green-600 border border-gray-200 hover:border-green-200 transition-all active:scale-90 flex items-center justify-center h-6 w-6"
+             title="Increment"
+           >
+             <Plus className="w-3 h-3" />
+           </button>
+           <button 
+             onClick={() => onUpdate(statKey, -1)}
+             className="p-1 rounded-md bg-gray-50 hover:bg-red-50 text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 transition-all active:scale-90 flex items-center justify-center h-6 w-6"
+             title="Decrement"
+           >
+             <Minus className="w-3 h-3" />
+           </button>
+        </div>
+
+        <h3 className="text-3xl font-extrabold text-gray-800">{value}</h3>
+      </div>
+      <p className="text-sm text-gray-500 font-medium mt-1">{label}</p>
+    </div>
+    <div
+      className={`absolute -bottom-6 -right-6 w-24 h-24 rounded-full ${colorClass} opacity-5 pointer-events-none`}
+    ></div>
+  </div>
+);
+
 const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
   const [uploading, setUploading] = useState(false);
   const [localImage, setLocalImage] = useState(null);
@@ -56,6 +98,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
     phone: "",
     qualification: "",
     experience: "",
+    aparScore: "", // Added APAR Score field
     research: {
       papersPublished: 0,
       citations: 0,
@@ -64,13 +107,14 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
     },
   });
 
-  // Load initial data into form when faculty changes or modal opens
+  // Load initial data into form
   useEffect(() => {
     if (faculty) {
       setEditForm({
         phone: faculty.phone || "",
         qualification: faculty.qualification || "",
         experience: faculty.experience || "",
+        aparScore: faculty.aparScore || "", // Load existing score
         research: {
           papersPublished: faculty.research?.papersPublished || 0,
           citations: faculty.research?.citations || 0,
@@ -83,6 +127,30 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
 
   if (!faculty) return null;
   const stats = faculty.research || {};
+
+  // --- HANDLE STAT UPDATE (+/-) ---
+  const handleStatUpdate = async (statKey, change) => {
+    try {
+        const token = localStorage.getItem("facultyToken");
+        const res = await fetch(`${API_URL}/faculty/research/update-stat`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ statKey, change })
+        });
+
+        if (res.ok) {
+            // Trigger refresh to update UI with new numbers from DB
+            if(refreshProfile) refreshProfile();
+        } else {
+            console.error("Failed to update stat");
+        }
+    } catch (err) {
+        console.error("Stat update error", err);
+    }
+  };
 
   // --- IMAGE UPLOAD ---
   const handleImageUpload = async (e) => {
@@ -197,32 +265,13 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
     </div>
   );
 
-  const StatCard = ({ label, value, icon: Icon, colorClass }) => (
-    <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 relative overflow-hidden">
-      <div
-        className={`p-4 rounded-full ${colorClass} bg-opacity-10 text-${
-          colorClass.split("-")[1]
-        }-600`}
-      >
-        <Icon className="w-8 h-8" />
-      </div>
-      <div>
-        <h3 className="text-3xl font-extrabold text-gray-800">{value}</h3>
-        <p className="text-sm text-gray-500 font-medium">{label}</p>
-      </div>
-      <div
-        className={`absolute -bottom-6 -right-6 w-24 h-24 rounded-full ${colorClass} opacity-5 pointer-events-none`}
-      ></div>
-    </div>
-  );
-
   return (
     <div className="animate-in fade-in duration-500 space-y-8 pb-10 relative">
       <SectionHeader
         title="My Profile"
         subtitle="Manage your personal and professional details"
         onEdit={() => setShowEditModal(true)}
-        theme={theme} // Passed theme here
+        theme={theme}
       />
 
       {/* --- EDIT MODAL OVERLAY --- */}
@@ -299,13 +348,26 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
                       placeholder="e.g. 8 Years"
                     />
                   </div>
+                   <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      APAR Score (Last Cycle) 
+                      <span className="text-xs text-gray-400 font-normal">(Format: Score/Total)</span>
+                    </label>
+                    <input
+                      name="aparScore"
+                      value={editForm.aparScore}
+                      onChange={handleInputChange}
+                      className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                      placeholder="e.g. 9.2/10"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Research Group */}
+              {/* Research Group (For Manual Override) */}
               <div>
                 <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 border-b border-gray-100 pb-2">
-                  Research Statistics
+                  Research Statistics (Manual Override)
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
@@ -516,13 +578,21 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
           </div>
         </div>
 
-        <div className="lg:col-span-1 bg-gradient-to-br from-white to-gray-50 p-8 rounded-[2.5rem] border border-gray-200 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
+        <div className="lg:col-span-1 bg-gradient-to-br from-white to-gray-50 p-8 rounded-[2.5rem] border border-gray-200 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
             <ScrollText
               className="w-24 h-24"
               style={{ color: theme.secondary }}
             />
           </div>
+          <button 
+             onClick={() => setShowEditModal(true)} 
+             className="absolute top-4 right-4 p-2 bg-white/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-white"
+             title="Edit Score"
+          >
+             <Edit className="w-4 h-4 text-gray-500" />
+          </button>
+          
           <h3 className="text-lg font-bold text-gray-500 mb-2">
             APAR Score (Last Cycle)
           </h3>
@@ -533,7 +603,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
             {faculty.aparScore ? faculty.aparScore.split("/")[0] : "9.2"}
           </div>
           <span className="text-sm text-gray-400 font-medium">
-            Out of {faculty.aparScore ? faculty.aparScore.split("/")[1] : "10"}
+            Out of {faculty.aparScore && faculty.aparScore.includes("/") ? faculty.aparScore.split("/")[1] : "10"}
           </span>
           <div className="mt-4 px-4 py-1 bg-green-100 text-green-700 rounded-full text-sm font-bold">
             Excellent
@@ -552,24 +622,36 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
             value={stats.papersPublished || 0}
             icon={BookOpen}
             colorClass="bg-blue-50"
+            statKey="papersPublished"
+            onUpdate={handleStatUpdate}
+            theme={theme}
           />
           <StatCard
             label="Total Citations"
             value={stats.citations || 0}
             icon={ScrollText}
             colorClass="bg-purple-50"
+            statKey="citations"
+            onUpdate={handleStatUpdate}
+            theme={theme}
           />
           <StatCard
             label="h-index"
             value={stats.hIndex || 0}
             icon={BarChart2}
             colorClass="bg-orange-50"
+            statKey="hIndex"
+            onUpdate={handleStatUpdate}
+            theme={theme}
           />
           <StatCard
             label="Projects Guided"
             value={stats.projectsGuided || 0}
             icon={Users}
             colorClass="bg-green-50"
+            statKey="projectsGuided"
+            onUpdate={handleStatUpdate}
+            theme={theme}
           />
         </div>
       </div>
@@ -577,4 +659,4 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
   );
 };
 
-export default FacultyProfile;  
+export default FacultyProfile;

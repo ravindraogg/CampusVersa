@@ -27,7 +27,8 @@ import {
   X,
   Settings,
   Megaphone,
-  Award // Added for Notices
+  Award,
+  MessageCircle // <--- 1. Import Icon
 } from "lucide-react";
 
 // --- SUB-COMPONENTS ---
@@ -47,6 +48,9 @@ import FreelanceHub from "./freelance";
 import ProblemSolvingArena from "./problemsolve";
 import Roadmap from "./roadmap";
 
+// --- CHATBOT IMPORT ---
+import CompleteChatbot from "./CompleteChatbot"; // <--- 2. Import Chatbot Component
+
 const API_URL = import.meta.env.VITE_BACK_URI;
 
 // --- DEFAULT THEME ---
@@ -62,7 +66,7 @@ const DEFAULT_THEME = {
 // --- NAVIGATION CONFIGURATION (Added Notices) ---
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "notices", label: "Notices", icon: Megaphone }, // New Tab
+  { id: "notices", label: "Notices", icon: Megaphone },
   { id: "attendance", label: "Attendance", icon: CalendarDays },
   { id: "timetable", label: "Timetable", icon: TableIcon },
   { id: "courses", label: "Courses", icon: BookOpen },
@@ -444,6 +448,7 @@ const StudentDashboard = () => {
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showChatbot, setShowChatbot] = useState(false); // <--- 3. State for Chatbot Modal
 
   // Data States
   const [performanceChartData, setPerformanceChartData] = useState([]);
@@ -936,6 +941,35 @@ const StudentDashboard = () => {
       <div className="flex-1 bg-white rounded-2xl md:rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.08)] p-4 md:p-8 overflow-y-auto relative custom-scrollbar border border-gray-100">
         {renderContent()}
       </div>
+
+      {/* --- 3. FLOATING CHAT BUTTON --- */}
+      <button 
+        onClick={() => setShowChatbot(true)}
+        className="fixed bottom-6 right-6 z-50 p-4 rounded-full shadow-2xl transition-transform hover:scale-110 active:scale-95 flex items-center justify-center"
+        style={{ backgroundColor: theme.primary, color: theme.white }}
+      >
+        <MessageCircle className="w-6 h-6" />
+      </button>
+
+      {/* --- 4. CHATBOT MODAL OVERLAY --- */}
+      {showChatbot && (
+        <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-5xl h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            {/* Close Button for Chatbot */}
+            <button 
+              onClick={() => setShowChatbot(false)}
+              className="absolute top-4 right-4 z-10 p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            {/* Render Chatbot Component */}
+            <div className="flex-1 overflow-auto bg-gray-50">
+               <CompleteChatbot />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Logout Modal */}
       {showLogoutModal && (

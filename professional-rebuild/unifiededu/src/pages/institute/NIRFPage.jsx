@@ -416,14 +416,7 @@ export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
 </div>
           </div>
 
-          <button 
-            onClick={handleAutoSync}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4" />}
-            Auto-Sync
-          </button>
+        
           
           <button 
             onClick={handleSave}
