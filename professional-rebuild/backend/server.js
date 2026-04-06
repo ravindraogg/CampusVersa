@@ -70,16 +70,21 @@ const Reminder = mongoose.model('Reminder', ReminderSchema);
 const { verifyToken } = require('./middleware/authMiddleware'); // assumes this sets req.user
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
-app.use(cors('*'));
+app.use(cors({
+  origin: (origin, callback) => callback(null, true), // Dynamically reflect the request origin
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+}));
+app.use(express.json({ limit: "10mb" }));
+app.options("*", cors()); // Explicitly handle OPTIONS for all routes
 const server = http.createServer(app); // Wrap express
 const io = new Server(server, {
   cors: {
-    // If you are using Vite on 7860 or 5173, allow it specifically or keep *
-    origin: ["http://localhost:7860", "https://campusversa.netlify.app", "*"], 
+    origin: ["https://campusversa.netlify.app", "http://localhost:5173", "http://localhost:3000"],
     methods: ["GET", "POST"],
-    credentials: false // Matches the client-side 'withCredentials: false'
-  }
+    credentials: true,
+  },
 });
 io.on('connection', (socket) => {
   console.log('⚡ User Connected:', socket.id);
@@ -103,6 +108,53 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User Disconnected', socket.id);
   });
+});
+// 4. Update Course (NEW ROUTE FOR EDITING)
+app.put("/institute/courses/:id", verifyToken, async (req, res) => {
+  try {
+    const { name, code, department, year, semester, credits } = req.body;
+    
+    // Validate basic requirements
+    if (!name || !code || !department) {
+      return res.status(400).json({ message: "Name, Code and Department are required" });
+    }
+
+    // Check for duplicates (Same Code in Same Dept) BUT exclude current course
+    const existing = await Course.findOne({
+      instituteId: req.user.id,
+      code: code,
+      department: department,
+      _id: { $ne: req.params.id } // Exclude self
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: "Course code already exists in this department" });
+    }
+
+    const updatedCourse = await Course.findOneAndUpdate(
+      { _id: req.params.id, instituteId: req.user.id },
+      { 
+        $set: { 
+          name, 
+          code, 
+          department, 
+          year, 
+          semester, 
+          credits: credits || 3 
+        } 
+      },
+      { new: true }
+    );
+
+    if (!updatedCourse) {
+      return res.status(404).json({ message: "Course not found or access denied" });
+    }
+
+    res.json(updatedCourse);
+  } catch (err) {
+    console.error("/institute/courses/:id PUT error:", err);
+    res.status(500).json({ error: "Update failed" });
+  }
 });
 // -------------------
 // Database Connect
@@ -4749,5 +4801,9 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+<<<<<<< HEAD
 
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (AI provider: ${aiProvider || 'none'})`));
+=======
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+>>>>>>> 1d040d4e (Fix: Robust CORS configuration and middleware ordering in server.js)

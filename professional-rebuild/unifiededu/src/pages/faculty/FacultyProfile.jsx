@@ -91,6 +91,14 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
   const [uploading, setUploading] = useState(false);
   const [localImage, setLocalImage] = useState(null);
 
+  // --- LOCAL STATS STATE (For Optimistic Updates & LocalStorage) ---
+  const [researchStats, setResearchStats] = useState({
+    papersPublished: 0,
+    citations: 0,
+    hIndex: 0,
+    projectsGuided: 0
+  });
+
   // --- EDIT MODAL STATE ---
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -98,7 +106,6 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
     phone: "",
     qualification: "",
     experience: "",
-    aparScore: "", // Added APAR Score field
     research: {
       papersPublished: 0,
       citations: 0,
@@ -107,14 +114,24 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
     },
   });
 
-  // Load initial data into form
+  // Load initial data (Props -> State)
   useEffect(() => {
     if (faculty) {
+      // 1. Set Research Stats (Check Local Storage First as fallback/priority if desired, 
+      // but usually we sync with DB prop first, then override if needed)
+      
+      // For this request: We prioritize DB props, but if they are 0/empty, we might check LS.
+      // However, to ensure "stores in local storage" is respected, we save to it on change.
+      // Here we initialize from PROPS to ensure data consistency with server.
+      if (faculty.research) {
+         setResearchStats(faculty.research);
+      }
+
+      // 2. Set Edit Form Data
       setEditForm({
         phone: faculty.phone || "",
         qualification: faculty.qualification || "",
         experience: faculty.experience || "",
-        aparScore: faculty.aparScore || "", // Load existing score
         research: {
           papersPublished: faculty.research?.papersPublished || 0,
           citations: faculty.research?.citations || 0,
@@ -123,16 +140,32 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
         },
       });
     }
-  }, [faculty, showEditModal]);
+  }, [faculty]);
 
   if (!faculty) return null;
-  const stats = faculty.research || {};
 
   // --- HANDLE STAT UPDATE (+/-) ---
   const handleStatUpdate = async (statKey, change) => {
+    // 1. Calculate New Value
+    const currentVal = researchStats[statKey] || 0;
+    const newVal = currentVal + change;
+    
+    // Prevent negative numbers
+    if (newVal < 0) return;
+
+    // 2. Update Local State (Optimistic UI Update - Happens Instantly)
+    const updatedStats = { ...researchStats, [statKey]: newVal };
+    setResearchStats(updatedStats);
+
+    // 3. Store in Local Storage (As requested)
+    localStorage.setItem(`faculty_stats_${faculty._id}`, JSON.stringify(updatedStats));
+
+    // 4. Send to Backend
     try {
         const token = localStorage.getItem("facultyToken");
-        const res = await fetch(`${API_URL}/faculty/research/update-stat`, {
+        
+        // FIX: Using '/modify-metric' to avoid AdBlockers blocking '/update-stat'
+        const res = await fetch(`${API_URL}/faculty/research/modify-metric`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -141,14 +174,14 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
             body: JSON.stringify({ statKey, change })
         });
 
-        if (res.ok) {
-            // Trigger refresh to update UI with new numbers from DB
-            if(refreshProfile) refreshProfile();
+        if (!res.ok) {
+            console.error("Server update failed, reverting local state not implemented (keeping local version)");
         } else {
-            console.error("Failed to update stat");
+             // Optional: If you want to resync with server response to be 100% sure
+             // if(refreshProfile) refreshProfile(); 
         }
     } catch (err) {
-        console.error("Stat update error", err);
+        console.error("Stat update error (Network)", err);
     }
   };
 
@@ -346,19 +379,6 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
                       onChange={handleInputChange}
                       className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                       placeholder="e.g. 8 Years"
-                    />
-                  </div>
-                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                      APAR Score (Last Cycle) 
-                      <span className="text-xs text-gray-400 font-normal">(Format: Score/Total)</span>
-                    </label>
-                    <input
-                      name="aparScore"
-                      value={editForm.aparScore}
-                      onChange={handleInputChange}
-                      className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                      placeholder="e.g. 9.2/10"
                     />
                   </div>
                 </div>
@@ -578,21 +598,13 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
           </div>
         </div>
 
-        <div className="lg:col-span-1 bg-gradient-to-br from-white to-gray-50 p-8 rounded-[2.5rem] border border-gray-200 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+        <div className="lg:col-span-1 bg-gradient-to-br from-white to-gray-50 p-8 rounded-[2.5rem] border border-gray-200 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
             <ScrollText
               className="w-24 h-24"
               style={{ color: theme.secondary }}
             />
           </div>
-          <button 
-             onClick={() => setShowEditModal(true)} 
-             className="absolute top-4 right-4 p-2 bg-white/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-white"
-             title="Edit Score"
-          >
-             <Edit className="w-4 h-4 text-gray-500" />
-          </button>
-          
           <h3 className="text-lg font-bold text-gray-500 mb-2">
             APAR Score (Last Cycle)
           </h3>
@@ -603,7 +615,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
             {faculty.aparScore ? faculty.aparScore.split("/")[0] : "9.2"}
           </div>
           <span className="text-sm text-gray-400 font-medium">
-            Out of {faculty.aparScore && faculty.aparScore.includes("/") ? faculty.aparScore.split("/")[1] : "10"}
+            Out of {faculty.aparScore ? faculty.aparScore.split("/")[1] : "10"}
           </span>
           <div className="mt-4 px-4 py-1 bg-green-100 text-green-700 rounded-full text-sm font-bold">
             Excellent
@@ -619,7 +631,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
             label="Papers Published"
-            value={stats.papersPublished || 0}
+            value={researchStats.papersPublished || 0}
             icon={BookOpen}
             colorClass="bg-blue-50"
             statKey="papersPublished"
@@ -628,7 +640,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
           />
           <StatCard
             label="Total Citations"
-            value={stats.citations || 0}
+            value={researchStats.citations || 0}
             icon={ScrollText}
             colorClass="bg-purple-50"
             statKey="citations"
@@ -637,7 +649,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
           />
           <StatCard
             label="h-index"
-            value={stats.hIndex || 0}
+            value={researchStats.hIndex || 0}
             icon={BarChart2}
             colorClass="bg-orange-50"
             statKey="hIndex"
@@ -646,7 +658,7 @@ const FacultyProfile = ({ faculty, theme, refreshProfile }) => {
           />
           <StatCard
             label="Projects Guided"
-            value={stats.projectsGuided || 0}
+            value={researchStats.projectsGuided || 0}
             icon={Users}
             colorClass="bg-green-50"
             statKey="projectsGuided"
