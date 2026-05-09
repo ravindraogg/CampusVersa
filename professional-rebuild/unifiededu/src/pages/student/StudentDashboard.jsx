@@ -28,7 +28,10 @@ import {
   Settings,
   Megaphone,
   Award,
-  MessageCircle // <--- 1. Import Icon
+  MessageCircle, // <--- 1. Import Icon
+  Languages,
+  Accessibility,
+  FlaskConical
 } from "lucide-react";
 
 // --- SUB-COMPONENTS ---
@@ -47,6 +50,11 @@ import ProjectCollab from "./projectcolab";
 import FreelanceHub from "./freelance";
 import ProblemSolvingArena from "./problemsolve";
 import Roadmap from "./roadmap";
+
+// --- NEW HACKATHON FEATURES ---
+import TranslationHub from "./TranslationHub";
+import AccessibilityTools from "./AccessibilityTools";
+import VirtualLabs from "./VirtualLabs";
 
 // --- CHATBOT IMPORT ---
 import CompleteChatbot from "./CompleteChatbot"; // <--- 2. Import Chatbot Component
@@ -67,6 +75,9 @@ const DEFAULT_THEME = {
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "notices", label: "Notices", icon: Megaphone },
+  { id: "translate", label: "Translate", icon: Languages },
+  { id: "accessibility", label: "Accessibility", icon: Accessibility },
+  { id: "virtualLabs", label: "Virtual Labs", icon: FlaskConical },
   { id: "attendance", label: "Attendance", icon: CalendarDays },
   { id: "timetable", label: "Timetable", icon: TableIcon },
   { id: "courses", label: "Courses", icon: BookOpen },
@@ -690,6 +701,12 @@ const StudentDashboard = () => {
             theme={theme}
           />
         );
+      case "translate":
+        return <div className="animate-in fade-in h-full"><TranslationHub theme={theme} /></div>;
+      case "accessibility":
+        return <div className="animate-in fade-in h-full"><AccessibilityTools theme={theme} /></div>;
+      case "virtualLabs":
+        return <div className="animate-in fade-in h-full"><VirtualLabs theme={theme} /></div>;
       case "courses":
         return <StudentCoursesSection student={student} theme={theme} />;
         case "scholarships":

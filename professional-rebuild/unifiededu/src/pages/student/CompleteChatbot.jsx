@@ -1,14 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import axios from 'axios';
 import { Send, Bot, User, Trash2, Sparkles, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown'; 
 
 // --- CONFIGURATION ---
-// ⚠️ NOTE: In production, never store API keys in frontend code. Use environment variables.
-// Replace this with your actual key if not using .env
-const GOV_API_KEY = import.meta.env.VITE_GOV_API_KEY; 
-
-const genAI = new GoogleGenerativeAI(GOV_API_KEY);
+const API_URL = import.meta.env.VITE_BACK_URI;
 
 const MOCK_SCHEMAS = {
   Faculty: "Fields: Name, FID (Faculty ID), Designation, Department, Email, Phone, Research (Papers, Citations), Work History.",
@@ -35,11 +31,8 @@ const CompleteChatbot = () => {
 
   const generateAIResponse = async (userQuery) => {
     try {
-      // Use 'gemini-1.5-flash' for stability
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-
       // Context injection for the AI
-      const systemPrompt = `
+      const systemInstruction = `
         You are an intelligent Institute Assistant for the CampusVersa platform.
         
         Here is the schema structure of our database to help you answer technical questions:
@@ -50,16 +43,18 @@ const CompleteChatbot = () => {
         2. Help with academic queries (e.g., "How to submit assignments", "Course help").
         3. Be polite, professional, and concise.
         4. Format your responses nicely using Markdown (bolding, lists, code blocks).
-        
-        User Question: ${userQuery}
       `;
 
-      const result = await model.generateContent(systemPrompt);
-      const response = await result.response;
-      return response.text();
+      const response = await axios.post(`${API_URL}/api/ai/generate`, {
+        prompt: userQuery,
+        systemInstruction: systemInstruction,
+        model: "gemini-2.0-flash"
+      });
+
+      return response.data.text;
     } catch (error) {
-      console.error("Gemini Error:", error);
-      return "I'm having trouble connecting to the AI brain right now. Please check your internet connection or API key.";
+      console.error("Backend AI Error:", error);
+      return "I'm having trouble connecting to the AI brain right now. Please check your internet connection or try again later.";
     }
   };
 

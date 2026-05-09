@@ -4795,15 +4795,47 @@ app.get('/admin/analytics', verifyToken, async (req, res) => {
 const schemaRoutes = require('./routes/schemaRoutes');
 app.use('/api/schema', schemaRoutes);
 
+// --- AI PROXY ROUTE ---
+app.post('/api/ai/generate', async (req, res) => {
+  const { prompt, model: requestedModel, systemInstruction } = req.body;
+  
+  if (!prompt) {
+    return res.status(400).json({ error: 'Prompt is required' });
+  }
+
+  try {
+    if (aiProvider === 'google' && googleClient) {
+      const modelName = requestedModel || "gemini-2.0-flash";
+      const model = googleClient.getGenerativeModel({ 
+        model: modelName,
+        systemInstruction: systemInstruction || undefined
+      });
+      
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return res.json({ text: response.text() });
+    } else if (aiProvider === 'openai' && openaiClient) {
+      const resp = await openaiClient.createChatCompletion({
+        model: requestedModel || 'gpt-4o-mini',
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          { role: 'user', content: prompt }
+        ],
+      });
+      return res.json({ text: resp.data.choices[0].message.content });
+    } else {
+      return res.status(503).json({ error: 'AI provider not configured on backend' });
+    }
+  } catch (err) {
+    console.error('AI Proxy Error:', err);
+    res.status(500).json({ error: 'AI generation failed', details: err.message });
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || 5000;
-<<<<<<< HEAD
-
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} (AI provider: ${aiProvider || 'none'})`));
-=======
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
->>>>>>> 1d040d4e (Fix: Robust CORS configuration and middleware ordering in server.js)
