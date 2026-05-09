@@ -1,0 +1,187 @@
+@tailwind utilities;
+@import "tailwindcss";
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #E5E7EB; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #D1D5DB; }
+:root{
+  /* theme vars — override per-institute by setting data-theme attributes or runtime CSS variables */
+  --primary: #111827;         /* default primary */
+  --text-on-primary: #fff;
+  --glass-bg: rgba(255,255,255,0.6);
+  --glass-border: rgba(0,0,0,0.12);
+  --glass-shadow: 0 6px 24px rgba(15,23,42,0.08);
+  --accent: #06b6d4;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --transition-fast: 160ms;
+}
+
+/* ---------- base reset for form controls ---------- */
+select, input[type="text"], input[type="search"], .glass-dropdown-toggle {
+  font-family: inherit;
+  font-size: 14px;
+  color: #111827;
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* ---------- Native select styling ---------- */
+.select-clean {
+  display: inline-block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.select-clean:focus {
+  box-shadow: 0 0 0 4px rgba(6,182,212,0.12);
+  border-color: var(--accent);
+}
+
+/* small arrow replacement for native select */
+.select-clean-wrapper {
+  position: relative;
+}
+.select-clean-wrapper:after{
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #374151;
+  border-bottom: 2px solid #374151;
+  transform-origin: center;
+  transform: translateY(-50%) rotate(45deg);
+  pointer-events: none;
+  opacity: .9;
+}
+
+/* ---------- Custom glass dropdown (for complex lists) ---------- */
+.glass-dropdown {
+  position: relative;
+  width: 100%;
+  font-size: 14px;
+}
+
+/* the clickable toggle */
+.glass-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  backdrop-filter: blur(6px);
+}
+
+.glass-dropdown-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-dropdown-toggle .label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #111827;
+}
+
+/* caret rotation helper (use with JS toggling a .open class) */
+.glass-dropdown-toggle .caret {
+  transition: transform var(--transition-fast);
+}
+.glass-dropdown.open .glass-dropdown-toggle .caret {
+  transform: rotate(180deg);
+}
+
+/* the dropdown list */
+.glass-dropdown-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-top: 0.5rem;
+  border-radius: 14px;
+  overflow: hidden;
+  z-index: 60;
+  background: rgba(255,255,255,0.88);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 40px rgba(2,6,23,0.12);
+  max-height: 260px;
+  transform-origin: top center;
+  animation: dropIn 180ms ease;
+}
+
+/* animation */
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px) scale(.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* list item */
+.glass-dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+  color: #111827;
+}
+
+.glass-dropdown-item:hover,
+.glass-dropdown-item[aria-selected="true"] {
+  background: rgba(0,0,0,0.06);
+}
+
+/* keyboard focus on items for accessibility */
+.glass-dropdown-item:focus {
+  outline: none;
+  background: rgba(6,182,212,0.08);
+}
+
+/* group header (optional) */
+.glass-dropdown-group {
+  padding: 0.5rem 1rem;
+  font-size: 12px;
+  color: #6b7280;
+  background: rgba(0,0,0,0.02);
+}
+
+/* small scrollbar styling for the list */
+.glass-dropdown-list::-webkit-scrollbar { width: 10px; }
+.glass-dropdown-list::-webkit-scrollbar-track { background: transparent; }
+.glass-dropdown-list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(0,0,0,0.08); }
+
+/* ---------- disabled state ---------- */
+.is-disabled, .select-clean:disabled, .glass-dropdown-toggle.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 640px) {
+  .glass-dropdown-list { max-height: 220px; }
+}
+
+/* ---------- utility: small/compact versions ---------- */
+.select-clean.small { padding: 0.5rem 0.75rem; border-radius: 10px; font-size: 13px; }
+.glass-dropdown-toggle.compact { padding: 0.5rem 0.75rem; border-radius: 10px; font-size: 13px; }
+
+/* ---------- visually-hidden helper for accessible labels ---------- */
+.visually-hidden { position: absolute !important; height: 1px; width: 1px; overflow: hidden; clip: rect(1px,1px,1px,1px); white-space: nowrap; }
+
+/* ---------- quick theme override via attribute on root element ---------- */
+/* e.g., <html data-theme='institute-123' style="--primary:#0ea5a4;--text-on-primary:#fff"> */
+[data-theme] { /* intentionally empty, CSS vars used inline */ }
