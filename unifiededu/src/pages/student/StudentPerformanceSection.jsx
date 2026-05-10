@@ -3,6 +3,7 @@ import {
   Sparkles, TrendingUp, Target, BrainCircuit,
   Activity, Zap, Award
 } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
 
 // Safe API URL definition
 const API_URL = import.meta.env.VITE_BACKEND_URL;
@@ -174,9 +175,9 @@ const StudentPerformanceSection = ({ student }) => {
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Activity className="w-5 h-5 text-indigo-500" /> Strategic Overview
               </h3>
-              <p className="text-gray-600 leading-normal text-justify hyphens-auto">
-                {analysis.insight}
-              </p>
+              <div className="prose prose-sm max-w-none text-gray-600 leading-normal text-justify hyphens-auto">
+                <ReactMarkdown>{analysis.insight}</ReactMarkdown>
+              </div>
 
               <div className="mt-8 pt-6 border-t border-gray-100">
                 <div className="flex justify-between items-center mb-4">
@@ -189,8 +190,8 @@ const StudentPerformanceSection = ({ student }) => {
 
             {/* Prediction Card */}
             <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-[2rem] p-6 flex flex-col gap-6 shadow-sm">
-              <div className="text-lg font-bold text-emerald-800 w-full text-left leading-relaxed">
-                {analysis.prediction}
+              <div className="prose prose-sm max-w-none text-emerald-800 w-full text-left leading-relaxed">
+                <ReactMarkdown>{analysis.prediction}</ReactMarkdown>
               </div>
 
               <div className="flex items-center gap-4 self-end mt-2">

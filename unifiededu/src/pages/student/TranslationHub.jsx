@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 import {
   Languages, ArrowRight, Volume2, Copy, Check, Loader2,
   RotateCcw, Sparkles, ChevronDown, BookOpen, VolumeX
@@ -270,7 +271,9 @@ RULES:
                 <p className="text-sm font-medium">Translating with AI...</p>
               </div>
             ) : translatedText ? (
-              translatedText
+              <div className="prose prose-sm max-w-none text-gray-800">
+                <ReactMarkdown>{translatedText}</ReactMarkdown>
+              </div>
             ) : error ? (
               <div className="flex items-center justify-center h-full text-red-500 text-sm font-medium">{error}</div>
             ) : (

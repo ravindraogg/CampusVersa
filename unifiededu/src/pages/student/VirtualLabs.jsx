@@ -1,5 +1,6 @@
 import React, { useState, Suspense, lazy } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 import { 
   FlaskConical, ArrowLeft, ChevronRight, Sparkles, Atom, Beaker, Leaf, 
   Search, Filter, Grid, List, Info, Loader2, Shapes, Hash, Ruler, 
@@ -534,9 +535,7 @@ RULES:
                             </div>
                             <div className="p-6 md:p-8">
                                 <div className="prose prose-sm max-w-none text-gray-600 leading-relaxed font-medium">
-                                    {aiExplanation.split('\n').map((line, i) => (
-                                        <p key={i} className={line.trim().startsWith('-') ? 'ml-4' : 'mb-3'}>{line}</p>
-                                    ))}
+                                    <ReactMarkdown>{aiExplanation}</ReactMarkdown>
                                 </div>
                             </div>
                         </div>
