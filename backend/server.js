@@ -628,7 +628,7 @@ app.post('/institute/nirf/bulk-upload', verifyToken, upload.single('file'), asyn
 
 app.post('/admin/createInstitute', verifyToken, async (req, res) => {
   try {
-    const { name, code, email, aisheCode, password, requestId } = req.body;
+    const { name, code, email, aisheCode, password, requestId, source } = req.body;
     if (!password) return res.status(400).json({ message: 'Initial password required' });
     // avoid duplicates
     const exists = await Institute.findOne({ $or: [{ code }, { email }] });
@@ -642,6 +642,14 @@ app.post('/admin/createInstitute', verifyToken, async (req, res) => {
     // Generate IID
     const generatedIID = `IID-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
 
+    let finalSource = source || 'direct';
+    if (requestId) {
+      const request = await RequestsInstitute.findById(requestId);
+      if (request && request.source) {
+        finalSource = request.source;
+      }
+    }
+
     const inst = new Institute({
       IID: generatedIID,
       name,
@@ -650,6 +658,7 @@ app.post('/admin/createInstitute', verifyToken, async (req, res) => {
       email,
       aisheCode,
       password,
+      source: finalSource,
       status: 'Active',
       createdAt: Date.now()
     });
@@ -863,12 +872,12 @@ app.post('/institute/login', async (req, res) => {
 
 app.post('/institute/register', async (req, res) => {
   try {
-    const { name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes } = req.body;
+    const { name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes, source } = req.body;
     // prevent duplicates across requests and active institutes
     const conflict = await RequestsInstitute.findOne({ $or: [{ requestedCode }, { email }] });
     const exists = await Institute.findOne({ $or: [{ code: requestedCode }, { email }] });
     if (conflict || exists) return res.status(400).json({ message: 'Institute code or email already registered/requested' });
-    const r = new RequestsInstitute({ name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes, status: 'Pending' });
+    const r = new RequestsInstitute({ name, requestedCode, aisheCode, accreditation, state, pincode, email, phone, website, notes, source: source || 'direct', status: 'Pending' });
     await r.save();
     await Log.create({ action: 'REQUEST_INSTITUTE', details: `Request for ${requestedCode} created` }).catch(() => { });
     res.status(201).json({ message: 'Request submitted' });

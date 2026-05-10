@@ -11,6 +11,7 @@ const RequestsInstituteSchema = new mongoose.Schema({
   state: String,
   pincode: String,
   notes: String,
+  source: { type: String, default: 'direct' },
   urgency: { type: String },
   type: { type: String },
   status: { 

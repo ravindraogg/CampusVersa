@@ -21,6 +21,7 @@ const FacultySchema = new mongoose.Schema({
   profilePic: { type: String }, 
   loginId: { type: String },
   password: { type: String },
+  source: { type: String, default: 'direct' },
   themeColorPrimary: { type: String },
   themeColorSecondary: { type: String },
 

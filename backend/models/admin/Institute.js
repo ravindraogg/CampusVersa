@@ -11,6 +11,7 @@ const InstituteSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  source: { type: String, default: 'direct' },
 
   aisheCode: { type: String },
   logo: { type: String },

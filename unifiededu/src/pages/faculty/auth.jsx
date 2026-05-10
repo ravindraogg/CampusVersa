@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Briefcase, 
   Lock, 
@@ -9,6 +9,7 @@ import {
   Award,
   ArrowRight
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import bookImage from "../../assets/logo.png";
 
 const API_URL = import.meta.env.VITE_BACKEND_URL;
@@ -18,6 +19,14 @@ const FacultyAuth = () => {
   const [showPass, setShowPass] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get('utm_source');
+    if (utm) {
+      sessionStorage.setItem('pending_utm_source', utm);
+    }
+  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

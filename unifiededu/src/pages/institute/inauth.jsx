@@ -65,6 +65,14 @@ const InstituteAuth = () => {
   const [loginData, setLoginData] = useState({ identifier: "", password: "" });
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get('utm_source');
+    if (utm) {
+      sessionStorage.setItem('pending_utm_source', utm);
+    }
+  }, []);
   
   // Custom Notification State
   const [notification, setNotification] = useState({ show: false, message: "", type: "success" });
@@ -148,10 +156,16 @@ const InstituteAuth = () => {
     setIsLoading(true);
 
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const utmSource = urlParams.get('utm_source') || sessionStorage.getItem('pending_utm_source') || 'direct';
+
       const response = await fetch(`${API_URL}/institute/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(regData),
+        body: JSON.stringify({
+          ...regData,
+          source: utmSource
+        }),
       });
 
       const data = await response.json();
