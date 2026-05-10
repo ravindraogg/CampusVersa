@@ -1,7 +1,25 @@
 const mongoose = require('mongoose');
 
 const StudentSchema = new mongoose.Schema({
-  instituteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Institute', required: true },
+  // --- ACCOUNT TYPE ---
+  accountType: { 
+    type: String, 
+    enum: ['institute', 'independent'], 
+    default: 'institute' 
+  },
+  verificationStatus: { 
+    type: String, 
+    enum: ['pending', 'approved', 'rejected'], 
+    default: 'approved' 
+  },
+  trustLevel: { 
+    type: String, 
+    enum: ['self_declared', 'document_verified', 'institution_verified'], 
+    default: 'institution_verified' 
+  },
+
+  // --- CORE FIELDS ---
+  instituteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Institute' }, // Optional for independent
   SID: { type: String, required: true }, 
   name: { type: String, required: true },
   
@@ -11,11 +29,38 @@ const StudentSchema = new mongoose.Schema({
   phone: { type: String },
   section: { type: String },      
   admissionNo: { type: String },  
-  department: { type: String, required: true }, 
+  department: { type: String }, 
   year: { type: String }, 
-  semester: { type: String, required: true },
+  semester: { type: String },
   profilePic: { type: String },
   password: { type: String },
+
+  // --- INDEPENDENT STUDENT PROFILE ---
+  independentProfile: {
+    country: { type: String },
+    state: { type: String },
+    city: { type: String },
+    institutionName: { type: String },
+    institutionType: { 
+      type: String, 
+      default: 'Other'
+    },
+    board: { type: String }, // CBSE, ICSE, State Board, VTU, DTE Karnataka, Other
+    programName: { type: String },
+    academicYear: { type: String },
+    currentSubjects: [{ type: String }],
+    careerInterests: [{ type: String }],
+    targetExams: [{ type: String }],
+    preferredSkills: [{ type: String }]
+  },
+
+  // --- UPLOADED DOCUMENTS (Optional Verification) ---
+  documents: {
+    studentIdCard: { type: String },
+    feeReceipt: { type: String },
+    bonafideCert: { type: String },
+    institutionalEmail: { type: String }
+  },
 
   // --- PREVIOUS EDUCATION ---
   previousEducation: {

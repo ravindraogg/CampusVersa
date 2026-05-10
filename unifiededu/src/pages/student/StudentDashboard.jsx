@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Sparkles,
   ChevronRight,
+  ChevronDown,
   ListTodo,
   History,
   ArrowLeft,
@@ -28,10 +29,12 @@ import {
   Settings,
   Megaphone,
   Award,
-  MessageCircle, // <--- 1. Import Icon
+  MessageCircle,
   Languages,
   Accessibility,
-  FlaskConical
+  Activity,
+  FlaskConical,
+  Wrench
 } from "lucide-react";
 
 // --- SUB-COMPONENTS ---
@@ -59,7 +62,7 @@ import VirtualLabs from "./VirtualLabs";
 // --- CHATBOT IMPORT ---
 import CompleteChatbot from "./CompleteChatbot"; // <--- 2. Import Chatbot Component
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 // --- DEFAULT THEME ---
 const DEFAULT_THEME = {
@@ -71,21 +74,60 @@ const DEFAULT_THEME = {
   textOnPrimary: "#FFFFFF",
 };
 
-// --- NAVIGATION CONFIGURATION (Added Notices) ---
-const NAV_ITEMS = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "notices", label: "Notices", icon: Megaphone },
-  { id: "translate", label: "Translate", icon: Languages },
-  { id: "accessibility", label: "Accessibility", icon: Accessibility },
-  { id: "virtualLabs", label: "Virtual Labs", icon: FlaskConical },
-  { id: "attendance", label: "Attendance", icon: CalendarDays },
-  { id: "timetable", label: "Timetable", icon: TableIcon },
-  { id: "courses", label: "Courses", icon: BookOpen },
-  { id: "scholarships", label: "Scholarships", icon: Award },
-  { id: "performance", label: "Performance", icon: TrendingUp },
-  { id: "career", label: "Career & Skills", icon: Briefcase },
-  { id: "freelance", label: "Jobs & Hubs", icon: Send },
+// --- NAVIGATION CONFIGURATION (Grouped Hierarchy) ---
+const NAV_GROUPS = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    type: "single",
+  },
+  {
+    id: "academics",
+    label: "Academics",
+    icon: GraduationCap,
+    type: "group",
+    children: [
+      { id: "attendance", label: "Attendance", icon: CalendarDays },
+      { id: "timetable", label: "Timetable", icon: TableIcon },
+      { id: "courses", label: "Courses", icon: BookOpen },
+      { id: "performance", label: "Performance", icon: TrendingUp },
+      { id: "virtualLabs", label: "Virtual Labs", icon: FlaskConical },
+    ],
+  },
+  {
+    id: "career_group",
+    label: "Career",
+    icon: Briefcase,
+    type: "group",
+    children: [
+      { id: "career", label: "Career & Skills", icon: Briefcase },
+      { id: "freelance", label: "Jobs & Hubs", icon: Send },
+    ],
+  },
+  {
+    id: "notices",
+    label: "Notices",
+    icon: Megaphone,
+    type: "single",
+  },
+  {
+    id: "services",
+    label: "Services",
+    icon: Wrench,
+    type: "group",
+    children: [
+      { id: "scholarships", label: "Scholarships", icon: Award },
+      { id: "translate", label: "Translate", icon: Languages },
+      { id: "accessibility", label: "Accessibility", icon: Activity },
+    ],
+  },
 ];
+
+// Flat list helper for mobile and lookups
+const NAV_ITEMS_FLAT = NAV_GROUPS.flatMap(g =>
+  g.type === "single" ? [{ id: g.id, label: g.label, icon: g.icon }] : g.children
+);
 
 // --- HELPER: VTU Grading Logic ---
 const getGradePoint = (marks) => {
@@ -285,40 +327,127 @@ const authFetch = async (path, opts = {}) => {
   return res;
 };
 
-// --- DESKTOP NAV COMPONENT ---
-const DesktopNav = ({ activeTab, setActiveTab, theme }) => {
-  const getButtonStyle = (isActive) => ({
-    backgroundColor: isActive
-      ? (theme.textOnPrimary === "#FFFFFF" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)")
-      : "transparent",
-    color: theme.textOnPrimary,
-    opacity: isActive ? 1 : 0.8,
-  });
+// --- DESKTOP NAV COMPONENT (Grouped Dropdowns) ---
+const DesktopNav = ({ activeTab, setActiveTab, theme, accountType }) => {
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const dropdownTimeout = useRef(null);
+
+  const handleMouseEnter = (groupId) => {
+    if (dropdownTimeout.current) clearTimeout(dropdownTimeout.current);
+    setOpenDropdown(groupId);
+  };
+
+  const handleMouseLeave = () => {
+    dropdownTimeout.current = setTimeout(() => setOpenDropdown(null), 150);
+  };
+
+  // Check if a group contains the active tab
+  const groupContainsActive = (group) => {
+    if (group.type === "single") return group.id === activeTab;
+    return group.children?.some(c => c.id === activeTab);
+  };
+
+  // Filter NAV_GROUPS based on account type
+  const filteredGroups = NAV_GROUPS.map(group => {
+    if (group.type === "single") return group;
+    
+    const filteredChildren = group.children.filter(child => {
+      if (accountType === 'independent' && child.id === 'attendance') return false;
+      return true;
+    });
+
+    if (filteredChildren.length === 0) return null;
+    return { ...group, children: filteredChildren };
+  }).filter(Boolean);
 
   return (
     <div
-      className="hidden md:flex h-full rounded-[2rem] shadow-sm items-center px-2 transition-all duration-300 overflow-x-auto no-scrollbar"
+      className="hidden md:flex h-full rounded-[2rem] shadow-sm items-center px-2 transition-all duration-300"
       style={{ backgroundColor: theme.primary }}
     >
-      <div className="flex items-center gap-1 p-1">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`px-4 py-2.5 rounded-[2rem] flex items-center gap-2 transition-all duration-300 whitespace-nowrap text-sm font-medium hover:bg-white/10`}
-            style={getButtonStyle(activeTab === item.id)}
-          >
-            <item.icon className="w-4 h-4" />
-            <span>{item.label}</span>
-          </button>
-        ))}
+      <div className="flex items-center gap-0.5 p-1 w-full justify-center">
+        {filteredGroups.map((group) => {
+          const isGroupActive = groupContainsActive(group);
+
+          if (group.type === "single") {
+            return (
+              <button
+                key={group.id}
+                onClick={() => setActiveTab(group.id)}
+                className="px-4 py-2.5 rounded-[2rem] flex items-center gap-2 transition-all duration-200 whitespace-nowrap text-sm font-semibold hover:bg-white/10"
+                style={{
+                  backgroundColor: isGroupActive ? "rgba(255,255,255,0.2)" : "transparent",
+                  color: theme.textOnPrimary,
+                  opacity: isGroupActive ? 1 : 0.85,
+                }}
+              >
+                <group.icon className="w-4 h-4" />
+                <span>{group.label}</span>
+              </button>
+            );
+          }
+
+          return (
+            <div
+              key={group.id}
+              className="relative"
+              onMouseEnter={() => handleMouseEnter(group.id)}
+              onMouseLeave={handleMouseLeave}
+            >
+              <button
+                className="px-4 py-2.5 rounded-[2rem] flex items-center gap-1.5 transition-all duration-200 whitespace-nowrap text-sm font-semibold hover:bg-white/10"
+                style={{
+                  backgroundColor: isGroupActive || openDropdown === group.id ? "rgba(255,255,255,0.2)" : "transparent",
+                  color: theme.textOnPrimary,
+                  opacity: isGroupActive || openDropdown === group.id ? 1 : 0.85,
+                }}
+              >
+                <group.icon className="w-4 h-4" />
+                <span>{group.label}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openDropdown === group.id ? "rotate-180" : ""}`} />
+              </button>
+
+              {/* Dropdown */}
+              {openDropdown === group.id && (
+                <div
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 min-w-[200px] rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 z-[60]"
+                  style={{ backgroundColor: "#ffffff" }}
+                  onMouseEnter={() => handleMouseEnter(group.id)}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <div className="p-1.5">
+                    {group.children.map((child) => (
+                      <button
+                        key={child.id}
+                        onClick={() => {
+                          setActiveTab(child.id);
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                          activeTab === child.id
+                            ? "font-bold shadow-sm"
+                            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                        }`}
+                        style={activeTab === child.id ? { backgroundColor: `${theme.primary}12`, color: theme.primary } : {}}
+                      >
+                        <child.icon className="w-4 h-4 shrink-0" />
+                        {child.label}
+                        {activeTab === child.id && <div className="ml-auto w-1.5 h-1.5 rounded-full" style={{ backgroundColor: theme.primary }} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 };
 
 // --- HEADER ACTIONS (UPDATED WITH RED DOT LOGIC) ---
-const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobileMenu, setOpenMobileMenu, unreadCount, setUnreadCount }) => {
+const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobileMenu, setOpenMobileMenu, unreadCount, setUnreadCount, accountType }) => {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -408,31 +537,59 @@ const HeaderActions = ({ activeTab, setActiveTab, theme, handleLogout, openMobil
 
         {openMobileMenu && (
           <div
-            className="absolute top-14 right-0 z-50 w-64 rounded-2xl shadow-xl p-2 animate-in fade-in slide-in-from-top-2 origin-top-right backdrop-blur-sm"
+            className="absolute top-14 right-0 z-50 w-72 rounded-2xl shadow-2xl p-2 animate-in fade-in slide-in-from-top-2 origin-top-right backdrop-blur-md max-h-[80vh] overflow-y-auto custom-scrollbar"
             style={{ backgroundColor: theme.primary }}
           >
-            <div className="flex flex-col gap-1">
-              <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between opacity-80" style={{ color: theme.textOnPrimary }}>
+            <div className="flex flex-col gap-0.5">
+              <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between opacity-80" style={{ color: theme.textOnPrimary }}>
                 <span>Navigation</span>
-                <span className="text-[9px] normal-case font-normal border px-2 py-0.5 rounded opacity-60" style={{ borderColor: theme.textOnPrimary }}>Close</span>
+                <button onClick={() => setOpenMobileMenu(false)} className="text-[9px] normal-case font-normal border px-2 py-0.5 rounded opacity-60 hover:opacity-100 transition-opacity" style={{ borderColor: theme.textOnPrimary, color: theme.textOnPrimary }}>Close</button>
               </div>
 
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setOpenMobileMenu(false);
-                  }}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors hover:bg-white/10"
-                  style={{ color: theme.textOnPrimary, opacity: activeTab === item.id ? 1 : 0.8 }}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </button>
-              ))}
+              {NAV_GROUPS.map((group) => {
+                if (group.type === "single") {
+                  return (
+                    <button
+                      key={group.id}
+                      onClick={() => { setActiveTab(group.id); setOpenMobileMenu(false); }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-colors hover:bg-white/10"
+                      style={{ color: theme.textOnPrimary, opacity: activeTab === group.id ? 1 : 0.8, backgroundColor: activeTab === group.id ? "rgba(255,255,255,0.15)" : "transparent" }}
+                    >
+                      <group.icon className="w-4 h-4" />
+                      {group.label}
+                    </button>
+                  );
+                }
 
-              <div className="h-px opacity-20 my-1" style={{ backgroundColor: theme.textOnPrimary }}></div>
+                const filteredChildren = group.children.filter(child => {
+                  if (accountType === 'independent' && child.id === 'attendance') return false;
+                  return true;
+                });
+
+                if (filteredChildren.length === 0) return null;
+
+                return (
+                  <div key={group.id} className="mt-1">
+                    <div className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest opacity-50" style={{ color: theme.textOnPrimary }}>
+                      {group.label}
+                    </div>
+                    {filteredChildren.map((child) => (
+                      <button
+                        key={child.id}
+                        onClick={() => { setActiveTab(child.id); setOpenMobileMenu(false); }}
+                        className="w-full flex items-center gap-3 pl-6 pr-4 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-white/10"
+                        style={{ color: theme.textOnPrimary, opacity: activeTab === child.id ? 1 : 0.7, backgroundColor: activeTab === child.id ? "rgba(255,255,255,0.15)" : "transparent" }}
+                      >
+                        <child.icon className="w-4 h-4 shrink-0" />
+                        {child.label}
+                        {activeTab === child.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/80" />}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+
+              <div className="h-px opacity-20 my-1.5" style={{ backgroundColor: theme.textOnPrimary }}></div>
 
               <button
                 onClick={handleLogout}
@@ -455,6 +612,7 @@ const StudentDashboard = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState(null);
+  const [accountType, setAccountType] = useState(localStorage.getItem("accountType") || 'institute');
   const [institute, setInstitute] = useState(null);
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -487,17 +645,17 @@ const StudentDashboard = () => {
 
     // Debugging connection
     newSocket.on("connect", () => {
-      console.log("✅ Socket Connected with ID:", newSocket.id);
+      console.log("[SOCKET] Connected with ID:", newSocket.id);
     });
 
     newSocket.on("connect_error", (err) => {
-      console.error("❌ Socket Connection Error:", err.message);
+      console.error("[SOCKET ERROR] Connection Error:", err.message);
     });
 
     newSocket.emit('join_room', {
-      instituteId: institute._id,
+      instituteId: institute?._id || 'independent',
       role: 'student',
-      department: student.department
+      department: student?.department || 'general'
     });
 
     // 3. Listen for Notices
@@ -538,6 +696,10 @@ const StudentDashboard = () => {
       const data = await res.json();
       let currentStudent = data.student;
       setInstitute(data.institute);
+      if (data.accountType) {
+        setAccountType(data.accountType);
+        localStorage.setItem("accountType", data.accountType);
+      }
 
       if (data.institute?.themeColorPrimary) {
         setTheme((prev) => ({
@@ -737,7 +899,7 @@ const StudentDashboard = () => {
             AI Prediction: <span className="font-bold text-green-600">Stable Growth</span>.
           </p>
         </div>
-        {student?.attendance?.overallPercentage < 75 && (
+        {accountType === 'institute' && student?.attendance?.overallPercentage < 75 && (
           <div className="flex flex-col gap-2 relative z-10 w-full md:w-auto">
             <div className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl border border-red-100 text-xs font-bold shadow-sm">
               <AlertCircle className="w-4 h-4" />
@@ -761,16 +923,18 @@ const StudentDashboard = () => {
               <p className="text-[9px] md:text-[10px] text-green-600 font-bold">Cumulative</p>
             </div>
           </div>
-          <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-start">
-              <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-4 h-4 md:w-5 md:h-5" /></div>
-              <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Attendance</span>
+          {accountType === 'institute' && (
+            <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+              <div className="flex justify-between items-start">
+                <div className="p-2 bg-blue-50 rounded-full text-blue-600"><CalendarDays className="w-4 h-4 md:w-5 md:h-5" /></div>
+                <span className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">Attendance</span>
+              </div>
+              <div className="mt-2">
+                <h3 className="text-xl md:text-2xl font-black text-gray-800">{Number(student?.attendance?.overallPercentage || 0).toFixed(2)}%</h3>
+                <p className="text-[9px] md:text-[10px] text-gray-400">Overall Avg</p>
+              </div>
             </div>
-            <div className="mt-2">
-              <h3 className="text-xl md:text-2xl font-black text-gray-800">{Number(student?.attendance?.overallPercentage || 0).toFixed(2)}%</h3>
-              <p className="text-[9px] md:text-[10px] text-gray-400">Overall Avg</p>
-            </div>
-          </div>
+          )}
           <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-orange-50 rounded-full text-orange-600"><ListTodo className="w-4 h-4 md:w-5 md:h-5" /></div>
@@ -938,7 +1102,7 @@ const StudentDashboard = () => {
         </div>
 
         <div className="hidden md:flex items-center justify-center flex-1 mx-4 h-full">
-          <DesktopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} />
+          <DesktopNav activeTab={activeTab} setActiveTab={setActiveTab} theme={theme} accountType={accountType} />
         </div>
 
         {/* Right Actions with Red Dot Support */}
@@ -951,6 +1115,7 @@ const StudentDashboard = () => {
           setOpenMobileMenu={setIsMobileMenuOpen}
           unreadCount={unreadCount}
           setUnreadCount={setUnreadCount}
+          accountType={accountType}
         />
       </div>
 

@@ -4,7 +4,8 @@ import { Send, Bot, User, Trash2, Sparkles, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown'; 
 
 // --- CONFIGURATION ---
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
+const IS_AI_ENABLED = import.meta.env.VITE_AI_MODEL === 'True';
 
 const MOCK_SCHEMAS = {
   Faculty: "Fields: Name, FID (Faculty ID), Designation, Department, Email, Phone, Research (Papers, Citations), Work History.",
@@ -30,6 +31,10 @@ const CompleteChatbot = () => {
   }, [messages]);
 
   const generateAIResponse = async (userQuery) => {
+    if (!IS_AI_ENABLED) {
+      return "AI Model Not enabled";
+    }
+
     try {
       // Context injection for the AI
       const systemInstruction = `
@@ -51,10 +56,14 @@ const CompleteChatbot = () => {
         model: "gemini-2.0-flash"
       });
 
+      if (!response.data || !response.data.text) {
+        return "AI Model Not enabled";
+      }
+
       return response.data.text;
     } catch (error) {
       console.error("Backend AI Error:", error);
-      return "I'm having trouble connecting to the AI brain right now. Please check your internet connection or try again later.";
+      return "AI Model Not enabled";
     }
   };
 
@@ -100,7 +109,7 @@ const CompleteChatbot = () => {
           </div>
           <div>
             <h1 className="font-bold text-lg leading-tight">Campus AI</h1>
-            <p className="text-xs text-green-100 opacity-90">Powered by Gemini Pro</p>
+            <p className="text-xs text-green-100 opacity-90">{IS_AI_ENABLED ? "Powered by Gemini Pro" : "AI Disabled"}</p>
           </div>
         </div>
         <button 
@@ -179,13 +188,13 @@ const CompleteChatbot = () => {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask something..."
+            placeholder={IS_AI_ENABLED ? "Ask something..." : "AI Model Not enabled"}
             className="flex-1 bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#2E5843]/50 focus:border-[#2E5843] transition-all"
-            disabled={isLoading}
+            disabled={isLoading || !IS_AI_ENABLED}
           />
           <button 
             type="submit" 
-            disabled={isLoading || !question.trim()}
+            disabled={isLoading || !question.trim() || !IS_AI_ENABLED}
             className="p-3 bg-[#2E5843] text-white rounded-xl hover:bg-[#234433] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md active:scale-95"
           >
             <Send className="w-5 h-5" />

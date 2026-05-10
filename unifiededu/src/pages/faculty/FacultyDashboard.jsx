@@ -15,7 +15,7 @@ import FacultyEvaluation from "./FacultyEvaluation";
 import FacultySSR from "./FacultySSR";
 import FacultySettings from "./FacultySettings";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const DEFAULT_THEME = {
   primary: "#2A9D8F",

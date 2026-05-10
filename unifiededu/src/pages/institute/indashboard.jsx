@@ -47,7 +47,7 @@ import NoticePage from "./NoticePage";
 import TimetableManager from "./Timetable"; 
 import CoursesPage from "./CoursesPage";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 // --- Default Theme ---
 const DEFAULT_THEME = {
@@ -954,7 +954,9 @@ const InstituteDashboard = () => {
         <div className="fixed bottom-6 right-6 z-[100] bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-10 fade-in">
           <div className={`p-2 rounded-full ${notification.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{notification.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}</div>
           <div><h4 className="font-bold text-sm">Notification</h4><p className="text-sm text-gray-300">{notification.message}</p></div>
-          <button onClick={() => setNotification(null)} className="ml-2 text-gray-500 hover:text-white">✕</button>
+          <button onClick={() => setNotification(null)} className="ml-2 text-gray-500 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
       {showLogoutModal && (

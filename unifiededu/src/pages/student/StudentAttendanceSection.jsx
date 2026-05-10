@@ -11,7 +11,7 @@ import {
 
 // Fixed: Removed import.meta to ensure compatibility with the current build environment.
 // If you have a deployed backend, replace this URL with your production API endpoint.
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const StudentAttendanceSection = ({ student }) => {
   const [attendanceData, setAttendanceData] = useState([]);
@@ -188,7 +188,7 @@ const StudentAttendanceSection = ({ student }) => {
                       </span>
                     </div>
                     
-                    {/* Prconst API_URL = import.meta.env.VITE_BACK_URI;ogress Bar */}
+                    {/* Prconst API_URL = import.meta.env.VITE_BACKEND_URL;ogress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(record.percentage)}`} 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Bell, Calendar, Users, FileText, ChevronDown, AlertTriangle, Import, BookOpen } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 export default function NoticePage({ authFetch, theme, institute, pushToast }) {
   // Data State
   const [list, setList] = useState([]);
@@ -409,7 +409,9 @@ export default function NoticePage({ authFetch, theme, institute, pushToast }) {
                 <h3 className="text-xl font-bold text-gray-900">Post New Notice</h3>
                 <p className="text-sm text-gray-500">Announce exams, fees, or share timetables</p>
               </div>
-              <button onClick={() => setShowAdd(false)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition">✕</button>
+              <button onClick={() => setShowAdd(false)} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {/* Modal Form */}

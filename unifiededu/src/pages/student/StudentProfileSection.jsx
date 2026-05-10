@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 
 // Replaced import.meta.env with a placeholder to prevent build errors in the preview environment
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 // Helper Component for Section Header
 const SectionHeader = ({ title, subtitle, onEdit, theme }) => (

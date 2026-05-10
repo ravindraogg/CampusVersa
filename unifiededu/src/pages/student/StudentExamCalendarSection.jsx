@@ -1,7 +1,7 @@
 // src/pages/student/StudentExamCalendarSection.jsx
 import React, { useEffect, useState } from "react";
 import { CalendarDays, Clock, Bell } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 const StudentExamCalendarSection = ({ student }) => {
   const [examData, setExamData] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Map, Code, BookOpen, Mic, Users, Trophy, ArrowRight, 
-  ChevronsRight, X, GraduationCap, School, Briefcase, Sun, Moon 
+  ChevronsRight, X, GraduationCap, School, Briefcase, Sun, Moon, Rocket 
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import bookImage from '../assets/logo.png';
@@ -101,7 +101,7 @@ const InteractiveBackground = ({ mousePosition, isDarkMode }) => {
     return (
         <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-0">
             {stars}
-            <div className="moon" style={moonParallaxStyle}>🌙</div>
+            <div className="moon flex items-center justify-center opacity-30" style={moonParallaxStyle}><Moon className="w-32 h-32" /></div>
             <canvas ref={canvasRef} className="absolute top-0 left-0" />
         </div>
     );
@@ -360,7 +360,7 @@ const CampusVersaLanding = () => {
           onClick={() => setIsAuthModalOpen(true)}
           className="group px-12 py-5 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500 rounded-2xl font-bold text-lg text-white hover:shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-3 mx-auto cursor-pointer"
         >
-          Start Your Journey Now 🚀 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          Start Your Journey Now <Rocket className="w-6 h-6 inline-block ml-2 animate-bounce" /> <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </button>
       </section>
 

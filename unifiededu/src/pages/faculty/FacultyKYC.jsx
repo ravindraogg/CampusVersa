@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ShieldCheck, Lock, CheckCircle, Fingerprint } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const FacultyKYC = () => {
   const [step, setStep] = useState(1); // 1: Input Aadhaar, 2: Input OTP
@@ -38,7 +38,7 @@ const handleVerify = async () => {
 
   const token = localStorage.getItem("facultyToken");
 
-  console.log("📤 FRONTEND → Sending to backend:", {
+  console.log("[REQUEST] FRONTEND -> Sending to backend:", {
     url: `${API_URL}/faculty/kyc/verify`,
     headers: {
       "Content-Type": "application/json",
@@ -58,7 +58,7 @@ const handleVerify = async () => {
     });
 
     const data = await response.json();
-    console.log("📥 FRONTEND ← Response from backend:", data);
+    console.log("[RESPONSE] FRONTEND <- Response from backend:", data);
 
     if (response.ok) {
       setSuccess(true);
@@ -69,7 +69,7 @@ const handleVerify = async () => {
       setErrorMsg(data.message || "Verification failed");
     }
   } catch (err) {
-    console.error("❌ FRONTEND ERROR:", err);
+    console.error("[ERROR] FRONTEND ERROR:", err);
     setErrorMsg("Server error.");
   } finally {
     setIsLoading(false);

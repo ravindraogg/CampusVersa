@@ -1,7 +1,9 @@
 require('dotenv').config();
+const bcrypt = require('bcryptjs');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const morgan = require('morgan');
 const jwt = require('jsonwebtoken');
 const axios = require("axios");
 const http = require('http');
@@ -77,7 +79,8 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
 }));
 app.use(express.json({ limit: "10mb" }));
-app.options("*", cors()); // Explicitly handle OPTIONS for all routes
+app.use(morgan('dev')); // Added server logs
+// app.options("/:any*", cors()); // Removed to fix Express 5 PathError; cors() middleware already handles preflight.
 const server = http.createServer(app); // Wrap express
 const io = new Server(server, {
   cors: {
@@ -87,7 +90,7 @@ const io = new Server(server, {
   },
 });
 io.on('connection', (socket) => {
-  console.log('⚡ User Connected:', socket.id);
+  console.log('[SOCKET] User Connected:', socket.id);
 
   socket.on('join_room', (data) => {
     // data: { instituteId, role, department }
@@ -160,10 +163,10 @@ app.put("/institute/courses/:id", verifyToken, async (req, res) => {
 // Database Connect
 // -------------------
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(() => console.log('[DB] MongoDB connected successfully'))
   .catch(err => {
-    console.error('❌ MongoDB connection failed:', err);
-    process.exit(1);
+    console.error('[DB ERROR] MongoDB connection error:', err.message);
+    console.log('[DB WARNING] Server will continue running, but database-dependent features will fail.');
   });
 
 // Helper: Convert Marks to Grade Point based on VTU Scheme (2021/2022)
@@ -188,9 +191,9 @@ if (process.env.GOOGLE_API_KEY && GoogleGenerativeAI) {
   try {
     googleClient = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
     aiProvider = 'google';
-    console.log('🔮 Using Google Gemini (Generative AI) as primary provider');
+    console.log('[AI] Using Google Gemini (Generative AI) as primary provider');
   } catch (e) {
-    console.warn('⚠️ Failed to initialize GoogleGenerativeAI:', e.message);
+    console.warn('[AI WARNING] Failed to initialize GoogleGenerativeAI:', e.message);
   }
 }
 
@@ -200,70 +203,108 @@ if (!aiProvider && process.env.OPENAI_API_KEY) {
     const OpenAIClient = require('openai').OpenAIApi;
     openaiClient = new OpenAIClient(config);
     aiProvider = 'openai';
-    console.log('🤖 Using OpenAI as fallback provider');
+    console.log('[AI] Using OpenAI as fallback provider');
   } catch (e) {
-    console.warn('⚠️ Failed to initialize OpenAI client:', e.message);
+    console.warn('[AI WARNING] Failed to initialize OpenAI client:', e.message);
   }
 }
 
 if (!aiProvider) {
-  console.log('⚪ No AI provider configured. Falling back to deterministic local algorithms for key tasks.');
+  console.log('[AI] No primary AI provider configured. Will attempt custom fallback if needed.');
+}
+
+const FALLBACK_LLM_URL = process.env.NGROK_URL || "https://activity-transfer-ruby.ngrok-free.dev/api/generate";
+const IS_AI_ENABLED = process.env.AI_MODEL === 'True';
+
+/**
+ * Unified LLM caller with multi-provider fallback
+ */
+async function callLLM(prompt, systemPrompt = "") {
+    // 1. Try Google Gemini
+    if (aiProvider === 'google' && googleClient) {
+        try {
+            const model = googleClient.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            const finalPrompt = systemPrompt ? `${systemPrompt}\n\nUser Request: ${prompt}` : prompt;
+            const result = await model.generateContent(finalPrompt);
+            const text = (await result.response).text();
+            if (text) return text.trim();
+        } catch (err) {
+            console.warn('[AI] Gemini failed:', err.message);
+        }
+    }
+
+    // 2. Try OpenAI
+    if (aiProvider === 'openai' && openaiClient) {
+        try {
+            const resp = await openaiClient.createChatCompletion({
+                model: 'gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: systemPrompt || "You are a helpful assistant." },
+                    { role: 'user', content: prompt }
+                ]
+            });
+            const text = resp.data.choices[0].message.content;
+            if (text) return text.trim();
+        } catch (err) {
+            console.warn('[AI] OpenAI failed:', err.message);
+        }
+    }
+
+    // 3. Custom Fallback (Qwen via ngrok)
+    try {
+        console.log('[AI] Attempting custom fallback via ngrok...');
+        const payload = {
+            model: "qwen2.5:14b",
+            prompt: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt,
+            stream: false
+        };
+        const response = await axios.post(FALLBACK_LLM_URL, payload, {
+            headers: {
+                "User-Agent": "Mozilla/5.0",
+                "Content-Type": "application/json"
+            },
+            timeout: 600000 // 10 minutes
+        });
+        if (response.data && response.data.response) {
+            return response.data.response.trim();
+        }
+    } catch (err) {
+        console.error('[AI FATAL] All providers failed:', err.message);
+    }
+
+    return null;
 }
 
 async function generateWeeklyTimetable({ department, semester, subjects = [], facultyList = [] }) {
   try {
-    // If AI available, delegate to provider
-    if (aiProvider === 'google' && googleClient) {
-      try {
-        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
-        const prompt = `Create a weekly class timetable (Monday to Friday, 5 slots per day) for Department: ${department}, Semester: ${semester}.
+    const prompt = `Create a weekly class timetable (Monday to Friday, 5 slots per day) for Department: ${department}, Semester: ${semester}.
 Subjects available: ${subjects.join(', ')}.
 Available Faculty: ${facultyList.join(', ') || 'N/A'}.
 Return ONLY a JSON object with keys Monday..Friday and values arrays of 5 strings formatted "Subject - Faculty". No markdown, no extra text.`;
-        const result = await model.generateContent(prompt);
-        const text = (await result.response).text().trim().replace(/```json|```/g, '');
-        const parsed = JSON.parse(text);
-        return parsed;
-      } catch (err) {
-        console.warn('Gemini timetable generation failed:', err.message);
-      }
-    }
 
-    if (aiProvider === 'openai' && openaiClient) {
-      try {
-        const systemPrompt = 'You are a timetable generator. Return ONLY JSON with days Monday..Friday mapping to arrays of 5 strings each.';
-        const userPrompt = `Department: ${department}, Semester: ${semester}. Subjects: ${subjects.join(', ')}. Faculty: ${facultyList.join(', ')}.`;
-        const resp = await openaiClient.createChatCompletion({
-          model: 'gpt-4o-mini', // choose available model or fallback to gpt-4o if not present in your account
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          max_tokens: 800
-        });
-        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '');
-        return JSON.parse(text);
-      } catch (err) {
-        console.warn('OpenAI timetable generation failed:', err.message);
-      }
+    const systemPrompt = "You are a timetable generator. Return ONLY JSON with days Monday..Friday mapping to arrays of 5 strings each.";
+    
+    const responseText = await callLLM(prompt, systemPrompt);
+    if (responseText) {
+        const cleaned = responseText.replace(/```json|```/g, '').trim();
+        return JSON.parse(cleaned);
     }
-
-    // Local fallback deterministic round-robin
+    
+    // Deterministic fallback logic (unchanged)
+    console.log('[AI] Falling back to deterministic timetable generation.');
+    const schedule = {};
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    const slotsPerDay = 5;
-    const result = {};
-    for (let d = 0; d < days.length; d++) {
-      result[days[d]] = [];
-      for (let s = 0; s < slotsPerDay; s++) {
-        const subject = subjects[(d * slotsPerDay + s) % (subjects.length || 1)] || `Subject-${(s + 1)}`;
-        const faculty = facultyList[(d * slotsPerDay + s) % (facultyList.length || 1)] || 'TBD';
-        result[days[d]].push(`${subject} - ${faculty}`);
-      }
-    }
-    return result;
+    days.forEach(day => {
+      schedule[day] = Array(5).fill(0).map((_, i) => {
+        const sub = subjects[i % subjects.length] || 'Free Slot';
+        const fac = facultyList[i % facultyList.length] || 'TBD';
+        return `${sub} - ${fac}`;
+      });
+    });
+    return schedule;
   } catch (err) {
-    console.error('generateWeeklyTimetable error:', err);
-    throw err;
+    console.error('Timetable generation error:', err);
+    return null;
   }
 }
 
@@ -273,34 +314,9 @@ Return ONLY a JSON object with keys Monday..Friday and values arrays of 5 string
  */
 async function generateNaacSuggestion({ instituteName, criterion }) {
   try {
-    if (aiProvider === 'google' && googleClient) {
-      try {
-        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
-        const prompt = `Provide a concise actionable suggestion (1-2 sentences) to improve NAAC criterion: ${criterion} for ${instituteName}. Return plain text only.`;
-        const result = await model.generateContent(prompt);
-        return (await result.response).text().trim();
-      } catch (err) {
-        console.warn('Gemini NAAC suggestion failed:', err.message);
-      }
-    }
-
-    if (aiProvider === 'openai' && openaiClient) {
-      try {
-        const resp = await openaiClient.createChatCompletion({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'user', content: `Give a 1-2 sentence actionable suggestion to improve NAAC criterion "${criterion}" for institute ${instituteName}.` }
-          ],
-          max_tokens: 80
-        });
-        return resp.data.choices[0].message.content.trim();
-      } catch (err) {
-        console.warn('OpenAI NAAC suggestion failed:', err.message);
-      }
-    }
-
-    // Local fallback generic suggestion
-    return `Conduct a focused review, collect supporting evidence and align documentation for ${criterion}.`;
+    const prompt = `Provide a concise actionable suggestion (1-2 sentences) to improve NAAC criterion: ${criterion} for ${instituteName}. Return plain text only.`;
+    const responseText = await callLLM(prompt, "You are a NAAC accreditation assistant.");
+    return responseText || `Conduct a focused review, collect supporting evidence and align documentation for ${criterion}.`;
   } catch (err) {
     console.error('generateNaacSuggestion error:', err);
     return 'No suggestion available';
@@ -438,14 +454,12 @@ app.post('/faculty/research/bulk-upload', verifyToken, upload.single('file'), as
 
     let parsedPapers = [];
     
-    // Call Gemini (Using your existing GoogleClient setup)
-    if (googleClient) {
-        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' }); // Use Pro for larger context
-        const result = await model.generateContent(prompt);
-        const textResponse = (await result.response).text().replace(/```json|```/g, '').trim();
+    const responseText = await callLLM(prompt, "You are a research paper metadata extractor. Return ONLY a valid JSON array.");
+    if (responseText) {
+        const textResponse = responseText.replace(/```json|```/g, '').trim();
         parsedPapers = JSON.parse(textResponse);
     } else {
-        return res.status(500).json({ message: "AI Provider not configured" });
+        return res.status(500).json({ message: "AI processing failed" });
     }
 
     // 3. VERIFICATION (SerpApi)
@@ -594,10 +608,14 @@ app.post('/institute/nirf/bulk-upload', verifyToken, upload.single('file'), asyn
       "${rawText.substring(0, 30000)}"
     `;
 
-    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
-    const result = await model.generateContent(prompt);
-    const jsonText = (await result.response).text().replace(/```json|```/g, "").trim();
+    const systemPrompt = "You are a NIRF Data Extraction Bot. Return valid JSON only.";
+    const responseText = await callLLM(prompt, systemPrompt);
+    
+    if (!responseText) {
+        return res.status(500).json({ error: "AI processing failed" });
+    }
 
+    const jsonText = responseText.replace(/```json|```/g, "").trim();
     const extracted = JSON.parse(jsonText);
 
     res.json({ success: true, data: extracted });
@@ -2300,32 +2318,29 @@ app.post('/institute/timetable/generate', verifyToken, async (req, res) => {
       Ensure no conflicts with the BUSY AT times provided.
     `;
 
-    // 6. Call AI (Gemini / OpenAI logic)
-    let generatedJson = null;
-
-    if (aiProvider === 'google' && googleClient) {
-      try {
-        const model = googleClient.getGenerativeModel({ model: 'gemini-2.5-pro' });
-        const result = await model.generateContent(prompt);
-        const text = (await result.response).text().trim().replace(/```json|```/g, '').trim();
-        generatedJson = JSON.parse(text);
-      } catch (err) { console.error('Gemini Error:', err.message); }
+    // 6. Call AI (Unified Utility)
+    const responseText = await callLLM(prompt, "You are a university class timetable generator. Return ONLY valid JSON.");
+    
+    if (!responseText) {
+        return res.status(500).json({ message: "Timetable generation failed" });
     }
 
-    if (!generatedJson && aiProvider === 'openai' && openaiClient) {
-      try {
-        const resp = await openaiClient.createChatCompletion({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'system', content: 'You are a scheduler.' }, { role: 'user', content: prompt }]
-        });
-        const text = resp.data.choices[0].message.content.trim().replace(/```json|```/g, '').trim();
-        generatedJson = JSON.parse(text);
-      } catch (err) { console.error('OpenAI Error:', err.message); }
+    const text = responseText.replace(/```json|```/g, '').trim();
+    const generatedJson = JSON.parse(text);
+
+    // 7. Validate and save
+    if (generatedJson) {
+      const newTimetable = new Timetable({
+        instituteId: req.user.id,
+        department: config.department,
+        semester: config.semester,
+        schedule: generatedJson
+      });
+      await newTimetable.save();
+      res.json({ success: true, schedule: generatedJson });
+    } else {
+      res.status(500).json({ message: "Could not parse AI response" });
     }
-
-    if (!generatedJson) return res.status(500).json({ message: "AI Generation failed" });
-
-    res.json({ schedule: generatedJson });
 
   } catch (err) {
     console.error('/institute/timetable/generate error:', err);
@@ -2538,7 +2553,7 @@ app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
   try {
     console.log("\n------ FACULTY KYC VERIFY HIT ------");
 
-    console.log("📥 BACKEND ← Received request:");
+    console.log("[REQUEST] BACKEND ← Received request:");
     console.log("Headers:", req.headers);
     console.log("Body:", req.body);
     console.log("Token user:", req.user);
@@ -2546,12 +2561,12 @@ app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
     const { aadharNumber, otp } = req.body;
 
     if (!aadharNumber || aadharNumber.length !== 12) {
-      console.log("❌ Invalid Aadhaar format");
+      console.log("[ERROR] Invalid Aadhaar format");
       return res.status(400).json({ message: 'Invalid Aadhaar Number format' });
     }
 
     if (otp !== "123456") {
-      console.log("❌ Wrong OTP");
+      console.log("[ERROR] Wrong OTP");
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
@@ -2562,14 +2577,14 @@ app.post('/faculty/kyc/verify', verifyToken, async (req, res) => {
     console.log("Faculty DB:", faculty);
 
     if (!faculty) {
-      console.log("❌ Faculty not found");
+      console.log("[ERROR] Faculty not found");
       return res.status(404).json({ message: "Faculty not found" });
     }
 
     res.json({ success: true, message: "KYC Verified Successfully" });
 
   } catch (err) {
-    console.error("🔥 BACKEND ERROR:", err);
+    console.error("[ERROR] BACKEND ERROR:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
@@ -2897,7 +2912,7 @@ app.get('/faculty/notices', verifyToken, async (req, res) => {
 
 app.post('/faculty/notices/add', verifyToken, async (req, res) => {
   try {
-    // ✅ NEW: Extract content
+    // [SUCCESS] NEW: Extract content
     const { title, content, type } = req.body; 
 
     const faculty = await Faculty.findById(req.user.id);
@@ -2906,7 +2921,7 @@ app.post('/faculty/notices/add', verifyToken, async (req, res) => {
     const newNotice = new Notice({
       instituteId: faculty.instituteId,
       title,
-      // ✅ NEW: Save content (This matches your Schema)
+      // [SUCCESS] NEW: Save content (This matches your Schema)
       content: content, 
       type: type || 'General',
       postedBy: `Faculty: ${faculty.name}`,
@@ -3091,7 +3106,7 @@ app.post('/faculty/aadhaar/add', verifyToken, async (req, res) => {
       instituteId: req.user.instituteId, // From Faculty Token
       userId: req.user.id,               // Faculty's _id
       userType: 'Faculty',               // Explicitly set type
-      aadhaarNumber: aadhaarNumber
+      aadhaarNumber: aadharNumber
     });
 
     await newDoc.save();
@@ -3206,13 +3221,13 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
     const { studentId, courseId, attendance, marksDetails } = req.body;
 
     console.log("\n==============================");
-    console.log("🔥 UPDATE COURSE DETAILS HIT");
+    console.log("[ERROR] UPDATE COURSE DETAILS HIT");
     console.log("==============================");
     console.log("Body Content:", JSON.stringify(req.body, null, 2));
 
     const student = await Student.findById(studentId);
     if (!student) {
-      console.log("❌ Student not found");
+      console.log("[ERROR] Student not found");
       return res.status(404).json({ message: "Student not found" });
     }
 
@@ -3238,7 +3253,7 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
     });
 
     if (!matched) {
-      console.log("❌ Course not found inside student's enrollments");
+      console.log("[ERROR] Course not found inside student's enrollments");
       return res.status(404).json({ message: "Course not found for this student" });
     }
 
@@ -3248,7 +3263,7 @@ app.put('/faculty/student/update-course-details', verifyToken, async (req, res) 
     return res.json({ success: true, message: "Updated successfully" });
 
   } catch (err) {
-    console.error("🔥 UPDATE COURSE ERROR:", err);
+    console.error("[ERROR] UPDATE COURSE ERROR:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
@@ -3693,6 +3708,72 @@ app.get('/faculty/forms/:formId/responses', verifyToken, async (req, res) => {
 
 
 // --- STUDENT AUTHENTICATION ---
+app.post('/student/register', async (req, res) => {
+  try {
+    const { 
+      name, email, password, phone, 
+      country, state, city, 
+      institutionName, institutionType, board, 
+      programName, academicYear, 
+      currentSubjects, careerInterests, targetExams, preferredSkills 
+    } = req.body;
+
+    // Check if user exists
+    const existingStudent = await Student.findOne({ email });
+    if (existingStudent) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create Student
+    const newStudent = new Student({
+      accountType: 'independent',
+      verificationStatus: 'approved',
+      trustLevel: 'self_declared',
+      SID: `IND-${Date.now()}`,
+      name,
+      email,
+      password: hashedPassword,
+      phone,
+      independentProfile: {
+        country, state, city,
+        institutionName, institutionType, board,
+        programName, academicYear,
+        currentSubjects: Array.isArray(currentSubjects) ? currentSubjects : [],
+        careerInterests: Array.isArray(careerInterests) ? careerInterests : [],
+        targetExams: Array.isArray(targetExams) ? targetExams : [],
+        preferredSkills: Array.isArray(preferredSkills) ? preferredSkills : []
+      }
+    });
+
+    await newStudent.save();
+
+    // Generate Token
+    const token = jwt.sign(
+      { id: newStudent._id, role: 'student', accountType: 'independent' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      token,
+      user: {
+        id: newStudent._id,
+        name: newStudent.name,
+        accountType: 'independent',
+        isKycVerified: false
+      }
+    });
+
+  } catch (err) {
+    console.error("Registration Error:", err);
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+
 app.post('/student/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -3700,12 +3781,23 @@ app.post('/student/login', async (req, res) => {
 
     if (!student) return res.status(401).json({ message: "Student not found" });
 
-    // (Add your password check logic here)
-    // const isValid = student.password === password; 
-    // if (!isValid) return res.status(401).json({ message: "Invalid credentials" });
+    // Verify password if it's hashed, otherwise do a direct comparison (for legacy migration)
+    let isMatch = false;
+    if (student.password.startsWith('$2a$') || student.password.startsWith('$2b$')) {
+      isMatch = await bcrypt.compare(password, student.password);
+    } else {
+      isMatch = (password === student.password);
+      // Optional: Auto-hash legacy passwords on successful login
+      if (isMatch) {
+        student.password = await bcrypt.hash(password, 10);
+        await student.save();
+      }
+    }
+
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
     const token = jwt.sign(
-      { id: student._id, role: 'student', instituteId: student.instituteId },
+      { id: student._id, role: 'student', instituteId: student.instituteId, accountType: student.accountType },
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
@@ -3716,7 +3808,8 @@ app.post('/student/login', async (req, res) => {
       user: {
         id: student._id,
         name: student.name,
-        isKycVerified: student.kyc?.verified || false // <--- Return KYC status
+        accountType: student.accountType || 'institute',
+        isKycVerified: student.kyc?.verified || false
       }
     });
   } catch (err) {
@@ -3736,6 +3829,7 @@ app.get('/student/me', verifyToken, async (req, res) => {
     // 3. Return Combined Data
     res.json({
       student,
+      accountType: student.accountType || 'institute',
       institute: institute || {}
     });
 
@@ -3966,20 +4060,16 @@ app.post('/student/performance/analyze', verifyToken, async (req, res) => {
       }
     `;
 
-    // 3. Call Gemini AI
-    let aiResponse = null;
+    // 3. Call AI (Unified Utility)
+    const systemPrompt = "Act as an empathetic but data-driven Academic Performance Coach. Output STRICT JSON format.";
+    const responseText = await callLLM(prompt, systemPrompt);
 
-    if (googleClient) {
-      try {
-        const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text().replace(/```json|```/g, '').trim(); // Clean markdown
-        aiResponse = JSON.parse(text);
-      } catch (aiError) {
-        console.error("Gemini Generation Error:", aiError.message);
-        // Fallback to OpenAI if Gemini fails (optional, based on your setup)
-      }
+    let aiResponse = null;
+    if (responseText) {
+      const text = responseText.replace(/```json|```/g, '').trim();
+      aiResponse = JSON.parse(text);
+    } else {
+      return res.status(500).json({ message: "Insight generation failed" });
     }
 
     // 4. Fallback if AI fails or isn't configured
@@ -4041,7 +4131,7 @@ app.post("/api/student-jobs/search", async (req, res) => {
   try {
     // 1. Check if keys exist
     if (!process.env.ADZUNA_APP_ID || !process.env.ADZUNA_APP_KEY) {
-      console.warn("⚠️ Adzuna Keys Missing. Serving Mock Data.");
+      console.warn("[WARNING] Adzuna Keys Missing. Serving Mock Data.");
       return res.json({ freelance: mockJobs, source: "MOCK_NO_KEYS" });
     }
 
@@ -4079,9 +4169,9 @@ app.post("/api/student-jobs/search", async (req, res) => {
   } catch (err) {
     // 4. Log specific Adzuna error to help debugging
     if (err.response) {
-      console.error("❌ Adzuna API Error Details:", JSON.stringify(err.response.data));
+      console.error("[ERROR] Adzuna API Error Details:", JSON.stringify(err.response.data));
     } else {
-      console.error("❌ Adzuna Network Error:", err.message);
+      console.error("[ERROR] Adzuna Network Error:", err.message);
     }
 
     // Fallback to 200 OK with Mock Data (Prevents 500 Error in Browser)
@@ -4217,9 +4307,11 @@ app.post('/institute/faculty/bulk-upload', verifyToken, upload.single('file'), a
       Text: "${rawText}"
     `;
 
-    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
-    const result = await model.generateContent(prompt);
-    const jsonText = (await result.response).text().replace(/```json|```/g, "").trim();
+    const responseText = await callLLM(prompt, "You are a Faculty Data Extractor. Return valid JSON array.");
+    if (!responseText) {
+        return res.status(500).json({ message: "AI extraction failed" });
+    }
+    const jsonText = responseText.replace(/```json|```/g, "").trim();
     const parsedData = JSON.parse(jsonText);
 
     if (!Array.isArray(parsedData) || parsedData.length === 0) {
@@ -4338,9 +4430,11 @@ app.post('/institute/students/bulk-upload', verifyToken, upload.single('file'), 
       Text: "${rawText}"
     `;
 
-    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
-    const result = await model.generateContent(prompt);
-    const parsedData = JSON.parse((await result.response).text().replace(/```json|```/g, "").trim());
+    const responseText = await callLLM(prompt, "You are a Student Data Extractor. Return valid JSON array.");
+    if (!responseText) {
+        return res.status(500).json({ message: "AI extraction failed" });
+    }
+    const parsedData = JSON.parse(responseText.replace(/```json|```/g, "").trim());
 
     const instId = req.user.id;
     const inst = await Institute.findById(instId);
@@ -4387,7 +4481,7 @@ app.post('/institute/students/bulk-upload', verifyToken, upload.single('file'), 
           savedStudents.push(newStudent);
 
       } catch (err) {
-          // ⚠️ CATCH DUPLICATE KEY ERROR (E11000)
+          // [WARNING] CATCH DUPLICATE KEY ERROR (E11000)
           if (err.code === 11000) {
               console.warn(`Skipping duplicate student: ${sData.name}`);
               skippedCount++;
@@ -4434,9 +4528,11 @@ app.post('/institute/courses/bulk-upload', verifyToken, upload.single('file'), a
       Text: "${rawText}"
     `;
 
-    const model = googleClient.getGenerativeModel({ model: "gemini-2.5-pro" });
-    const result = await model.generateContent(prompt);
-    const parsedData = JSON.parse((await result.response).text().replace(/```json|```/g, "").trim());
+    const responseText = await callLLM(prompt, "You are a Course Data Extractor. Return valid JSON array.");
+    if (!responseText) {
+        return res.status(500).json({ message: "AI extraction failed" });
+    }
+    const parsedData = JSON.parse(responseText.replace(/```json|```/g, "").trim());
 
     const instId = req.user.id;
     const savedCourses = [];
@@ -4759,27 +4855,6 @@ app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Fetch failed' });
   }
 });
-app.get('/admin/getAllInstitutes', verifyToken, async (req, res) => {
-  try {
-    // Get page and limit from query params, set defaults
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const institutes = await Institute.find({})
-      .select('-password') // Exclude password
-      .sort({ createdAt: -1 }) // Newest first
-      .skip(skip)
-      .limit(limit);
-      
-    // Optional: Return total count for UI to know total pages, 
-    // but for simple "Load More", just returning data works.
-    res.json(institutes);
-  } catch (err) {
-    console.error('Error fetching institutes:', err);
-    res.status(500).json({ error: 'Failed to fetch institutes' });
-  }
-});
 
 app.get('/admin/analytics', verifyToken, async (req, res) => {
   try {
@@ -4797,35 +4872,17 @@ app.use('/api/schema', schemaRoutes);
 
 // --- AI PROXY ROUTE ---
 app.post('/api/ai/generate', async (req, res) => {
-  const { prompt, model: requestedModel, systemInstruction } = req.body;
-  
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required' });
+  if (!IS_AI_ENABLED) {
+    return res.status(403).json({ error: 'AI Model Not enabled' });
   }
-
+  const { prompt, systemInstruction, model: requestedModel } = req.body;
+  
   try {
-    if (aiProvider === 'google' && googleClient) {
-      const modelName = requestedModel || "gemini-2.0-flash";
-      const model = googleClient.getGenerativeModel({ 
-        model: modelName,
-        systemInstruction: systemInstruction || undefined
-      });
-      
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return res.json({ text: response.text() });
-    } else if (aiProvider === 'openai' && openaiClient) {
-      const resp = await openaiClient.createChatCompletion({
-        model: requestedModel || 'gpt-4o-mini',
-        messages: [
-          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
-          { role: 'user', content: prompt }
-        ],
-      });
-      return res.json({ text: resp.data.choices[0].message.content });
-    } else {
-      return res.status(503).json({ error: 'AI provider not configured on backend' });
+    const responseText = await callLLM(prompt, systemInstruction);
+    if (responseText) {
+      return res.json({ text: responseText });
     }
+    return res.status(503).json({ error: 'AI generation failed across all providers' });
   } catch (err) {
     console.error('AI Proxy Error:', err);
     res.status(500).json({ error: 'AI generation failed', details: err.message });
@@ -4838,4 +4895,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`[SERVER] Server running on port ${PORT}`));

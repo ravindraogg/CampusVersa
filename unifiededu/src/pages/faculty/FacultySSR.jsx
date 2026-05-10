@@ -16,7 +16,7 @@ import {
   RefreshCw,
   AlertTriangle
 } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 // --- CONSTANTS ---
 const SECTIONS = [
   { id: "personal", label: "Profile & Quals", icon: Users },

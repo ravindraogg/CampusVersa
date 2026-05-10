@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 // Safe API URL definition
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const StudentPerformanceSection = ({ student }) => {
   const [analysis, setAnalysis] = useState(null);

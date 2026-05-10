@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit, AlertTriangle, Eye, EyeOff, Upload } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 export default function FacultyPage({ authFetch, theme, institute, pushToast }) {
   // data
   const [list, setList] = useState([]);

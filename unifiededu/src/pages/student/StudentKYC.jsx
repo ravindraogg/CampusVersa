@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ShieldCheck, Lock, CheckCircle, Fingerprint } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const StudentKYC = () => {
   const navigate = useNavigate();

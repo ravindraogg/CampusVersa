@@ -1,7 +1,7 @@
 // DepartmentPage.jsx
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit, ChevronDown, AlertTriangle, Save } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 export default function DepartmentPage({ authFetch, theme, institute, pushToast }) {
   // --- Data & UI State ---
   const [list, setList] = useState([]);

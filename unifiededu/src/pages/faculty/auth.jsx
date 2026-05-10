@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import bookImage from "../../assets/logo.png";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const FacultyAuth = () => {
   const [formData, setFormData] = useState({ identifier: "", password: "" });

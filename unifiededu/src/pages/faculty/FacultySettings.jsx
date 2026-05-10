@@ -19,7 +19,7 @@ import {
   User,
   Calendar
 } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 const FacultySettings = ({ authFetch, theme, pushToast, faculty, initialTab }) => {
   // Use initialTab if provided (e.g. from Dashboard quick link), else default to 'general'
   const [activeTab, setActiveTab] = useState(initialTab || "general");

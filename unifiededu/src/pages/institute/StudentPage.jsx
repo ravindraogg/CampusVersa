@@ -6,8 +6,8 @@ import {
 } from "lucide-react";
 
 // FIX: Hardcode API_URL or use a safer check to prevent "import.meta" errors in this environment
-// In your local Vite setup, you can revert this to: const API_URL = import.meta.env.VITE_BACK_URI;
-const API_URL = "http://localhost:5000"; 
+// In your local Vite setup, you can revert this to: const API_URL = import.meta.env.VITE_BACKEND_URL;
+const API_URL = import.meta.env.VITE_BACKEND_URL; 
 
 export default function StudentPage({ authFetch, theme, institute, pushToast }) {
   const [students, setStudents] = useState([]);

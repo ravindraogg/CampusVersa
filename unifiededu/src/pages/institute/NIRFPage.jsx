@@ -5,7 +5,7 @@ import {
   Globe, LayoutGrid, AlertCircle, Info, UploadCloud, 
   FileText, ArrowRight, CheckCircle, X
 } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 export default function NIRFPage({ authFetch, theme, institute, pushToast }) {
   // --- State ---
   const [loading, setLoading] = useState(false);

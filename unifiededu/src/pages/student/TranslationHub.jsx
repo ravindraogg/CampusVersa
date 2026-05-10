@@ -5,7 +5,8 @@ import {
   RotateCcw, Sparkles, ChevronDown, BookOpen, VolumeX
 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
+const IS_AI_ENABLED = import.meta.env.VITE_AI_MODEL === 'True';
 
 // --- Indian Language Database ---
 const LANGUAGES = [
@@ -69,16 +70,25 @@ RULES:
 
       const prompt = `Translate the following text from ${srcName} to ${tgtName}:\n\n${sourceText}`;
 
+      if (!IS_AI_ENABLED) {
+        setTranslatedText("AI Model Not enabled");
+        return;
+      }
+
       const response = await axios.post(`${API_URL}/api/ai/generate`, {
         prompt,
         systemInstruction,
         model: "gemini-2.0-flash"
       });
 
-      setTranslatedText(response.data.text);
+      if (!response.data || !response.data.text) {
+        setTranslatedText("AI Model Not enabled");
+      } else {
+        setTranslatedText(response.data.text);
+      }
     } catch (err) {
       console.error('Translation error:', err);
-      setError('Translation failed. Please check your internet connection and try again.');
+      setError('AI Model Not enabled');
     } finally {
       setIsTranslating(false);
     }
@@ -181,7 +191,9 @@ RULES:
           AI Translation Hub
         </h2>
         <p className="text-sm text-gray-500 mt-1 ml-[52px]">
-          Translate educational content to your local language using AI. Supports 12+ Indian languages.
+          {IS_AI_ENABLED 
+            ? "Translate educational content to your local language using AI. Supports 12+ Indian languages." 
+            : "AI Model Not enabled"}
         </p>
       </div>
 
@@ -274,7 +286,7 @@ RULES:
       {/* Translate Button */}
       <button
         onClick={handleTranslate}
-        disabled={isTranslating || !sourceText.trim()}
+        disabled={isTranslating || !sourceText.trim() || !IS_AI_ENABLED}
         className="w-full sm:w-auto px-8 py-3.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
         style={{ backgroundColor: primaryColor }}
       >

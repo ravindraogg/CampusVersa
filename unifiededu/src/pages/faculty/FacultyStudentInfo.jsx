@@ -18,7 +18,7 @@ import {
   ListChecks,
   History
 } from "lucide-react";
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 const FacultyStudentInfo = ({ student, onBack, theme, authFetch, refreshData, faculty, viewMode }) => {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(false);

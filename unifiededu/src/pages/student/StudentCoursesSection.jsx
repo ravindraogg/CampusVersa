@@ -5,7 +5,7 @@ import {
   FileText, Send, Check
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const StudentCoursesSection = () => {
   const [courses, setCourses] = useState([]);

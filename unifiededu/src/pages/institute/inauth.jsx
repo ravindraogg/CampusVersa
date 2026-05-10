@@ -24,7 +24,7 @@ import bookImage from "../../assets/logo.png";
 // --- Constants ---
 const primaryColor = "#66BB6A"; // Green
 const secondaryColor = "#7D5AFE"; // Purple
-const API_URL = import.meta.env.VITE_BACK_URI; // Adjust if hosted elsewhere
+const API_URL = import.meta.env.VITE_BACKEND_URL; // Adjust if hosted elsewhere
 
 // --- Sub-component ---
 const InputField = ({

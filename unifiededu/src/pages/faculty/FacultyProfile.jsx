@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 // Use localhost fallback to prevent 'import.meta' errors if environment vars aren't set
-const API_URL = "http://localhost:5000";
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 // Helper Component for Section Header
 const SectionHeader = ({ title, subtitle, onEdit, theme }) => (

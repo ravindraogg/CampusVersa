@@ -10,6 +10,7 @@ import FacultyKYC from './pages/faculty/FacultyKYC'
 import FacultyDashboard from './pages/faculty/FacultyDashboard'
 import StudentDashboard from './pages/student/StudentDashboard'
 import StudentLogin from './pages/student/auth'
+import IndependentEnrollment from './pages/student/IndependentEnrollment'
 import MockInterview from './pages/student/mockinterview'
 import StudentPerformanceSection from './pages/student/StudentPerformanceSection'
 import StudentAttendanceSection from './pages/student/StudentAttendanceSection'
@@ -33,6 +34,7 @@ function App() {
         <Route path="/faculty/kyc-verification" element={<FacultyKYC />} />
         <Route path="/fc/dash" element={<FacultyDashboard />} />
         <Route path="/student/auth" element={<StudentLogin />} />
+        <Route path="/student/independent-enrollment" element={<IndependentEnrollment />} />
         <Route path="/student/dashboard" element={<StudentDashboard />} />
         <Route path="/student/mock-interview" element={<MockInterview />} />
         <Route path="/student/performance" element={<StudentPerformanceSection />} />

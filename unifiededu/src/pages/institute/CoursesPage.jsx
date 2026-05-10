@@ -4,7 +4,7 @@ import {
   Calendar, Hash, CheckCircle, Loader2, Upload, Edit, X
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_BACK_URI;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 const CoursesPage = ({ authFetch, theme, pushToast }) => {
   const [courses, setCourses] = useState([]);

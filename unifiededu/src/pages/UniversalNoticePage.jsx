@@ -224,14 +224,14 @@ export default function UniversalNoticePage({ authFetch, theme, role, pushToast 
                     </div>
                     <h4 className="text-lg font-bold text-gray-800">{notice.title}</h4>
                     
-                    {/* ✅ HIDE RAW STRING: Only show text div if it is NOT the JSON string */}
+                    {/* HIDE RAW STRING: Only show text div if it is NOT the JSON string */}
                     {!isRawJson && (
                       <div className="mt-2 text-sm text-gray-600 whitespace-pre-wrap font-mono bg-gray-50 p-3 rounded-lg border border-gray-100">
                         {notice.content}
                       </div>
                     )}
 
-                    {/* ✅ PREVIEW: Pass parsed schedule OR fall back to global list */}
+                    {/* PREVIEW: Pass parsed schedule OR fall back to global list */}
                     {notice.type === 'Timetable' && (
                       <TimetablePreview 
                          timetables={timetables} 

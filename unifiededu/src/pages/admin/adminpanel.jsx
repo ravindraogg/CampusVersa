@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 
 // --- CONFIGURATION ---
-const BACKEND_URI = import.meta.env.VITE_BACK_URI;
+const BACKEND_URI = import.meta.env.VITE_BACKEND_URL;
 const API_BASE_URL = `${BACKEND_URI}/admin`;
 const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
