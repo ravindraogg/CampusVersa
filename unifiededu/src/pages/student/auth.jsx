@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Loader2, AlertCircle, Eye, EyeOff, GraduationCap, User, ArrowRight, ArrowLeft, CheckCircle2, TrendingUp, Briefcase } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,6 +10,14 @@ const StudentLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get('utm_source');
+    if (utm) {
+      sessionStorage.setItem('pending_utm_source', utm);
+    }
+  }, []);
   
   // View states: 'login' or 'register'
   const [view, setView] = useState('login');

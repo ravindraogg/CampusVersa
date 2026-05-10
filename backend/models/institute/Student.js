@@ -22,6 +22,8 @@ const StudentSchema = new mongoose.Schema({
   instituteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Institute' }, // Optional for independent
   SID: { type: String, required: true }, 
   name: { type: String, required: true },
+  preferredLanguage: { type: String, default: 'en' },
+  source: { type: String, default: 'direct' },
   
   // --- BASIC INFO ---
   rollNumber: { type: String }, 

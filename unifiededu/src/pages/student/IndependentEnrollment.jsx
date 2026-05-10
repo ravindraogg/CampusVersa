@@ -162,7 +162,9 @@ const IndependentEnrollment = () => {
     setError("");
 
     try {
-      const API_URL = import.meta.env.VITE_BACKEND_URL;
+      const urlParams = new URLSearchParams(window.location.search);
+      const utmSource = urlParams.get('utm_source') || sessionStorage.getItem('pending_utm_source') || 'direct';
+
       const res = await fetch(`${API_URL}/student/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,6 +172,7 @@ const IndependentEnrollment = () => {
             ...formData,
             institutionName: "Independent Learning",
             institutionType: formData.lifecycle,
+            source: utmSource,
             // Format for backend
             careerInterests: formData.careerInterests.split(',').map(s => s.trim()).filter(s => s),
             targetExams: formData.targetExams.split(',').map(s => s.trim()).filter(s => s),
@@ -274,156 +277,6 @@ const IndependentEnrollment = () => {
                   </div>
                 </div>
 
-                {/* SECTION 2: ACADEMIC (HIERARCHICAL) */}
-                <div className="space-y-8 bg-slate-50/50 p-6 md:p-10 rounded-[2rem] border border-slate-100">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-inner">
-                      <GraduationCap size={20} />
-                    </div>
-                    <h2 className="text-xl font-black text-slate-800">Academic Lifecycle</h2>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-8">
-                    {/* 1. Education Stage */}
-                    <div className="space-y-4">
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-tighter flex items-center gap-2">
-                           <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</span>
-                           Select Education Stage
-                        </label>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {Object.keys(EDUCATION_DATA).map(stage => (
-                                <button
-                                    key={stage}
-                                    type="button"
-                                    onClick={() => handleChange({ target: { name: "lifecycle", value: stage } })}
-                                    className={`p-4 rounded-2xl border text-left transition-all duration-200 group ${
-                                        formData.lifecycle === stage 
-                                        ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200" 
-                                        : "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md text-slate-600"
-                                    }`}
-                                >
-                                    <div className={`w-8 h-8 rounded-lg mb-2 flex items-center justify-center transition-colors ${formData.lifecycle === stage ? "bg-white/20" : "bg-slate-100 group-hover:bg-indigo-50"}`}>
-                                        <Building2 size={16} className={formData.lifecycle === stage ? "text-white" : "text-slate-500 group-hover:text-indigo-600"} />
-                                    </div>
-                                    <p className="text-[11px] font-black leading-tight uppercase">{stage}</p>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {formData.lifecycle && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-4 duration-300">
-                            {/* 2. Board / University */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Board / Authority</label>
-                                <select name="board" value={formData.board} onChange={handleChange} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-medium">
-                                    <option value="">Select Board</option>
-                                    {currentLifecycle.boards.map(b => <option key={b} value={b}>{b}</option>)}
-                                </select>
-                            </div>
-
-                            {/* 3. Program / Stream */}
-                            {currentLifecycle.programs ? (
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Program of Study</label>
-                                    <select name="programName" value={formData.programName} onChange={handleChange} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-medium">
-                                        <option value="">Select Program</option>
-                                        {currentLifecycle.programs.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
-                                </div>
-                            ) : currentLifecycle.streams ? (
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Stream</label>
-                                    <select name="stream" value={formData.stream} onChange={handleChange} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-medium">
-                                        <option value="">Select Stream</option>
-                                        {Object.keys(currentLifecycle.streams).map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                </div>
-                            ) : null}
-
-                            {/* 4. Level / Grade */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Current Grade / Semester</label>
-                                <select name="level" value={formData.level} onChange={handleChange} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-medium">
-                                    <option value="">Select Level</option>
-                                    {currentLifecycle.levels.map(l => <option key={l} value={l}>{l}</option>)}
-                                </select>
-                            </div>
-
-                            {/* 5. Academic Year */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Academic Year</label>
-                                <input type="text" name="academicYear" value={formData.academicYear} onChange={handleChange} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-medium" placeholder="2024-25" />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 6. Subject Selector */}
-                    {formData.lifecycle && (
-                        <div className="space-y-4 animate-in slide-in-from-top-2">
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-tighter flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">2</span>
-                                Select Your Subjects
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                                {(currentLifecycle.subjects || (formData.stream ? currentLifecycle.streams[formData.stream] : [])).map(sub => (
-                                    <button
-                                        key={sub}
-                                        type="button"
-                                        onClick={() => handleSubjectToggle(sub)}
-                                        className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all duration-200 border ${
-                                            formData.currentSubjects.includes(sub)
-                                            ? "bg-indigo-50 border-indigo-200 text-indigo-700 ring-2 ring-indigo-500/10"
-                                            : "bg-white border-slate-200 text-slate-500 hover:border-indigo-200 hover:text-indigo-500"
-                                        }`}
-                                    >
-                                        {sub}
-                                        {formData.currentSubjects.includes(sub) && <CheckCircle2 size={12} className="inline ml-2" />}
-                                    </button>
-                                ))}
-                            </div>
-                            {formData.currentSubjects.length === 0 && <p className="text-[10px] text-slate-400 italic">No subjects selected yet</p>}
-                        </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* SECTION 3: GOALS */}
-                <div className="space-y-8">
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-inner">
-                            <Target size={20} />
-                        </div>
-                        <h2 className="text-xl font-black text-slate-800">Interests and Goals</h2>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Career Interests</label>
-                            <div className="relative">
-                                <Briefcase className="absolute left-4 top-4 text-slate-400 w-4 h-4" />
-                                <textarea name="careerInterests" value={formData.careerInterests} onChange={handleChange} rows="2" className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm" placeholder="e.g. Software Engineer, Data Scientist, Civil Architect..."></textarea>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Target Exams</label>
-                                <div className="relative">
-                                    <Award className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                                    <input type="text" name="targetExams" value={formData.targetExams} onChange={handleChange} className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm" placeholder="e.g. GATE, JEE, UPSC..." />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Preferred Skills</label>
-                                <div className="relative">
-                                    <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                                    <input type="text" name="preferredSkills" value={formData.preferredSkills} onChange={handleChange} className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm" placeholder="e.g. React, Python, UI/UX..." />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 {/* ERROR MESSAGE */}
                 {error && (
                     <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-2xl flex items-center gap-3 animate-shake">
@@ -439,7 +292,7 @@ const IndependentEnrollment = () => {
                     className="w-full group relative overflow-hidden bg-slate-900 text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all hover:bg-black hover:shadow-2xl hover:shadow-slate-300 disabled:opacity-50"
                 >
                     <div className="relative z-10 flex items-center justify-center gap-3">
-                        {loading ? <Loader2 className="animate-spin" size={20} /> : (success ? <CheckCircle2 size={20} /> : "Complete Enrollment")}
+                        {loading ? <Loader2 className="animate-spin" size={20} /> : (success ? <CheckCircle2 size={20} /> : "Start Learning Now")}
                         {!loading && !success && <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />}
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>

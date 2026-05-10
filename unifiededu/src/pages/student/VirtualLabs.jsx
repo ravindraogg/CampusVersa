@@ -1,12 +1,32 @@
 import React, { useState, Suspense, lazy } from 'react';
+import axios from 'axios';
 import { 
   FlaskConical, ArrowLeft, ChevronRight, Sparkles, Atom, Beaker, Leaf, 
   Search, Filter, Grid, List, Info, Loader2, Shapes, Hash, Ruler, 
   MoveRight, HelpCircle, Scale, PenTool, Bird, Droplets, Utensils, 
   Coins, Users, Paintbrush, Apple, Carrot, Home, Flame, Table, FileJson,
   BookOpen, GraduationCap, School, Building2, Zap, Brain, Compass, Play, MapPin, Network, Eye, Wind,Thermometer ,FileCode, Smartphone, Layout, Cpu, Database, Code2, Terminal, RotateCcw, Layers, Globe, CheckCircle2, Cloud, Rocket, Shield ,FileText ,
-  Sun, Activity, Box
+  Sun, Activity, Box, Volume2, VolumeX
 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_BACKEND_URL;
+const IS_AI_ENABLED = import.meta.env.VITE_AI_MODEL === 'True';
+
+const LANGUAGES = [
+  { code: 'hi', name: 'Hindi' },
+  { code: 'ta', name: 'Tamil' },
+  { code: 'te', name: 'Telugu' },
+  { code: 'kn', name: 'Kannada' },
+  { code: 'ml', name: 'Malayalam' },
+  { code: 'bn', name: 'Bengali' },
+  { code: 'mr', name: 'Marathi' },
+  { code: 'gu', name: 'Gujarati' },
+  { code: 'pa', name: 'Punjabi' },
+  { code: 'or', name: 'Odia' },
+  { code: 'as', name: 'Assamese' },
+  { code: 'ur', name: 'Urdu' },
+  { code: 'en', name: 'English' },
+];
 
 // --- LAZY LOADING LABS (HIERARCHICAL) ---
 // Early School Education
@@ -368,12 +388,72 @@ const ALL_LABS = [
   { id: 'gradpg', title: '[Final] Thesis Defense', class: 'PG4', category: 'pg', subject: 'Gen', icon: Rocket, color: 'text-green-600 bg-green-50', component: DefenseLab },
 ];
 
-const VirtualLabs = ({ theme }) => {
+const VirtualLabs = ({ theme, student }) => {
   const [activeLabId, setActiveLabId] = useState(null);
   const [activeCategory, setActiveCategory] = useState('early');
   const [search, setSearch] = useState('');
   
+  // AI State
+  const [aiExplanation, setAiExplanation] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  
   const primaryColor = theme?.primary || '#2E5843';
+
+  const explainExperiment = async (lab) => {
+    if (!IS_AI_ENABLED) return;
+    setAiLoading(true);
+    setAiExplanation(null);
+    try {
+      const targetLang = LANGUAGES.find(l => l.code === (student?.preferredLanguage || 'en'))?.name || 'English';
+      
+      const systemInstruction = `You are an expert Virtual Lab assistant. 
+RULES:
+1. Explain the scientific concepts behind the experiment clearly.
+2. Adapt the explanation for a student in Class ${lab.class}.
+3. Break down the explanation into: Aim, Principle, and Real-world Application.
+4. Use the requested language: ${targetLang}.
+5. Return ONLY the explanation text, formatted with clean bullet points.`;
+
+      const prompt = `Explain the experiment: "${lab.title}" for Class ${lab.class}. The subject is ${lab.subject}. Focus on why it matters and how the simulation helps understand it.`;
+
+      const response = await axios.post(`${API_URL}/api/ai/generate`, {
+        prompt,
+        systemInstruction
+      });
+
+      if (response.data?.text) {
+        setAiExplanation(response.data.text);
+      }
+    } catch (err) {
+      console.error("AI Explanation error:", err);
+      setAiExplanation("Sorry, I couldn't generate an explanation right now.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSpeak = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+    if (!aiExplanation) return;
+
+    const utterance = new SpeechSynthesisUtterance(aiExplanation);
+    const langMap = {
+      'hi': 'hi-IN', 'ta': 'ta-IN', 'te': 'te-IN', 'kn': 'kn-IN',
+      'ml': 'ml-IN', 'bn': 'bn-IN', 'mr': 'mr-IN', 'gu': 'gu-IN',
+      'pa': 'pa-IN', 'or': 'or-IN', 'as': 'as-IN', 'ur': 'ur-IN', 'en': 'en-IN'
+    };
+    utterance.lang = langMap[student?.preferredLanguage || 'en'] || 'en-IN';
+    utterance.rate = 0.95;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const filteredLabs = ALL_LABS.filter(lab => {
     const matchesCategory = lab.category === activeCategory;
@@ -403,12 +483,65 @@ const VirtualLabs = ({ theme }) => {
                 </div>
             </div>
             
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex flex-col items-center">
                 <Suspense fallback={<div className="flex flex-col items-center gap-3"><Loader2 className="animate-spin text-blue-600" /> <p className="text-xs font-bold text-gray-400">Loading Experiment...</p></div>}>
                     <div className="w-full max-w-2xl">
                         <LabComponent theme={theme} />
                     </div>
                 </Suspense>
+
+                {/* AI Explanation Toggle */}
+                <div className="mt-12 w-full max-w-3xl border-t border-gray-100 pt-8">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
+                                <Sparkles size={20} />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-black text-gray-800 uppercase tracking-tight">AI Lab Assistant</h4>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Understand the core concepts</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => explainExperiment(lab)}
+                            disabled={aiLoading || !IS_AI_ENABLED}
+                            className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50"
+                        >
+                            {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                            {aiExplanation ? "Refresh Explanation" : "Explain with AI"}
+                        </button>
+                    </div>
+
+                    {aiLoading && (
+                        <div className="p-8 bg-gray-50 rounded-3xl border border-gray-100 flex flex-col items-center gap-3 animate-pulse">
+                            <Loader2 size={24} className="animate-spin text-indigo-600" />
+                            <p className="text-xs font-bold text-gray-400">Consulting AI experts...</p>
+                        </div>
+                    )}
+
+                    {aiExplanation && (
+                        <div className="bg-white rounded-3xl border border-indigo-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
+                            <div className="px-6 py-4 bg-indigo-50/50 border-b border-indigo-50 flex items-center justify-between">
+                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                                    <Info size={12} /> Key Learning Points
+                                </span>
+                                <button 
+                                    onClick={handleSpeak}
+                                    className={`p-2 rounded-lg transition-colors ${isSpeaking ? 'bg-indigo-600 text-white' : 'text-indigo-400 hover:bg-indigo-100'}`}
+                                >
+                                    {isSpeaking ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                                </button>
+                            </div>
+                            <div className="p-6 md:p-8">
+                                <div className="prose prose-sm max-w-none text-gray-600 leading-relaxed font-medium">
+                                    {aiExplanation.split('\n').map((line, i) => (
+                                        <p key={i} className={line.trim().startsWith('-') ? 'ml-4' : 'mb-3'}>{line}</p>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
       </div>

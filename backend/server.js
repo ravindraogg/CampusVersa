@@ -3715,7 +3715,8 @@ app.post('/student/register', async (req, res) => {
       country, state, city, 
       institutionName, institutionType, board, 
       programName, academicYear, 
-      currentSubjects, careerInterests, targetExams, preferredSkills 
+      currentSubjects, careerInterests, targetExams, preferredSkills,
+      source
     } = req.body;
 
     // Check if user exists
@@ -3737,6 +3738,7 @@ app.post('/student/register', async (req, res) => {
       email,
       password: hashedPassword,
       phone,
+      source: source || 'direct',
       independentProfile: {
         country, state, city,
         institutionName, institutionType, board,
@@ -3842,11 +3844,28 @@ app.get('/student/me', verifyToken, async (req, res) => {
 // --- STUDENT PROFILE UPDATE (NEW) ---
 app.post('/student/update-profile', verifyToken, async (req, res) => {
   try {
-    const { profilePic, phone } = req.body;
+    const allowedFields = [
+      'profilePic', 
+      'phone', 
+      'name', 
+      'state', 
+      'city', 
+      'independentProfile', 
+      'previousEducation', 
+      'academic', 
+      'department', 
+      'year', 
+      'semester',
+      'section',
+      'preferredLanguage'
+    ];
 
     const updateData = {};
-    if (profilePic) updateData.profilePic = profilePic;
-    if (phone) updateData.phone = phone;
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
 
     updateData.updatedAt = Date.now();
 
